@@ -18,7 +18,10 @@ const goldens = JSON.parse(readFileSync(new URL('../../server/test/goldens.json'
 /** The Chromium Playwright downloads, which the server renders with in CI (playwright-core doesn't export the file). */
 const browsersJson = join(dirname(createRequire(import.meta.url).resolve('playwright-core/package.json')), 'browsers.json');
 const bundledChromium = (JSON.parse(readFileSync(browsersJson, 'utf8')) as { browsers: { name: string; browserVersion: string }[] }).browsers.find((b) => b.name === 'chromium')!.browserVersion;
-/** Seconds the preview may take, about twice what it took on a 2026 laptop-class container (Chromium 141). */
+/**
+ * Seconds a Chromium preview may take: about twice what it took in a dev container on Chromium 141.
+ * Firefox and WebKit are much slower (M2.md §5); their times are reported, not enforced.
+ */
 const BUDGET_S: Record<SampleKind, number> = { '40-page': 15, '200-page': 60 };
 
 const CASES: [SampleKind, SampleProductId][] = [
@@ -30,12 +33,11 @@ const CASES: [SampleKind, SampleProductId][] = [
 
 test.describe('preview parity with the print server', () => {
   test.skip(({ isMobile }) => isMobile, 'Layout is the same on every viewport; one project is enough.');
-  test.describe.configure({ mode: 'serial' });
 
   for (const [kind, productId] of CASES) {
     test(`${kind} sample as ${productId}`, async ({ page, browser, browserName }) => {
-      test.setTimeout(kind === '200-page' ? 420_000 : 150_000);
       const sameEngine = browserName === 'chromium';
+      test.setTimeout((kind === '200-page' ? 420_000 : 150_000) * (sameEngine ? 1 : 3));
       const server = `chromium-${(sameEngine ? browser.version() : bundledChromium).split('.')[0]}`;
       const golden = goldens[server]?.[`${kind}--${productId}`];
       test.skip(golden === undefined, `No server page count recorded for ${server}; run the print goldens with UPDATE_GOLDENS=1.`);
@@ -63,18 +65,34 @@ test.describe('preview parity with the print server', () => {
       await page.getByLabel('Author', { exact: true }).fill(options.author);
 
       await page.getByRole('button', { name: 'Preview', exact: true }).click();
+      // Time each phase the status line announces ("Preparing pictures (3 of 20)…", "Laying out pages…").
+      await page.evaluate(() => {
+        const status = document.querySelector('.book-builder [role="status"]')!;
+        const log: [number, string][] = [];
+        (window as unknown as { previewPhases: typeof log }).previewPhases = log;
+        new MutationObserver(() => log.push([performance.now(), (status.textContent ?? '').replace(/\s*\(.*\)…?$|…$/, '')])).observe(status, { childList: true, characterData: true, subtree: true });
+      });
       const started = Date.now();
       await page.getByRole('button', { name: 'Make preview' }).click();
       const ready = page.getByText(/^Preview ready: \d+ pages\.$/);
       await expect(ready).toBeVisible({ timeout: test.info().timeout - 30_000 });
       const seconds = (Date.now() - started) / 1000;
       const pages = Number((await ready.textContent())!.match(/\d+/)![0]);
-      const report = `${kind} ${productId}: ${browserName} ${browser.version()} preview ${pages} pages in ${seconds.toFixed(1)} s; server (${server}) ${golden} pages`;
+      const phases = await page.evaluate(() => {
+        const log = (window as unknown as { previewPhases: [number, string][] }).previewPhases;
+        const total = new Map<string, number>();
+        for (let i = 0; i < log.length - 1; i++) total.set(log[i]![1], (total.get(log[i]![1]) ?? 0) + log[i + 1]![0] - log[i]![0]);
+        return [...total].map(([phase, ms]) => `${phase} ${(ms / 1000).toFixed(1)} s`).join('; ');
+      });
+      const report = `${kind} ${productId}: ${browserName} ${browser.version()} preview ${pages} pages in ${seconds.toFixed(1)} s [${phases}]; server (${server}) ${golden} pages`;
       test.info().annotations.push({ type: 'preview', description: report });
       console.log(report);
-      if (sameEngine) expect(pages, 'preview vs server page count, same Chromium').toBe(golden);
-      else expect(Math.abs(pages - golden!), `preview vs server page count, ${browserName}`).toBeLessThanOrEqual(2);
-      expect(seconds, 'preview time budget (M2 §5)').toBeLessThanOrEqual(BUDGET_S[kind]);
+      if (sameEngine) {
+        expect(pages, 'preview vs server page count, same Chromium').toBe(golden);
+        expect(seconds, 'preview time budget (M2 §5)').toBeLessThanOrEqual(BUDGET_S[kind]);
+      } else {
+        expect(Math.abs(pages - golden!), `preview vs server page count, ${browserName}`).toBeLessThanOrEqual(2);
+      }
     });
   }
 });

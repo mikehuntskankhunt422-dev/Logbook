@@ -60,6 +60,26 @@ export class PreviewImages {
     }
   }
 
+  /**
+   * URLs for many images, prepared a few at a time: decoding runs off the main thread, so this is
+   * several times faster than one by one on a book full of photos.
+   */
+  async urls(ids: string[], onProgress: (done: number) => void, concurrency = 4): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      while (next < ids.length) {
+        const id = ids[next++]!;
+        const u = await this.url(id);
+        if (u) out.set(id, u);
+        onProgress(++done);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+    return out;
+  }
+
   dispose(): void {
     for (const p of this.cache.values()) void p.then((u) => u && URL.revokeObjectURL(u));
     this.cache.clear();

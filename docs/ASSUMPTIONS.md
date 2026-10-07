@@ -56,6 +56,24 @@ Sources:
 | AU pricing: domestic cards 1.65% + A$0.30; international cards 3.5% + A$0.30 (page notes lower pricing from 1 Apr 2027); **+2% currency conversion**; Stripe Tax Basic 0.5% per transaction (no-code) or A$0.75 per transaction (API) where registered; fees are **not returned on refunds**; disputes A$25 | S4 |
 | Test cards: success `4242424242424242`; generic decline `4000000000000002`; insufficient funds `4000000000009995`; always requires 3DS and succeeds `4000002760003184`; 3DS then declined `4000008400001629` | S5 |
 
+### Lulu sandbox, checked by calling it
+
+Source **[LS]**: calls to `https://api.sandbox.lulu.com` on 2026-10-07, made by `npm run lulu:packages` (`apps/server/scripts/verify-lulu-packages.ts`), `npm run lulu:validate` and by hand while writing them. Production (`api.lulu.com`) isn't reachable from the build environment, so nothing here is checked against it.
+
+| Fact | Source |
+|---|---|
+| The sandbox token URL is the production path on the sandbox host: `POST https://api.sandbox.lulu.com/auth/realms/glasstree/protocol/openid-connect/token` with Basic auth and `grant_type=client_credentials`. The token lasts `expires_in: 3600` s; no refresh token (`refresh_expires_in: 0`) | LS |
+| `/cover-dimensions/` answers **HTTP 201** with numbers as **strings** (`{"width":"920.000","height":"666.000","unit":"pt"}`). Rounding depends on the unit: `pt` to whole points (920.374 → 920), `inch` to 0.001″, `mm` to 0.01 mm. So we ask in mm (D44) | LS |
+| `/cover-dimensions/` validates loosely: paperbacks get an answer even at 10 pages; hardcovers below 24 pages get 400 `["Wrong pages number"]`; an unknown binding gets 400 `["Unknown binding type XX"]`; an unknown paper code gets an **HTML 500 page**. It can't tell whether a package exists | LS |
+| A cost calculation is the reliable package check: an unknown ID gets 400 `{"line_items":{"0":{"pod_package_id":["Pod Package does not exist"]}}}`. **All 16 package IDs Logbook uses exist** | LS |
+| Sandbox print costs equal the spec-sheet list prices exactly (base + pages × per-page), for all 16 packages at 100 pages, e.g. 6×9 premium-colour paperback $1.99 + 100 × $0.1389 = $15.88, 6×9 premium-colour hardcover $24.57, 8.5×11 premium-colour hardcover $32.46 | LS, L2 |
+| A single copy to Portland, OR by `MAIL`: line item $15.88, `shipping_cost` $5.69, `fulfillment_cost` $0.75 (its own object; the response had no `fees[]` and no handling fee), tax $0, total $22.32 USD. Lulu normalises the address and says so in `shipping_address.warnings[]` (`"1 Main St -> 1 SE Main St"`, code `REPLACED`) | LS |
+| Paperback covers: trim + 0.125″ bleed on each outer edge; spine = pages/444 + 0.06″, the guide's formula, for both 080CW444 and 060UW444 paper | LS, L3 p.13 |
+| **Hardcover (case wrap) covers: trim + 0.875″ on each outer edge** (0.75″ wrap + 0.125″ bleed), with a stepped spine: 24–84 pages 0.25″, 86–140 0.5″, 142–168 0.625″, 170–194 0.688″, then about 1/16″ more per 28 pages, to 2.125″ at 800 (full table in `packages/core/src/print/cover.ts`). Lulu's help centre puts the hinge about 0.25″ from the spine on both boards. Answers open question #7 (D46) | LS; [Lulu help: hardcover casewrap cover](https://help.lulu.com/en/support/solutions/articles/64000308572-creating-your-hardcover-casewrap-cover) (read via search summary; the page itself is blocked from the build environment) |
+| Validation jobs answer 201 with `status: null` and are then polled. Interiors sent with a package ID go `NORMALIZING → NORMALIZED` and report `page_count` and `valid_pod_package_ids` (e.g. 872 IDs for a 6×9 48-page file). **Covers go `null → VALIDATING → NORMALIZED`**: the spec lists `NORMALIZING` for covers, not `VALIDATING`, so the client treats any "…ING" state as running | LS |
+| A file Lulu can't fetch ends in `ERROR` with `"Failed to fetch from the source URL '…', received a 404 status code."`. Lulu follows GitHub's 302 redirect from a release download to `release-assets.githubusercontent.com` (D43) | LS |
+| Timing: covers finish within a few seconds. On first submission the 200-page 8.5×11 interior was still normalizing after about 90 s. Resubmitting the same ten URLs a few minutes later finished in 7 s, so Lulu seems to reuse results for a file it has seen | LS |
+
 ### Sample books validated by Lulu
 
 `npm run lulu:validate` (M2 slice D) rewrites the block below.
@@ -74,13 +92,13 @@ Sources:
 
 ## Not yet verified (blocking the code that depends on them)
 
-1. The sandbox token URL path. I assume the same `/auth/realms/glasstree/…` path on `api.sandbox.lulu.com`; L1 lists only production.
+1. ~~The sandbox token URL path.~~ **Answered 2026-10-07:** same path on the sandbox host (LS above).
 2. `Lulu-HMAC-SHA256` encoding (hex or base64), and whether "API secret" means the client secret.
 3. Whether sandbox print jobs progress to `SHIPPED` or `DELIVERED`.
-4. Real sandbox cost-calculation output per package ID, single-copy `HANDLING_FEE` behaviour, and whether sandbox pricing matches production.
+4. ~~Real sandbox cost-calculation output per package ID~~ (**answered 2026-10-07:** sandbox print costs equal list prices for all 16 IDs, LS above). Still open: `HANDLING_FEE` for other destinations and quantities (none appeared for one copy to the US), and whether production prices match the sandbox.
 5. The set of destination countries Lulu ships to (will be built from `/shipping-options/`).
 6. Sandbox auto-payment with a test card on file.
-7. Case-wrap `/cover-dimensions/` output vs Lulu's template: do wrap and hinge areas fit inside the returned size?
+7. ~~Case-wrap `/cover-dimensions/` output vs Lulu's template.~~ **Answered 2026-10-07:** the size includes the 0.75″ wrap and bleed; the hinge sits inside the board panels (LS above, D46).
 8. How long Lulu needs file URLs to stay valid after print-job creation.
 9. Stripe hosted Checkout UX with a single allowed country, and Stripe Tax Calculation API availability on your account.
 10. Whether Stripe permits automated browser tests against hosted Checkout.
