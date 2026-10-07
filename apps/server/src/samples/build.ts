@@ -40,14 +40,14 @@ export interface SampleBuild {
 
 /**
  * Generates a sample journal, prepares its images, renders interior and cover, inspects both PDFs
- * and writes everything to `outDir`. `coverDims` asks Lulu (slice D); without it the cover uses the
- * offline estimate and is marked approximate.
+ * and writes everything to `outDir`. `coverDims` gives Lulu's size (live, or recorded for CI); when
+ * it has none, the cover uses the offline estimate and is marked approximate.
  */
 export async function buildSampleBook(
   kind: SampleKind,
   productId: SampleProductId,
   outDir: string,
-  opts: { coverDims?: (podPackageId: string, pages: number) => Promise<CoverDimensions> } = {},
+  opts: { coverDims?: (podPackageId: string, pages: number) => Promise<CoverDimensions | undefined> } = {},
 ): Promise<SampleBuild> {
   await mkdir(outDir, { recursive: true });
   const product = SAMPLE_PRODUCTS[productId];
@@ -67,8 +67,9 @@ export async function buildSampleBook(
 
   const pod = podPackageId(product);
   const pages = interior.plan.pages;
-  const dims = opts.coverDims ? await opts.coverDims(pod, pages) : estimateCoverDimensions(product, pages);
-  const coverApproximate = !opts.coverDims;
+  const lulu = await opts.coverDims?.(pod, pages);
+  const dims = lulu ?? estimateCoverDimensions(product, pages);
+  const coverApproximate = !lulu;
   const frontId = sample.options.cover.kind === 'photo' ? sample.options.cover.mediaId : undefined;
   const cover = await renderCover({
     options: sample.options,

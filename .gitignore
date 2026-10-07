@@ -24,3 +24,4 @@ docs/reference/
 
 # Generated sample books (CI uploads them as artifacts)
 samples/out/
+samples/release/

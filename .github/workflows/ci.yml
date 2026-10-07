@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_samples:
+        description: Publish the sample PDFs as a GitHub pre-release so Lulu's sandbox can fetch and validate them
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -71,11 +76,35 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: apps/server
       - run: npm run test:print
+      - run: npm run samples:pack -w @logbook/server
+        if: always()
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sample-books
-          path: |
-            samples/out/**/*.pdf
-            samples/out/**/report.json
+          path: samples/release
           retention-days: 14
+
+  publish-samples:
+    name: Publish sample books for Lulu validation
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_samples
+    needs: print
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sample-books
+          path: sample-books
+      # Synthetic sample journals only; never customer content. Validate with
+      # `npm run lulu:validate -- <the URL in the job summary>`.
+      - name: Create a pre-release with the sample PDFs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="lulu-samples-${{ github.run_number }}"
+          gh release create "$tag" sample-books/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Sample books for Lulu validation (run ${{ github.run_number }})" \
+            --notes "Synthetic sample journals rendered by CI at $GITHUB_SHA, for Lulu's sandbox validators to download. Not a Logbook release."
+          echo "Lulu base URL: https://github.com/$GITHUB_REPOSITORY/releases/download/$tag" >> "$GITHUB_STEP_SUMMARY"

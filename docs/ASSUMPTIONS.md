@@ -56,6 +56,14 @@ Sources:
 | AU pricing: domestic cards 1.65% + A$0.30; international cards 3.5% + A$0.30 (page notes lower pricing from 1 Apr 2027); **+2% currency conversion**; Stripe Tax Basic 0.5% per transaction (no-code) or A$0.75 per transaction (API) where registered; fees are **not returned on refunds**; disputes A$25 | S4 |
 | Test cards: success `4242424242424242`; generic decline `4000000000000002`; insufficient funds `4000000000009995`; always requires 3DS and succeeds `4000002760003184`; 3DS then declined `4000008400001629` | S5 |
 
+### Sample books validated by Lulu
+
+`npm run lulu:validate` (M2 slice D) rewrites the block below.
+
+<!-- lulu-validation:start (written by scripts/validate-samples.ts) -->
+Not run yet.
+<!-- lulu-validation:end -->
+
 ## Not yet verified (blocking the code that depends on them)
 
 1. The sandbox token URL path. I assume the same `/auth/realms/glasstree/…` path on `api.sandbox.lulu.com`; L1 lists only production.
