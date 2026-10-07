@@ -10,6 +10,10 @@ on:
         description: Publish the sample PDFs as a GitHub pre-release so Lulu's sandbox can fetch and validate them
         type: boolean
         default: false
+      browsers_full:
+        description: Preview the 200-page samples in Firefox and WebKit too (about 20 extra minutes)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -76,8 +80,9 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps firefox webkit
         working-directory: apps/web
-      # One worker: these previews are slow, and the timings are part of the report.
-      - run: npx playwright test --project=desktop-firefox --project=desktop-webkit --workers=1
+      # One worker: these previews are slow, and the timings are part of the report. Firefox takes
+      # minutes per 200-page book, so those run only when asked for (M2.md §5).
+      - run: npx playwright test --project=desktop-firefox --project=desktop-webkit --workers=1 ${{ inputs.browsers_full && ' ' || '--grep "40-page"' }}
         working-directory: apps/web
         env:
           CI: 'true'
