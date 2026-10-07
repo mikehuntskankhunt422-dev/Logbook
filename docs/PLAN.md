@@ -5,6 +5,7 @@ Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based 
 This plan covers the architecture, the shared-core layout for web and desktop, milestones with acceptance criteria, risks, and the API facts still to verify. Companion documents:
 
 - [DECISIONS.md](DECISIONS.md): every decision I made instead of asking, with the reasoning.
+- [M2.md](M2.md): the detailed plan for milestone 2 (book builder and print PDFs), with spike results.
 - [ASSUMPTIONS.md](ASSUMPTIONS.md): Stripe and Lulu facts I verified against official sources today, with links, and the ones I could not verify yet.
 - [reference/](reference/): dated snapshots of Lulu's OpenAPI spec, product spec sheet and Book Creation Guide, so later work can be checked against the exact text I read.
 
@@ -223,7 +224,7 @@ Each milestone ends with tests run and a report on what works, what's untested, 
 - PWA manifest, service worker, icons, persistent storage
 - Tests: Vitest unit tests (model, migrations, crypto, zip round trip, search); Playwright e2e (write an entry with photos, reload offline, export, wipe, import); axe accessibility checks; Lighthouse CI budgets.
 
-**M2: Book builder and print PDFs**
+**M2: Book builder and print PDFs** (detailed plan and scope changes in [M2.md](M2.md))
 - Builder UI, Paged.js preview, the core print layout, fallbacks, QR codes, low-resolution warnings with filenames, gutter and padding logic
 - Server `/render` with Playwright, using cover dimensions from Lulu
 - Tests: pagination and gutter unit tests (min, max, even, band edges); golden-PDF tests (page count, page box sizes, embedded fonts checked with pdf-lib); `samples/` 40-page and 200-page PDFs generated and validated against Lulu sandbox `/validate-*`.
@@ -353,7 +354,7 @@ Verified: an **Australia-based** Stripe account can use Stripe Tax for physical 
 |---|---|---|---|
 | 1 | Lulu sandbox jobs may never progress to SHIPPED or DELIVERED | "Tracked to completion" can't be shown end-to-end | Verify early in M4. If stuck, use the webhook `test-submission` endpoint plus a test-only status simulator, and say so plainly |
 | 2 | Chromium PDFs rejected by Lulu (transparency, fonts, sizes) | Orders blocked | Transparency-free print CSS, embedded fonts, validate every PDF with Lulu before charging, golden tests. Fallback: Ghostscript flattening pass in the renderer |
-| 3 | Paged.js maintenance pace / fragmentation bugs | Bad page breaks | Pin the version, golden tests, own block-level packer as fallback. Customer always approves the real server PDF |
+| 3 | Paged.js maintenance pace / fragmentation bugs | Bad page breaks | **Happened:** no stable release since 0.4.3 (July 2023). It still works in Chromium 141 (M2 spike), so it's pinned and owned (D34). Golden tests, own block-level packer as fallback. Customer always approves the real server PDF |
 | 4 | Tax obligations (UK VAT, IOSS, GST) | Legal/financial | Accountant review before live. Option to launch in fewer countries first |
 | 5 | Windows code-signing availability for an individual in Australia | Unsigned installer → SmartScreen warnings | Verify Azure Artifact Signing eligibility. Otherwise an OV certificate on a cloud HSM (Certum/SSL.com). Documented in M5 |
 | 6 | Stripe may block automated browsing of hosted Checkout | Card tests can't be fully automated | Webhook logic tested with signed fixtures. Hosted-page card runs scripted with Playwright where allowed, otherwise a documented manual checklist |
@@ -388,6 +389,8 @@ All verified facts and their sources are in [ASSUMPTIONS.md](ASSUMPTIONS.md). St
 - the **colour interior** choice: premium only (my recommendation), or premium plus a cheaper "standard colour" option
 - the **pricing proposal** in Section 7: my table, or keep your anchors and drop products that can't hit them
 - launch countries: all Lulu destinations, or start narrower (AU, NZ, US, CA, UK, EU) while tax registrations are sorted
+
+**Before M2 slice D (moved earlier, see [M2.md](M2.md) §2):** the Lulu sandbox client key and secret, and a Cloudflare R2 bucket.
 
 **Before M3/M4 (test mode only, never live keys):**
 - Stripe test secret and publishable keys, and permission for me to install the Stripe CLI on this PC
