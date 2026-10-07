@@ -99,12 +99,14 @@ export class S3Store implements ObjectStore {
    * One-off bucket setup (`npm run storage:setup`): lets the website's browsers PUT uploads (CORS),
    * deletes `orders/` files after `retentionDays`, removes hidden or replaced versions after a day,
    * and abandoned multipart uploads after a day. Needs a key allowed to change bucket settings.
+   * B2 refuses an expiry rule unless a second rule with the same prefix removes delete markers.
    */
   async configureBucket(opts: { origins: string[]; retentionDays: number }): Promise<void> {
     const cors = `<?xml version="1.0" encoding="UTF-8"?>
 <CORSConfiguration><CORSRule>${opts.origins.map((o) => `<AllowedOrigin>${escapeXml(o)}</AllowedOrigin>`).join('')}<AllowedMethod>PUT</AllowedMethod><AllowedHeader>content-type</AllowedHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>`;
+    const markers = this.config.provider === 'b2' ? '<Rule><ID>logbook-orders-markers</ID><Filter><Prefix>orders/</Prefix></Filter><Status>Enabled</Status><Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration></Rule>' : '';
     const lifecycle = `<?xml version="1.0" encoding="UTF-8"?>
-<LifecycleConfiguration><Rule><ID>logbook-orders</ID><Filter><Prefix>orders/</Prefix></Filter><Status>Enabled</Status><Expiration><Days>${opts.retentionDays}</Days></Expiration><NoncurrentVersionExpiration><NoncurrentDays>1</NoncurrentDays></NoncurrentVersionExpiration><AbortIncompleteMultipartUpload><DaysAfterInitiation>1</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>`;
+<LifecycleConfiguration><Rule><ID>logbook-orders</ID><Filter><Prefix>orders/</Prefix></Filter><Status>Enabled</Status><Expiration><Days>${opts.retentionDays}</Days></Expiration><NoncurrentVersionExpiration><NoncurrentDays>1</NoncurrentDays></NoncurrentVersionExpiration><AbortIncompleteMultipartUpload><DaysAfterInitiation>1</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule>${markers}</LifecycleConfiguration>`;
     for (const [sub, body] of [
       ['cors', cors],
       ['lifecycle', lifecycle],

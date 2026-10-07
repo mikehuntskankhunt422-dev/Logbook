@@ -5,6 +5,20 @@ import { defineConfig, devices } from '@playwright/test';
 // Dev containers whose preinstalled Chromium differs from Playwright's build (same variable as apps/server).
 const chromiumLaunch = process.env.LOGBOOK_CHROMIUM_PATH ? { executablePath: process.env.LOGBOOK_CHROMIUM_PATH } : {};
 
+/**
+ * LOGBOOK_E2E_ONLINE=1 runs "Prepare my book" against the real bucket (S3_* or R2_*) and the Lulu
+ * sandbox from this environment's variables, by hand only. Otherwise the API keeps orders in a temp
+ * folder (D51) and has no Lulu, so the tests never reach either, even where those variables are set.
+ */
+const online = Boolean(process.env.LOGBOOK_E2E_ONLINE);
+const offlineApi = {
+  LOCAL_STORAGE: 'on',
+  LOCAL_STORAGE_DIR: join(tmpdir(), 'logbook-e2e', 'storage'),
+  LULU_SANDBOX_CLIENT_KEY: '',
+  LULU_SANDBOX_CLIENT_SECRET: '',
+  ...Object.fromEntries(['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'].map((v) => [v, ''])),
+};
+
 /** E2E runs against the production build (vite preview) so the service worker and offline mode are real. */
 export default defineConfig({
   testDir: './e2e',
@@ -36,19 +50,15 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      // The API, with orders stored in a temp folder (D51) and no Lulu, so the tests never reach it.
       command: 'npm run start',
       cwd: '../server',
       url: 'http://127.0.0.1:4242/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
       env: {
-        LOCAL_STORAGE: 'on',
-        LOCAL_STORAGE_DIR: join(tmpdir(), 'logbook-e2e', 'storage'),
-        DATABASE_PATH: join(tmpdir(), 'logbook-e2e', 'orders.sqlite'),
-        LULU_SANDBOX_CLIENT_KEY: '',
-        LULU_SANDBOX_CLIENT_SECRET: '',
-        LOG_LEVEL: 'warn',
+        ...(online ? {} : offlineApi),
+        DATABASE_PATH: join(tmpdir(), 'logbook-e2e', online ? 'orders-online.sqlite' : 'orders.sqlite'),
+        LOG_LEVEL: online ? 'info' : 'warn',
       },
     },
   ],

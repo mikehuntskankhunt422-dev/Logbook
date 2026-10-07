@@ -100,7 +100,22 @@ describe('S3-compatible store (R2, B2)', () => {
     expect(sent[1]!.body).toContain('<Prefix>orders/</Prefix>');
     expect(sent[1]!.body).toContain('<Expiration><Days>7</Days></Expiration>');
     expect(sent[1]!.body).toContain('<NoncurrentVersionExpiration><NoncurrentDays>1</NoncurrentDays></NoncurrentVersionExpiration>');
+    expect(sent[1]!.body).not.toContain('ExpiredObjectDeleteMarker');
     for (const s of sent) expect(s.md5).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+  });
+
+  it('pairs the expiry rule with a delete-marker rule on B2, which requires it', async () => {
+    const bodies: string[] = [];
+    const fetchImpl = (async (req: Request) => {
+      bodies.push(await req.text());
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+    await new S3Store({ ...R2, provider: 'b2', endpoint: 'https://s3.us-west-004.backblazeb2.com', region: 'us-west-004' }, fetchImpl).configureBucket({ origins: ['http://localhost:5173'], retentionDays: 7 });
+    const rules = [...bodies[1]!.matchAll(/<Rule>(.*?)<\/Rule>/g)].map((m) => m[1]!);
+    expect(rules).toHaveLength(2);
+    expect(rules[0]).toContain('<Expiration><Days>7</Days></Expiration>');
+    expect(rules[1]).toContain('<Filter><Prefix>orders/</Prefix></Filter>');
+    expect(rules[1]).toContain('<Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>');
   });
 
   it('lists and deletes everything under a prefix', async () => {

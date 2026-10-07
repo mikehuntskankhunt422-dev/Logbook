@@ -3,7 +3,7 @@
  *
  *   npm run storage:setup -w @logbook/server
  *
- * 1. CORS: browsers on the website (http://localhost:5173 and every WEB_ORIGIN) may PUT uploads.
+ * 1. CORS: browsers on the website (http://localhost:5173 and :4173, and every WEB_ORIGIN) may PUT uploads.
  * 2. Lifecycle: files under `orders/` are deleted after 7 days; hidden or replaced versions after a day.
  * 3. A check: a browser-style CORS preflight, an upload through a signed URL, a download, a delete.
  *
@@ -17,7 +17,8 @@ import { S3Store } from '../src/storage/s3.ts';
 const config = loadConfig();
 if (config.storage?.kind !== 's3') throw new Error('Set the S3_* variables (or R2_*) first: see docs/M3.md §3 C.');
 const store = new S3Store(config.storage);
-const origins = [...new Set(['http://localhost:5173', ...config.webOrigins])];
+// The dev server, `vite preview` (where the e2e tests run) and the deployed website.
+const origins = [...new Set(['http://localhost:5173', 'http://localhost:4173', ...config.webOrigins])];
 const where = `${config.storage.provider} bucket "${config.storage.bucket}" at ${config.storage.endpoint}`;
 
 console.log(`Setting up ${where}`);
