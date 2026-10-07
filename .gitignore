@@ -21,3 +21,6 @@ Thumbs.db
 
 # Third-party reference snapshots (copyright Lulu); kept locally, linked from docs/ASSUMPTIONS.md
 docs/reference/
+
+# Generated sample books (CI uploads them as artifacts)
+samples/out/

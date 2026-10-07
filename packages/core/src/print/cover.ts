@@ -30,6 +30,13 @@ export interface CoverLayout {
   approximate: boolean;
 }
 
+/**
+ * Chromium rounds page sizes to its own grid, sometimes down. The cover is drawn at the exact size
+ * from the top-left corner of a sheet this much larger, and the renderer crops the PDF back to
+ * Lulu's numbers (apps/server/src/render/pdf.ts).
+ */
+export const COVER_SHEET_PAD_IN = 0.05;
+
 /** No spine text on books of 80 pages or fewer (L3 p.15, D23). */
 export const SPINE_TEXT_MIN_PAGES = 81;
 
@@ -92,7 +99,7 @@ export function coverHtml({ options, layout: L, dateRange, frontImageUrl }: Cove
   const safe = SAFETY_IN;
 
   const css = `
-@page { size: ${inch(L.width)} ${inch(L.height)}; margin: 0; }
+@page { size: ${inch(L.width + COVER_SHEET_PAD_IN)} ${inch(L.height + COVER_SHEET_PAD_IN)}; margin: 0; }
 html, body { margin: 0; padding: 0; }
 body { width: ${inch(L.width)}; height: ${inch(L.height)}; position: relative; overflow: hidden; background-image: ${gradient.css}; font-family: 'Bricolage Grotesque', 'Noto Emoji', sans-serif; color: ${ink}; font-variant-emoji: text; }
 .panel { position: absolute; top: ${inch(L.edge)}; height: ${inch(L.trimHeight)}; box-sizing: border-box; }

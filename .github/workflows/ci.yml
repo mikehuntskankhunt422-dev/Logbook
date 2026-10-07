@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -54,4 +55,27 @@ jobs:
         with:
           name: lighthouse
           path: .lighthouseci
+          retention-days: 14
+
+  print:
+    name: Print PDFs (sample books, golden checks)
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/server
+      - run: npm run test:print
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sample-books
+          path: |
+            samples/out/**/*.pdf
+            samples/out/**/report.json
           retention-days: 14

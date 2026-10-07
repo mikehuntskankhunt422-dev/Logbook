@@ -4,7 +4,7 @@ import { printBundleSchema, printMediaPlan, PRINT_BUNDLE_FORMAT } from '../src/p
 import { pageGeometry } from '../src/print/geometry.ts';
 import { bookOptionsSchema, formatDateRange, formatLongDate, formatMonth, selectEntries } from '../src/print/options.ts';
 import { DEFAULT_PRODUCT } from '../src/print/products.ts';
-import { effectivePpi, imageWarnings, place } from '../src/print/resolution.ts';
+import { effectivePpi, imageWarnings, place, printPixelSize } from '../src/print/resolution.ts';
 import { entry, everyBlock, mediaTable } from './print-fixtures.ts';
 
 const media = mediaTable();
@@ -51,7 +51,9 @@ describe('cover geometry', () => {
     const L = coverLayout(DEFAULT_PRODUCT, 210, { width: 920, height: 666, unit: 'pt' });
     const options = bookOptionsSchema.parse({ title: 'Us <3', backText: 'A & B' });
     const { css, body } = coverHtml({ options, layout: L, dateRange: 'January – October 2026' });
-    expect(css).toContain(`size: ${Math.round(L.width * 1000) / 1000}in 9.25in;`);
+    // Drawn at the exact size on a slightly larger sheet; the renderer crops to Lulu's size.
+    expect(css).toContain(`size: ${Math.round((L.width + 0.05) * 1000) / 1000}in 9.3in;`);
+    expect(css).toContain(`body { width: ${Math.round(L.width * 1000) / 1000}in; height: 9.25in;`);
     expect(body).toContain('Us &lt;3');
     expect(body).toContain('A &amp; B');
     expect(body).toContain('<div class="spine"><p>Us &lt;3 · 2026</p></div>');
@@ -134,5 +136,25 @@ describe('selection and dates', () => {
     expect(formatDateRange('2025-03-01', '2026-10-07')).toBe('March 2025 – October 2026');
     expect(formatDateRange('2026-10-01', '2026-10-31')).toBe('October 2026');
     expect(formatDateRange('2026-10-07', '2026-10-07')).toBe('7 October 2026');
+  });
+});
+
+describe('print pixel size', () => {
+  it('downsizes to 600 PPI at the largest placement and never upscales', () => {
+    // A 6000×4000 photo in a 4.475×4.526″ contain box prints 4.475″ wide: 2685 px at 600 PPI.
+    const box = { width: 4.475, height: 4.526, fit: 'contain' as const };
+    expect(printPixelSize({ width: 6000, height: 4000 }, [box])).toEqual({ width: 2685, height: 1790 });
+    expect(printPixelSize({ width: 640, height: 480 }, [box])).toEqual({ width: 640, height: 480 });
+  });
+
+  it('keeps enough pixels for the cropped area of a cover placement', () => {
+    // 6000×2000 filling a 4×4″ square: scaled to 12×4″ and cropped, so 12″ × 600 = 7200 px wide (more than it has).
+    expect(printPixelSize({ width: 6000, height: 2000 }, [{ width: 4, height: 4, fit: 'cover' }])).toEqual({ width: 6000, height: 2000 });
+    // The same image as a small cell and a full-width photo: the larger placement wins.
+    const both = printPixelSize({ width: 6000, height: 4000 }, [
+      { width: 1.4, height: 1.4, fit: 'cover' },
+      { width: 4.475, height: 4.526, fit: 'contain' },
+    ]);
+    expect(both.width).toBe(2685);
   });
 });

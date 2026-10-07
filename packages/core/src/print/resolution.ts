@@ -52,11 +52,50 @@ export function containedWidth(meta: MediaMeta | undefined, box: Placement): num
   return Math.min(box.width, (box.height * a.w) / a.h);
 }
 
+export type ImageUse = 'photo' | 'gallery' | 'video poster' | 'entry cover' | 'book cover';
+
+export interface ImagePlacement {
+  mediaId: string;
+  box: Placement;
+  where: ImageUse;
+  entry?: Entry;
+  /** The media record whose file name a person recognises (the video, for a poster frame). */
+  named?: MediaMeta;
+}
+
+/** Every place a book prints an image, with its box. Must match blocks-html.ts. */
+export function imagePlacements(entries: Entry[], options: BookOptions, metaOf: (id: string) => MediaMeta | undefined, g: PageGeometry): ImagePlacement[] {
+  const out: ImagePlacement[] = [];
+  if (options.cover.kind === 'photo') out.push({ mediaId: options.cover.mediaId, box: place.frontCover(g), where: 'book cover' });
+  for (const entry of entries) {
+    if (entry.cover.kind === 'photo') out.push({ mediaId: entry.cover.mediaId, box: place.entryBand(g), where: 'entry cover', entry });
+    for (const b of entry.blocks) {
+      if (b.type === 'photo') out.push({ mediaId: b.mediaId, box: place.photo(g), where: 'photo', entry });
+      if (b.type === 'video') {
+        const video = metaOf(b.mediaId);
+        if (video?.posterId) out.push({ mediaId: video.posterId, box: place.photo(g), where: 'video poster', entry, named: video });
+      }
+      if (b.type === 'gallery') {
+        b.items.forEach((item, i) => {
+          const box =
+            b.items.length === 1
+              ? place.photo(g)
+              : b.layout === 'collage' && i === 0
+                ? place.collageLead(g)
+                : place.galleryCell(g, b.layout === 'collage' ? 3 : b.items.length);
+          out.push({ mediaId: item.mediaId, box, where: 'gallery', entry });
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export interface ImageWarning {
   mediaId: string;
   /** The file name the person recognises. */
   name: string;
-  where: 'photo' | 'gallery' | 'video poster' | 'entry cover' | 'book cover';
+  where: ImageUse;
   entryId?: string;
   entryDate?: string;
   entryTitle?: string;
@@ -67,38 +106,34 @@ export interface ImageWarning {
 /** Every image that would print below 300 PPI, worst first. */
 export function imageWarnings(entries: Entry[], options: BookOptions, metaOf: (id: string) => MediaMeta | undefined, g: PageGeometry): ImageWarning[] {
   const out: ImageWarning[] = [];
-  const check = (mediaId: string, box: Placement, where: ImageWarning['where'], entry?: Entry, nameFrom?: MediaMeta) => {
-    const meta = metaOf(mediaId);
-    if (!meta) return;
-    const ppi = meta.width && meta.height ? effectivePpi({ width: meta.width, height: meta.height }, box) : null;
-    if (ppi !== null && ppi >= MIN_PPI) return;
+  for (const p of imagePlacements(entries, options, metaOf, g)) {
+    const meta = metaOf(p.mediaId);
+    if (!meta) continue;
+    const ppi = meta.width && meta.height ? effectivePpi({ width: meta.width, height: meta.height }, p.box) : null;
+    if (ppi !== null && ppi >= MIN_PPI) continue;
     out.push({
-      mediaId,
-      name: (nameFrom ?? meta).name,
-      where,
-      entryId: entry?.id,
-      entryDate: entry?.date,
-      entryTitle: entry?.title,
+      mediaId: p.mediaId,
+      name: (p.named ?? meta).name,
+      where: p.where,
+      entryId: p.entry?.id,
+      entryDate: p.entry?.date,
+      entryTitle: p.entry?.title,
       ppi: ppi === null ? null : Math.floor(ppi),
     });
-  };
-  if (options.cover.kind === 'photo') check(options.cover.mediaId, place.frontCover(g), 'book cover');
-  for (const e of entries) {
-    if (e.cover.kind === 'photo') check(e.cover.mediaId, place.entryBand(g), 'entry cover', e);
-    for (const b of e.blocks) {
-      if (b.type === 'photo') check(b.mediaId, place.photo(g), 'photo', e);
-      if (b.type === 'video') {
-        const video = metaOf(b.mediaId);
-        if (video?.posterId) check(video.posterId, place.photo(g), 'video poster', e, video);
-      }
-      if (b.type === 'gallery') {
-        b.items.forEach((item, i) => {
-          if (b.items.length === 1) check(item.mediaId, place.photo(g), 'gallery', e);
-          else if (b.layout === 'collage' && i === 0) check(item.mediaId, place.collageLead(g), 'gallery', e);
-          else check(item.mediaId, place.galleryCell(g, b.layout === 'collage' ? 3 : b.items.length), 'gallery', e);
-        });
-      }
-    }
   }
   return out.sort((a, b) => (a.ppi ?? -1) - (b.ppi ?? -1));
+}
+
+/**
+ * Pixel size to resample an image to for print: enough for `ppi` at its largest placement, never
+ * larger than the original (upscaling adds no detail; the builder warns instead).
+ */
+export function printPixelSize(px: { width: number; height: number }, boxes: Placement[], ppi = MAX_PPI): { width: number; height: number } {
+  let need = 0;
+  for (const box of boxes) {
+    const inchesPerPx = box.fit === 'contain' ? Math.min(box.width / px.width, box.height / px.height) : Math.max(box.width / px.width, box.height / px.height);
+    need = Math.max(need, Math.ceil(px.width * inchesPerPx * ppi));
+  }
+  if (!need || need >= px.width) return { width: px.width, height: px.height };
+  return { width: need, height: Math.max(1, Math.round((px.height * need) / px.width)) };
 }

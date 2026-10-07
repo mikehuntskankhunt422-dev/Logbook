@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run test:e2e -w @logbook/web",
+    "test:print": "npm run test:print -w @logbook/server",
+    "samples": "npm run samples -w @logbook/server --",
     "lhci": "npx --yes @lhci/cli@0.15.x autorun --config=apps/web/lighthouserc.json"
   },
   "devDependencies": {
