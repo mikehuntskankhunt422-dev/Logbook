@@ -9,21 +9,15 @@ import {
   selectEntries,
   type CoverDimensions,
   type ImageWarning,
-  type Product,
 } from '@logbook/core';
 import { renderCover, type CoverResult } from '../render/cover.ts';
 import { preparePrintImages } from '../render/images.ts';
 import { renderInterior, type InteriorResult } from '../render/interior.ts';
 import { inspectPdf, type PdfReport } from '../render/pdf.ts';
 import { generateSample, type SampleKind } from './generate.ts';
+import { SAMPLE_PRODUCTS, type SampleProductId } from './products.ts';
 
-/** The products the samples are rendered in: the default book, and the largest and most different one. */
-export const SAMPLE_PRODUCTS = {
-  '6x9-pb-matte': { trim: '6x9', interior: 'color', binding: 'paperback', finish: 'matte' },
-  '8.5x11-cw-gloss': { trim: '8.5x11', interior: 'color', binding: 'hardcover', finish: 'gloss' },
-  '6x9-bw-pb-matte': { trim: '6x9', interior: 'bw', binding: 'paperback', finish: 'matte' },
-} satisfies Record<string, Product>;
-export type SampleProductId = keyof typeof SAMPLE_PRODUCTS;
+export { SAMPLE_PRODUCTS, type SampleProductId };
 
 export interface SampleBuild {
   kind: SampleKind;

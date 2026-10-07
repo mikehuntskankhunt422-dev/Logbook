@@ -48,6 +48,8 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('keyboard users can reach the main actions with visible focus', async ({ page }) => {
   await page.goto('/');
+  // The skip link is rendered by the app, so wait until it has mounted.
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content' });
   await expect(skip).toBeFocused();
