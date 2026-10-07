@@ -1,3 +1,5 @@
+import { regionFromEndpoint, type S3Config } from './storage/s3.ts';
+
 /**
  * One mode switch (D18): APP_MODE=test|live. Live mode also needs ALLOW_LIVE=true, and test and
  * live credentials live in separate variables, so a test deployment can never reach live services.
@@ -10,10 +12,11 @@ export interface Config {
   /** Stripe for the current mode (M3); webhooks need the signing secret too. */
   stripe?: { secretKey: string; webhookSecret?: string; taxEnabled: boolean };
   /**
-   * Where order files go (D16, D51): R2 when its four variables are set; otherwise, with
-   * LOCAL_STORAGE=on in test mode on a loopback host only, a local folder. Without either, ordering is off.
+   * Where order files go (D16, D51, D54): an S3-compatible bucket when the R2_* or the S3_*
+   * variables are set (Cloudflare R2, Backblaze B2, …); otherwise, with LOCAL_STORAGE=on in test
+   * mode on a loopback host only, a local folder. Without either, ordering is off.
    */
-  storage?: { kind: 'r2'; accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string; endpoint?: string } | { kind: 'local'; dir: string };
+  storage?: ({ kind: 's3' } & S3Config) | { kind: 'local'; dir: string };
   databasePath: string;
   /** Website origins allowed to call the order API from a browser (the website and API are hosted apart, D15). */
   webOrigins: string[];
@@ -55,14 +58,32 @@ function loadStripe(mode: 'test' | 'live', env: Record<string, string | undefine
 }
 
 const R2_VARS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'] as const;
+const S3_VARS = ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 
+function allOrNone(vars: readonly string[], env: Record<string, string | undefined>): boolean {
+  const set = vars.filter((v) => env[v]);
+  if (set.length && set.length < vars.length) throw new ConfigError(`Set all of ${vars.join(', ')}, or none (missing ${vars.filter((v) => !env[v]).join(', ')}).`);
+  return set.length === vars.length;
+}
+
 function loadStorage(mode: 'test' | 'live', host: string, env: Record<string, string | undefined>): Config['storage'] {
-  const set = R2_VARS.filter((v) => env[v]);
-  if (set.length === R2_VARS.length) {
-    return { kind: 'r2', accountId: env['R2_ACCOUNT_ID']!, accessKeyId: env['R2_ACCESS_KEY_ID']!, secretAccessKey: env['R2_SECRET_ACCESS_KEY']!, bucket: env['R2_BUCKET']!, endpoint: env['R2_ENDPOINT'] || undefined };
+  const r2 = allOrNone(R2_VARS, env);
+  const s3 = allOrNone(S3_VARS, env);
+  if (r2 && s3) throw new ConfigError('Set the R2_* variables or the S3_* variables, not both.');
+  if (r2) {
+    const accountId = env['R2_ACCOUNT_ID']!;
+    return { kind: 's3', provider: 'r2', endpoint: env['R2_ENDPOINT'] || `https://${accountId}.r2.cloudflarestorage.com`, region: 'auto', bucket: env['R2_BUCKET']!, accessKeyId: env['R2_ACCESS_KEY_ID']!, secretAccessKey: env['R2_SECRET_ACCESS_KEY']! };
   }
-  if (set.length) throw new ConfigError(`Set all of ${R2_VARS.join(', ')}, or none (missing ${R2_VARS.filter((v) => !env[v]).join(', ')}).`);
+  if (s3) {
+    const endpoint = env['S3_ENDPOINT']!.replace(/\/+$/, '');
+    const withScheme = endpoint.startsWith('https://') ? endpoint : `https://${endpoint}`;
+    if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(withScheme)) throw new ConfigError('S3_ENDPOINT must be an https address such as https://s3.us-west-004.backblazeb2.com.');
+    const b2 = regionFromEndpoint(withScheme);
+    const region = env['S3_REGION'] || b2 || (withScheme.includes('.r2.cloudflarestorage.com') ? 'auto' : undefined);
+    if (!region) throw new ConfigError('Set S3_REGION for this S3_ENDPOINT.');
+    return { kind: 's3', provider: b2 ? 'b2' : withScheme.includes('.r2.cloudflarestorage.com') ? 'r2' : 's3', endpoint: withScheme, region, bucket: env['S3_BUCKET']!, accessKeyId: env['S3_ACCESS_KEY_ID']!, secretAccessKey: env['S3_SECRET_ACCESS_KEY']! };
+  }
   if (env['LOCAL_STORAGE'] !== 'on') return undefined;
   // The local store routes content through this process, so it's for development on this machine only (D51).
   if (mode !== 'test' || !LOOPBACK.has(host)) throw new ConfigError('LOCAL_STORAGE=on works only with APP_MODE=test on a loopback HOST; use R2 anywhere else.');

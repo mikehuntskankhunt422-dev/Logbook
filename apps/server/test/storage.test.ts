@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LocalStore } from '../src/storage/local.ts';
-import { R2Store } from '../src/storage/r2.ts';
+import { S3Store, type S3Config } from '../src/storage/s3.ts';
 import { assertKey } from '../src/storage/store.ts';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'logbook-store-'));
@@ -57,8 +57,10 @@ describe('local store (development and tests only)', () => {
   });
 });
 
-describe('R2 store', () => {
-  const store = new R2Store({ accountId: 'acct', accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'secret', bucket: 'logbook-orders-test' });
+const R2: S3Config = { provider: 'r2', endpoint: 'https://acct.r2.cloudflarestorage.com', region: 'auto', bucket: 'logbook-orders-test', accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'secret' };
+
+describe('S3-compatible store (R2, B2)', () => {
+  const store = new S3Store(R2);
 
   it('presigns PUTs with the signature and the content type in the URL, no credentials needed', async () => {
     const up = await store.signPut('orders/o1/upload/media/a.jpg', { contentType: 'image/jpeg', expiresInSeconds: 900 });
@@ -79,6 +81,28 @@ describe('R2 store', () => {
     expect(url.searchParams.get('response-content-disposition')).toBe('inline; filename="interior.pdf"');
   });
 
+  it('signs for Backblaze B2 with its region, path-style', async () => {
+    const b2 = new S3Store({ provider: 'b2', endpoint: 'https://s3.us-west-004.backblazeb2.com', region: 'us-west-004', bucket: 'logbook-orders', accessKeyId: 'keyid', secretAccessKey: 'k' });
+    const url = new URL((await b2.signPut('orders/o1/upload/bundle.json', { contentType: 'application/json', expiresInSeconds: 600 })).url);
+    expect(`${url.origin}${url.pathname}`).toBe('https://s3.us-west-004.backblazeb2.com/logbook-orders/orders/o1/upload/bundle.json');
+    expect(url.searchParams.get('X-Amz-Credential')).toMatch(/^keyid\/\d{8}\/us-west-004\/s3\/aws4_request$/);
+  });
+
+  it('sets the bucket up: browser uploads from the website, and 7-day deletion of orders', async () => {
+    const sent: { url: string; body: string; md5: string | null }[] = [];
+    const fetchImpl = (async (req: Request) => {
+      sent.push({ url: req.url, body: await req.text(), md5: req.headers.get('content-md5') });
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+    await new S3Store(R2, fetchImpl).configureBucket({ origins: ['http://localhost:5173', 'https://logbook.example'], retentionDays: 7 });
+    expect(sent.map((s) => new URL(s.url).search)).toEqual(['?cors', '?lifecycle']);
+    expect(sent[0]!.body).toContain('<AllowedOrigin>http://localhost:5173</AllowedOrigin><AllowedOrigin>https://logbook.example</AllowedOrigin><AllowedMethod>PUT</AllowedMethod><AllowedHeader>content-type</AllowedHeader>');
+    expect(sent[1]!.body).toContain('<Prefix>orders/</Prefix>');
+    expect(sent[1]!.body).toContain('<Expiration><Days>7</Days></Expiration>');
+    expect(sent[1]!.body).toContain('<NoncurrentVersionExpiration><NoncurrentDays>1</NoncurrentDays></NoncurrentVersionExpiration>');
+    for (const s of sent) expect(s.md5).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+  });
+
   it('lists and deletes everything under a prefix', async () => {
     const calls: string[] = [];
     let listed = false;
@@ -91,7 +115,7 @@ describe('R2 store', () => {
       }
       return new Response(null, { status: 204 });
     }) as unknown as typeof fetch;
-    const s = new R2Store({ accountId: 'acct', accessKeyId: 'k', secretAccessKey: 's', bucket: 'b' }, fetchImpl);
+    const s = new S3Store({ ...R2, bucket: 'b', accessKeyId: 'k', secretAccessKey: 's' }, fetchImpl);
     expect(await s.deletePrefix('orders/o1/')).toBe(2);
     expect(calls).toEqual(['GET /b (list)', 'DELETE /b/orders/o1/a.jpg', 'DELETE /b/orders/o1/print/b.pdf', 'GET /b (list)']);
   });

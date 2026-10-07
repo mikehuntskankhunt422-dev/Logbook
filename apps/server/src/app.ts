@@ -10,7 +10,7 @@ import { OrderService } from './orders/service.ts';
 import { checkBook, Quoter } from './pricing/quote.ts';
 import { renderBook, type BookRender, type BookSource } from './render/book.ts';
 import { LocalStore } from './storage/local.ts';
-import { R2Store } from './storage/r2.ts';
+import { S3Store } from './storage/s3.ts';
 import type { ObjectStore } from './storage/store.ts';
 
 export interface AppOptions {
@@ -25,7 +25,7 @@ export interface AppOptions {
 function storeFor(config: Config): ObjectStore | undefined {
   const s = config.storage;
   if (!s) return undefined;
-  if (s.kind === 'r2') return new R2Store(s);
+  if (s.kind === 's3') return new S3Store(s);
   mkdirSync(s.dir, { recursive: true });
   return new LocalStore(s.dir);
 }
@@ -60,7 +60,7 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
     });
   }
 
-  app.get('/api/health', async () => ({ ok: true, mode: config.mode, lulu: Boolean(config.lulu), storage: store?.kind ?? null }));
+  app.get('/api/health', async () => ({ ok: true, mode: config.mode, lulu: Boolean(config.lulu), storage: store ? (store instanceof S3Store ? store.config.provider : store.kind) : null }));
 
   /**
    * Lulu's cover size for the builder's preview (D39). Takes only a package ID and a page count,

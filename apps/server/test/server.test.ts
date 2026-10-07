@@ -47,8 +47,15 @@ describe('config (D18)', () => {
 
   it('stores orders in R2 when all four variables are set, or locally only when asked, in test mode, on this machine (D51)', () => {
     const r2 = { R2_ACCOUNT_ID: 'a', R2_ACCESS_KEY_ID: 'k', R2_SECRET_ACCESS_KEY: 's', R2_BUCKET: 'b' };
-    expect(loadConfig(r2).storage).toEqual({ kind: 'r2', accountId: 'a', accessKeyId: 'k', secretAccessKey: 's', bucket: 'b', endpoint: undefined });
+    expect(loadConfig(r2).storage).toEqual({ kind: 's3', provider: 'r2', endpoint: 'https://a.r2.cloudflarestorage.com', region: 'auto', bucket: 'b', accessKeyId: 'k', secretAccessKey: 's' });
     expect(() => loadConfig({ R2_ACCOUNT_ID: 'a', R2_BUCKET: 'b' })).toThrow(/missing R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY/);
+    // Backblaze B2 (D54): the region comes from the endpoint, with or without https://.
+    const b2 = { S3_ENDPOINT: 's3.us-west-004.backblazeb2.com', S3_BUCKET: 'logbook-orders', S3_ACCESS_KEY_ID: 'id', S3_SECRET_ACCESS_KEY: 'key' };
+    expect(loadConfig(b2).storage).toEqual({ kind: 's3', provider: 'b2', endpoint: 'https://s3.us-west-004.backblazeb2.com', region: 'us-west-004', bucket: 'logbook-orders', accessKeyId: 'id', secretAccessKey: 'key' });
+    expect(() => loadConfig({ ...b2, S3_ENDPOINT: 'https://storage.example.com' })).toThrow(/S3_REGION/);
+    expect(loadConfig({ ...b2, S3_ENDPOINT: 'https://storage.example.com', S3_REGION: 'eu-1' }).storage).toMatchObject({ provider: 's3', region: 'eu-1' });
+    expect(() => loadConfig({ ...b2, S3_ENDPOINT: 'http://insecure.example.com' })).toThrow(/https/);
+    expect(() => loadConfig({ ...b2, ...r2 })).toThrow(/not both/);
     expect(loadConfig({}).storage).toBeUndefined();
     expect(loadConfig({ LOCAL_STORAGE: 'on' }).storage).toEqual({ kind: 'local', dir: '.data/storage' });
     expect(() => loadConfig({ LOCAL_STORAGE: 'on', HOST: '0.0.0.0' })).toThrow(/loopback/);

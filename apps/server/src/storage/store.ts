@@ -1,8 +1,9 @@
 /**
  * Where order files live (D16): the uploaded print bundle, then the rendered PDFs. Browsers upload
  * and Lulu downloads through short-lived signed URLs, so content never has to pass through the API
- * process (PLAN §6). Two backends: Cloudflare R2 (S3 API) and, for development and tests only, a
- * folder on this machine behind URLs the API signs itself (D51).
+ * process (PLAN §6). Two backends: an S3-compatible bucket such as Cloudflare R2 or Backblaze B2
+ * (D54) and, for development and tests only, a folder on this machine behind URLs the API signs
+ * itself (D51).
  */
 export interface SignedUpload {
   url: string;
@@ -12,7 +13,7 @@ export interface SignedUpload {
 }
 
 export interface ObjectStore {
-  readonly kind: 'r2' | 'local';
+  readonly kind: 's3' | 'local';
   /** True when outside services (Lulu) can fetch `signGet` URLs. The local store's can't. */
   readonly reachableFromInternet: boolean;
   signPut(key: string, opts: { contentType: string; expiresInSeconds: number }): Promise<SignedUpload>;
