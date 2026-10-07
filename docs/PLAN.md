@@ -1,6 +1,6 @@
 # Logbook: Plan
 
-Status: **draft for approval** · Written 2026-10-07 · Owner: you · Author: Claude
+Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · Owner: you · Author: Claude
 
 This plan covers the architecture, the shared-core layout for web and desktop, milestones with acceptance criteria, risks, and the API facts still to verify. Companion documents:
 
@@ -51,7 +51,7 @@ This plan covers the architecture, the shared-core layout for web and desktop, m
 | Path | What lives there |
 |---|---|
 | `packages/core` | Pure TypeScript with no DOM or Node APIs, so it runs in the browser, the Tauri WebView and Node. Contains the domain model, adapters (interface only), backup format, crypto, search, book planning, print HTML/CSS generation and shared types. |
-| `packages/ui` | React 19 components: editor (TipTap/ProseMirror), timeline, calendar heat map, on-this-day, search, settings, book builder, preview. Doesn't know which storage it is using. |
+| `apps/web/src` (UI) | React 19 components: editor (TipTap/ProseMirror), timeline, calendar heat map, on-this-day, search, settings, book builder, preview. Doesn't know which storage it is using. Kept in the web app per D27; desktop loads the same build. |
 | `packages/storage-idb` | IndexedDB `StorageAdapter` for the website and PWA. |
 | `packages/storage-fs` | Filesystem `StorageAdapter` for desktop, calling the Tauri fs and dialog plugins. |
 | `apps/web` | Vite + `vite-plugin-pwa` (Workbox). Contains the manifest, service worker, icons, offline shell and the persistent-storage request. |
@@ -261,11 +261,11 @@ Taken from Lulu's spec sheet dated today, in the **new dotted format**. The lega
 | Option | Values | Package ID segments |
 |---|---|---|
 | Trim | 6×9 in · 8.5×11 in | `0600X0900` · `0850X1100` |
-| Interior | B&W (60# white uncoated) · Colour (see question below) | `BW.STD.…060UW444` · `FC.PRE.…080CW444` (premium) or `FC.STD.…080CW444` (standard) |
+| Interior | B&W (60# white uncoated) · Premium colour (80# coated white), per D24 | `BW.STD.…060UW444` · `FC.PRE.…080CW444` |
 | Binding | Paperback (perfect bound) · Hardcover (case wrap) | `PB` · `CW` |
 | Cover finish | Matte · Gloss | `MXX` · `GXX` |
 
-That gives 16 package IDs (32 if we also offer standard colour). Page limits from the sheet are **32–800 for paperback** and **24–800 for hardcover**. One sheet row (8.5×11 FC.PRE.PB.080CW444.GXX) says min 20; I use the guide's stricter 32.
+That gives 16 package IDs. Page limits from the sheet are **32–800 for paperback** and **24–800 for hardcover**. One sheet row (8.5×11 FC.PRE.PB.080CW444.GXX) says min 20; I use the guide's stricter 32.
 
 ---
 
