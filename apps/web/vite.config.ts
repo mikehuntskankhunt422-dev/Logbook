@@ -51,6 +51,14 @@ export default defineConfig({
       },
     }),
   ],
+  // `npm run dev -w @logbook/server` serves the API (cover sizes, quotes, orders) on port 4242; the
+  // e2e tests start it too. Without it the builder falls back to its estimates.
+  server: {
+    proxy: { '/api': 'http://127.0.0.1:4242' },
+  },
+  preview: {
+    proxy: { '/api': 'http://127.0.0.1:4242' },
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

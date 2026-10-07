@@ -9,6 +9,7 @@ import {
   planPagination,
   printCss,
   type BookOptions,
+  type CoverDimensions,
   type CoverLayout,
   type Entry,
   type Journal,
@@ -57,6 +58,26 @@ export class PreviewImages {
       // No OffscreenCanvas, or a format the browser can't decode: show the original.
       return URL.createObjectURL(blob);
     }
+  }
+
+  /**
+   * URLs for many images, prepared a few at a time: decoding runs off the main thread, so this is
+   * several times faster than one by one on a book full of photos.
+   */
+  async urls(ids: string[], onProgress: (done: number) => void, concurrency = 4): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      while (next < ids.length) {
+        const id = ids[next++]!;
+        const u = await this.url(id);
+        if (u) out.set(id, u);
+        onProgress(++done);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+    return out;
   }
 
   dispose(): void {
@@ -192,11 +213,17 @@ export class BookPreview {
 }
 
 /**
- * The cover for the preview. The spine width comes from the guide's formula and is labelled
- * approximate (D39) until the server can ask Lulu.
+ * The cover for the preview, at Lulu's size when the API could ask (D39); otherwise at the offline
+ * estimate, labelled approximate.
  */
-export function coverPreviewDocument(options: BookOptions, entries: Entry[], pages: number, frontImageUrl: string | undefined): { html: string; layout: CoverLayout } {
-  const layout = coverLayout(options.product, pages, estimateCoverDimensions(options.product, pages), options.spineText, true);
+export function coverPreviewDocument(
+  options: BookOptions,
+  entries: Entry[],
+  pages: number,
+  frontImageUrl: string | undefined,
+  dims?: CoverDimensions | null,
+): { html: string; layout: CoverLayout } {
+  const layout = coverLayout(options.product, pages, dims ?? estimateCoverDimensions(options.product, pages), options.spineText, !dims);
   const range = entries.length ? formatDateRange(entries[0]!.date, entries.at(-1)!.date) : '';
   const { css, body } = coverHtml({ options, layout, dateRange: range, frontImageUrl });
   const fit = `@media screen { html { background: transparent; } body { box-shadow: 0 2px 10px rgb(0 0 0 / 0.25); } }`;

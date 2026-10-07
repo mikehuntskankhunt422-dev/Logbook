@@ -2,16 +2,19 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { BLEED_IN, TRIMS, estimateCoverDimensions, pageLimits, SPINE_TEXT_MIN_PAGES } from '@logbook/core';
+import { BLEED_IN, TRIMS, estimateCoverDimensions, pageLimits, podPackageId, SPINE_TEXT_MIN_PAGES } from '@logbook/core';
 import { closeBrowser } from '../src/render/browser.ts';
 import { buildSampleBook, SAMPLE_PRODUCTS, type SampleProductId } from '../src/samples/build.ts';
+import { recordedCoverDimensions } from '../src/samples/cover-dims.ts';
 import type { SampleKind } from '../src/samples/generate.ts';
 
 /**
  * Golden PDF checks (M2 §5). Renders the sample books and checks what Lulu's preflight checks:
  * page boxes, an even page count within limits, embedded non-Type 3 fonts, and no transparency or
  * annotations. Exact page counts are compared per Chromium major version, because layout can shift
- * between engine versions; run with UPDATE_GOLDENS=1 to record them for a new version.
+ * between engine versions; run with UPDATE_GOLDENS=1 to record them for a new version. Covers use
+ * Lulu's sizes recorded from the sandbox (src/samples/lulu-cover-dimensions.json), so these are the
+ * files `npm run lulu:validate` sends to Lulu.
  */
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const goldensPath = fileURLToPath(new URL('./goldens.json', import.meta.url));
@@ -22,6 +25,7 @@ const CASES: [SampleKind, SampleProductId][] = [
   ['40-page', '8.5x11-cw-gloss'],
   ['40-page', '6x9-bw-pb-matte'],
   ['200-page', '6x9-pb-matte'],
+  ['200-page', '8.5x11-cw-gloss'],
 ];
 
 const pt = (inches: number) => (inches * 72).toFixed(2);
@@ -34,7 +38,9 @@ afterAll(async () => {
 describe.each(CASES)('%s sample as %s', (kind, productId) => {
   it('renders print files Lulu can accept', async () => {
     const product = SAMPLE_PRODUCTS[productId];
-    const b = await buildSampleBook(kind, productId, join(root, 'samples', 'out', `${kind}--${productId}`));
+    const b = await buildSampleBook(kind, productId, join(root, 'samples', 'out', `${kind}--${productId}`), {
+      coverDims: async (pod, pages) => recordedCoverDimensions(pod, pages),
+    });
     const { plan } = b.interior;
     const trim = TRIMS[product.trim];
     const limits = pageLimits(product);
@@ -62,8 +68,11 @@ describe.each(CASES)('%s sample as %s', (kind, productId) => {
     expect(b.interior.blocked).toEqual([]);
     expect(b.cover.blocked).toEqual([]);
 
-    // Cover: one page at exactly the requested size; spine text only above 80 pages (D23).
-    const dims = estimateCoverDimensions(product, plan.pages);
+    // Cover: one page at exactly Lulu's size; spine text only above 80 pages (D23).
+    const lulu = recordedCoverDimensions(podPackageId(product), plan.pages);
+    if (!lulu) console.warn(`No recorded Lulu cover size for ${podPackageId(product)} at ${plan.pages} pages; using the estimate. Run npm run lulu:packages -- --record.`);
+    const dims = lulu ? { width: lulu.width / 25.4, height: lulu.height / 25.4 } : estimateCoverDimensions(product, plan.pages);
+    expect(b.coverApproximate).toBe(!lulu);
     expect(b.coverReport.pages).toBe(1);
     expect(b.coverReport.mediaBoxes).toEqual([`${pt(dims.width)}x${pt(dims.height)}`]);
     expect(b.cover.layout.spineText).toBe(plan.pages >= SPINE_TEXT_MIN_PAGES);

@@ -9,6 +9,8 @@ coverage/
 .env.*
 !.env.example
 *.sqlite
+# Local order storage and database (development)
+.data/
 *.sqlite-journal
 *.db
 apps/desktop/src-tauri/target/
@@ -24,3 +26,4 @@ docs/reference/
 
 # Generated sample books (CI uploads them as artifacts)
 samples/out/
+samples/release/
