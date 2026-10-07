@@ -1,9 +1,19 @@
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 
+const require = createRequire(import.meta.url);
+
 export default defineConfig({
+  resolve: {
+    alias: [
+      // Paged.js 0.4.3 (D34) runs inside the book preview iframe; its package exports hide dist/.
+      { find: /^pagedjs-polyfill(?=\?|$)/, replacement: join(dirname(dirname(require.resolve('pagedjs'))), 'dist', 'paged.polyfill.min.js') },
+    ],
+  },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
   },

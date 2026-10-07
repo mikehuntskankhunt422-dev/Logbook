@@ -2,7 +2,7 @@
 
 A local-first multimedia journal (website, installable PWA, and, later, a Tauri desktop app) that can be printed as a real book through Lulu.
 
-> **Status:** milestone 1 (the journal) is done. Milestone 2 (book builder and print PDFs) is in progress: print layout and the PDF renderer work; see [docs/M2.md](docs/M2.md). Payments, fulfilment and desktop packaging come after; see [docs/PLAN.md](docs/PLAN.md). The full README (deployment, environment variables, Stripe CLI, signing, go-live checklist) arrives in milestone 6.
+> **Status:** milestone 1 (the journal) is done. Milestone 2 (book builder and print PDFs) is in progress: the print layout, the PDF renderer and the book builder with its on-device preview work; Lulu sandbox validation and uploads are next. See [docs/M2.md](docs/M2.md). Payments, fulfilment and desktop packaging come after; see [docs/PLAN.md](docs/PLAN.md). The full README (deployment, environment variables, Stripe CLI, signing, go-live checklist) arrives in milestone 6.
 
 ## Run it
 

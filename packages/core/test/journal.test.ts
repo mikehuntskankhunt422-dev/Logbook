@@ -3,6 +3,7 @@ import { ConflictError, Journal, LockedError } from '../src/journal.ts';
 import { MemoryStore, isSealed } from '../src/storage.ts';
 import { WrongPasscodeError } from '../src/crypto.ts';
 import { emptyDoc } from '../src/richtext.ts';
+import { bookOptionsSchema } from '../src/print/options.ts';
 import { FAST_KDF, pngBytes } from './helpers.ts';
 
 async function fresh() {
@@ -146,5 +147,36 @@ describe('backup reminder', () => {
     await journal.updateSettings({ backupSnoozedUntil: inDays(17).toISOString() });
     expect(journal.needsBackupReminder(inDays(15))).toBe(false);
     expect(journal.needsBackupReminder(inDays(18))).toBe(true);
+  });
+});
+
+describe('book draft', () => {
+  it('round-trips, is sealed while a passcode is on, and survives switching encryption on and off', async () => {
+    const { store, journal } = await fresh();
+    expect(await journal.getBookDraft()).toBeUndefined();
+    await journal.saveBookDraft(bookOptionsSchema.parse({ title: 'Secret trip', backText: 'Only for us' }));
+    expect(JSON.stringify(await store.getKey('bookDraft'))).toContain('Secret trip');
+
+    await journal.enableEncryption('correct horse', FAST_KDF);
+    const sealed = await store.getKey('bookDraft');
+    expect(isSealed(sealed)).toBe(true);
+    expect(JSON.stringify(sealed)).not.toContain('Secret');
+    journal.lock();
+    await expect(journal.getBookDraft()).rejects.toBeInstanceOf(LockedError);
+    await journal.unlock('correct horse');
+    expect((await journal.getBookDraft())?.title).toBe('Secret trip');
+
+    await journal.disableEncryption('correct horse');
+    expect(isSealed(await store.getKey('bookDraft'))).toBe(false);
+    expect((await journal.getBookDraft())?.backText).toBe('Only for us');
+  });
+
+  it('is cleared with the journal content and ignores drafts it cannot read', async () => {
+    const { store, journal } = await fresh();
+    await journal.saveBookDraft(bookOptionsSchema.parse({ title: 'x' }));
+    await journal.clearContent();
+    expect(await journal.getBookDraft()).toBeUndefined();
+    await store.setKey('bookDraft', { title: 42 });
+    expect(await journal.getBookDraft()).toBeUndefined();
   });
 });

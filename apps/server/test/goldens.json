@@ -4,5 +4,11 @@
     "40-page--8.5x11-cw-gloss": 42,
     "40-page--6x9-bw-pb-matte": 48,
     "200-page--6x9-pb-matte": 210
+  },
+  "chromium-153": {
+    "40-page--6x9-pb-matte": 48,
+    "40-page--8.5x11-cw-gloss": 44,
+    "40-page--6x9-bw-pb-matte": 48,
+    "200-page--6x9-pb-matte": 210
   }
 }

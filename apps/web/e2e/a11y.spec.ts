@@ -20,11 +20,17 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('img', { name: 'a.png' })).toBeVisible();
     await expectNoSeriousViolations(page, 'entry editor');
 
-    for (const path of ['/', '/#/calendar', '/#/memories', '/#/search', '/#/settings']) {
+    for (const path of ['/', '/#/calendar', '/#/memories', '/#/search', '/#/book', '/#/settings']) {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
       await expectNoSeriousViolations(page, path);
     }
+
+    await page.goto('/#/book');
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.getByRole('button', { name: 'Make preview' }).click();
+    await expect(page.getByText(/Preview ready/)).toBeVisible({ timeout: 60_000 });
+    await expectNoSeriousViolations(page, 'book preview');
   });
 }
 

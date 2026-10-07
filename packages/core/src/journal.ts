@@ -14,6 +14,7 @@ import {
   type Settings,
   GRADIENT_IDS,
 } from './model.ts';
+import { bookOptionsSchema, type BookOptions } from './print/options.ts';
 import { emptyDoc } from './richtext.ts';
 import { isSealed, type RecordStore } from './storage.ts';
 
@@ -113,6 +114,7 @@ export class Journal {
     this.cipher = cipher;
     const entries = await this.readAllEntries(true);
     const media = await this.listMediaMeta();
+    const draft = await this.getBookDraft();
     const blobs = new Map<string, Blob>();
     for (const m of media) {
       const b = await this.getMediaBlob(m.id);
@@ -125,6 +127,7 @@ export class Journal {
       for (const e of entries) await this.store.put('entries', e);
       for (const m of media) await this.store.put('media', m);
       for (const [id, b] of blobs) await this.store.putBlob(id, b);
+      await this.store.setKey('bookDraft', draft);
       await this.store.setKey('vault', undefined);
     } catch (err) {
       this.vault = vault;
@@ -143,12 +146,40 @@ export class Journal {
 
   /** Re-saves every record through the current cipher (used after enabling encryption). */
   private async rewriteAll(): Promise<void> {
+    const draft = await this.getBookDraft();
+    if (draft) await this.saveBookDraft(draft);
     for (const e of await this.readAllEntries(true)) await this.writeEntry(e);
     for (const m of await this.listMediaMeta()) {
       const blob = await this.getMediaBlob(m.id);
       await this.writeMediaMeta(m);
       if (blob) await this.writeBlob(m.id, blob);
     }
+  }
+
+  // ── book draft ────────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * The book builder's last settings (D40). Kept out of Settings, which are stored and backed up in
+   * plain text: a draft holds a title, back-cover text and chosen entries, so it's sealed like an
+   * entry when a passcode is on. Not included in backups.
+   */
+  async getBookDraft(): Promise<BookOptions | undefined> {
+    this.assertUnlocked();
+    const rec = await this.store.getKey('bookDraft');
+    if (rec === undefined) return undefined;
+    try {
+      const raw = isSealed(rec) ? await this.cipher!.openJson<unknown>('book', rec) : rec;
+      const parsed = bookOptionsSchema.safeParse(raw);
+      return parsed.success ? parsed.data : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async saveBookDraft(draft: BookOptions): Promise<void> {
+    this.assertUnlocked();
+    const value = bookOptionsSchema.parse(draft);
+    await this.store.setKey('bookDraft', this.cipher ? await this.cipher.sealJson('book', 'draft', value) : value);
   }
 
   // ── settings ──────────────────────────────────────────────────────────────────────────────────
@@ -414,6 +445,7 @@ export class Journal {
   async clearContent(): Promise<void> {
     this.assertUnlocked();
     await this.store.clearContent();
+    await this.store.setKey('bookDraft', undefined);
     await this.updateSettings({ changesSinceBackup: 0 });
     this.emit('entries');
     this.emit('media');

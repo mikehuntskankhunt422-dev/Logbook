@@ -11,6 +11,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
+    // Dev containers whose preinstalled Chromium differs from Playwright's build (same variable as apps/server).
+    launchOptions: process.env.LOGBOOK_CHROMIUM_PATH ? { executablePath: process.env.LOGBOOK_CHROMIUM_PATH } : {},
   },
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },

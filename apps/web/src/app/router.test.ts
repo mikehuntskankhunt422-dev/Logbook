@@ -11,6 +11,7 @@ describe('hash router', () => {
     ['#/search?tag=beach-day', { name: 'search', tag: 'beach-day' }],
     ['#/memories', { name: 'memories' }],
     ['#/settings', { name: 'settings' }],
+    ['#/book', { name: 'book' }],
     ['#/nonsense', { name: 'home' }],
     ['#/entry/', { name: 'home' }],
   ])('parses %s', (hash, route) => {

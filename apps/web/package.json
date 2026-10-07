@@ -17,6 +17,9 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource/bricolage-grotesque": "5.3.0",
+    "@fontsource/newsreader": "5.3.0",
+    "@fontsource/noto-emoji": "5.3.2",
     "@logbook/core": "0.1.0",
     "@logbook/storage-idb": "0.1.0",
     "@tiptap/extensions": "^3.31.4",
@@ -26,6 +29,7 @@
     "canvas-confetti": "^1.9.4",
     "mediabunny": "^1.61.3",
     "motion": "^14.0.0",
+    "pagedjs": "0.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "workbox-window": "^7.4.1"
