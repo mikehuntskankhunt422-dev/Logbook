@@ -9,7 +9,7 @@ import { CONTENT_FIELDS, loggerOptions } from '../src/log.ts';
 
 describe('config (D18)', () => {
   it('defaults to test mode on localhost without Lulu', () => {
-    expect(loadConfig({})).toMatchObject({ mode: 'test', host: '127.0.0.1', port: 4242, lulu: undefined });
+    expect(loadConfig({})).toMatchObject({ mode: 'test', host: '127.0.0.1', port: 4242, lulu: undefined, stripe: undefined });
   });
 
   it('uses the sandbox with sandbox credentials in test mode', () => {
@@ -27,6 +27,22 @@ describe('config (D18)', () => {
     expect(() => loadConfig({ LULU_CLIENT_KEY: 'live' })).toThrow(/never mix/);
     expect(() => loadConfig({ APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_SANDBOX_CLIENT_KEY: 'k' })).toThrow(/never mix/);
     expect(loadConfig({ APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_CLIENT_KEY: 'k', LULU_CLIENT_SECRET: 's' }).lulu?.apiUrl).toBe('https://api.lulu.com');
+  });
+
+  it('takes Stripe keys only for the current mode, and only keys of that mode (D18)', () => {
+    expect(loadConfig({ STRIPE_TEST_SECRET_KEY: 'sk_test_abc', STRIPE_TEST_WEBHOOK_SECRET: 'whsec_x' }).stripe).toEqual({ secretKey: 'sk_test_abc', webhookSecret: 'whsec_x', taxEnabled: false });
+    expect(loadConfig({ STRIPE_TEST_SECRET_KEY: 'rk_test_abc', STRIPE_TAX_ENABLED: 'true' }).stripe).toEqual({ secretKey: 'rk_test_abc', webhookSecret: undefined, taxEnabled: true });
+    expect(loadConfig({}).stripe).toBeUndefined();
+    // A live key in a test variable, live variables in test mode, and the reverse.
+    expect(() => loadConfig({ STRIPE_TEST_SECRET_KEY: 'sk_live_abc' })).toThrow(/must be a test key/);
+    expect(() => loadConfig({ STRIPE_LIVE_SECRET_KEY: 'sk_live_abc' })).toThrow(/never mix/);
+    const live = { APP_MODE: 'live', ALLOW_LIVE: 'true' };
+    expect(() => loadConfig({ ...live, STRIPE_TEST_SECRET_KEY: 'sk_test_abc' })).toThrow(/never mix/);
+    expect(() => loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_test_abc' })).toThrow(/must be a live key/);
+    expect(loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_live_abc' }).stripe?.secretKey).toBe('sk_live_abc');
+    // A webhook secret must look like one, and needs its key.
+    expect(() => loadConfig({ STRIPE_TEST_SECRET_KEY: 'sk_test_abc', STRIPE_TEST_WEBHOOK_SECRET: 'sk_test_oops' })).toThrow(/whsec_/);
+    expect(() => loadConfig({ STRIPE_TEST_WEBHOOK_SECRET: 'whsec_x' })).toThrow(/without STRIPE_TEST_SECRET_KEY/);
   });
 
   it('refuses half a credential pair and nonsense values', () => {
