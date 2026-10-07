@@ -69,6 +69,24 @@ test('make a book: choose entries and a product, preview every page and the cove
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Our summer');
 });
 
+test("the cover preview uses the printer's exact size when the API answers", async ({ page }) => {
+  let asked = '';
+  await page.route('**/api/cover-dimensions?*', (route) => {
+    asked = new URL(route.request().url()).search;
+    // Lulu's 6×9 paperback at 32 pages.
+    return route.fulfill({ json: { width: 314.5, height: 234.95, unit: 'mm' } });
+  });
+  await writeEntry(page, 'Exact cover', 'Words for the cover test.');
+  await page.goto('/#/book');
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.getByRole('button', { name: 'Make preview' }).click();
+  await expect(page.getByText('Preview ready: 32 pages.')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Back, spine and front, at the printer's exact size for this page count.")).toBeVisible();
+  expect(asked).toBe('?pod_package_id=0600X0900.FC.PRE.PB.080CW444.MXX&pages=32');
+  const width = await page.frameLocator('iframe[title="Cover preview"]').locator('body').evaluate((b) => getComputedStyle(b).width);
+  expect(Number.parseFloat(width)).toBeCloseTo((314.5 / 25.4) * 96, 0);
+});
+
 test('the preview works offline', async ({ page, context }) => {
   await writeEntry(page, 'Offline book', 'Written before the network went away.');
   await page.goto('/#/book');
@@ -79,6 +97,7 @@ test('the preview works offline', async ({ page, context }) => {
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await page.getByRole('button', { name: 'Make preview' }).click();
   await expect(page.getByText('Preview ready: 32 pages.')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('The spine width is approximate until the print file is made.')).toBeAttached();
   await context.setOffline(false);
 });
 

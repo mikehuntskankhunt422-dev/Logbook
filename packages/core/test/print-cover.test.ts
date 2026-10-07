@@ -38,9 +38,28 @@ describe('cover geometry', () => {
     expect(coverLayout(DEFAULT_PRODUCT, 200, estimateCoverDimensions(DEFAULT_PRODUCT, 200), false).spineText).toBe(false);
   });
 
-  it('marks hardcover geometry approximate until the case-wrap question is answered', () => {
+  it("reads a hardcover's case wrap from Lulu's size (6×9, 210 pages → 368.3 × 273.05 mm)", () => {
     const hc = { ...DEFAULT_PRODUCT, binding: 'hardcover' as const };
-    expect(coverLayout(hc, 200, { width: 13.5, height: 10.25, unit: 'inch' }).approximate).toBe(true);
+    const L = coverLayout(hc, 210, { width: 368.3, height: 273.05, unit: 'mm' });
+    expect(L.edge).toBeCloseTo(0.875, 9);
+    expect(L.spine).toBeCloseTo(0.75, 9);
+    expect(L.frontX).toBeCloseTo(0.875 + 6 + 0.75, 9);
+    expect(L.approximate).toBe(false);
+  });
+
+  it("estimates hardcovers with the wrap and Lulu's spine steps", () => {
+    const hc = { ...DEFAULT_PRODUCT, binding: 'hardcover' as const };
+    const inches = (pages: number) => {
+      const d = estimateCoverDimensions(hc, pages);
+      return [d.width, d.height];
+    };
+    // Sandbox answers, 6×9 case wrap: 24 and 84 → 14″, 86 → 14.25″, 210 → 14.5″, 800 → 15.875″; always 10.75″ tall.
+    expect(inches(24)).toEqual([14, 10.75]);
+    expect(inches(84)).toEqual([14, 10.75]);
+    expect(inches(86)).toEqual([14.25, 10.75]);
+    expect(inches(210)).toEqual([14.5, 10.75]);
+    expect(inches(800)).toEqual([15.875, 10.75]);
+    expect(estimateCoverDimensions({ ...hc, trim: '8.5x11' }, 400)).toEqual({ width: 17 + 1.75 + 1.188, height: 12.75, unit: 'inch' });
   });
 
   it('rejects dimensions that cannot belong to the trim', () => {

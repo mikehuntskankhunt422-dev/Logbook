@@ -51,6 +51,14 @@ export default defineConfig({
       },
     }),
   ],
+  // In dev, `npm run dev -w @logbook/server` serves the API (cover sizes, D39). Preview and e2e run
+  // without it, so the builder falls back to its estimate there.
+  server: {
+    proxy: { '/api': 'http://127.0.0.1:4242' },
+  },
+  preview: {
+    proxy: {},
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

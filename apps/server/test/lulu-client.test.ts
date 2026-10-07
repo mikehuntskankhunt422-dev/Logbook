@@ -118,6 +118,14 @@ describe('Lulu client', () => {
     expect(sleeps).toEqual([1000, 1000]);
   });
 
+  it('waits through the VALIDATING state the sandbox sends covers through', async () => {
+    const states = ['VALIDATING', 'NORMALIZED'];
+    const lulu = fakeLulu({ 'GET /validate-cover/9/': () => [200, { id: 9, source_url: 'x', status: states.shift(), errors: null }] });
+    const client = new LuluClient(creds, { fetch: lulu.fetch, sleep: async () => {} });
+    const done = await client.waitForValidation({ id: 9, status: null, errors: null }, (id) => client.getCoverValidation(id));
+    expect(done.status).toBe('NORMALIZED');
+  });
+
   it('gives up polling after the timeout', async () => {
     let now = 0;
     const lulu = fakeLulu({ 'GET /validate-cover/5/': () => [200, { id: 5, status: 'NORMALIZING', errors: null }] });
@@ -128,7 +136,7 @@ describe('Lulu client', () => {
         now += ms;
       },
     });
-    await expect(client.waitForValidation({ id: 5, status: 'NORMALIZING' as const, errors: null }, (id) => client.getCoverValidation(id), { intervalMs: 1000, timeoutMs: 3000 })).rejects.toThrow(
+    await expect(client.waitForValidation({ id: 5, status: 'NORMALIZING', errors: null }, (id) => client.getCoverValidation(id), { intervalMs: 1000, timeoutMs: 3000 })).rejects.toThrow(
       /still NORMALIZING/,
     );
   });
@@ -162,5 +170,25 @@ describe('Lulu client', () => {
       shipping_address: { country_code: 'US', state_code: 'OR', phone_number: '+1 503 555 0100' },
       shipping_option: 'MAIL',
     });
+  });
+});
+
+describe('recorded Lulu cover sizes', () => {
+  it("agree with the builder's offline estimate to within 0.01 mm, both bindings", async () => {
+    const { readFileSync } = await import('node:fs');
+    const { allProducts, estimateCoverDimensions, podPackageId } = await import('@logbook/core');
+    const { RECORDED_COVER_DIMENSIONS_PATH } = await import('../src/samples/cover-dims.ts');
+    const recorded = JSON.parse(readFileSync(RECORDED_COVER_DIMENSIONS_PATH, 'utf8')) as { sizes: Record<string, [number, number]> };
+    const byId = new Map(allProducts().map((p) => [podPackageId(p), p]));
+    const keys = Object.keys(recorded.sizes);
+    expect(keys.length).toBeGreaterThan(100);
+    for (const key of keys) {
+      const [id, pages] = key.split('@') as [string, string];
+      const est = estimateCoverDimensions(byId.get(id)!, Number(pages));
+      const [w, h] = recorded.sizes[key]!;
+      // Lulu reports mm to two decimals.
+      expect(Math.abs(est.width * 25.4 - w), key).toBeLessThanOrEqual(0.0051);
+      expect(Math.abs(est.height * 25.4 - h), key).toBeLessThanOrEqual(0.0051);
+    }
   });
 });

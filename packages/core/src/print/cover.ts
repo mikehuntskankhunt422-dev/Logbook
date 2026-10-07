@@ -1,7 +1,7 @@
 import { GRADIENTS } from '../model.ts';
 import { esc, inch } from './html.ts';
 import type { BookOptions } from './options.ts';
-import { BLEED_IN, SAFETY_IN, TRIMS, type Product } from './products.ts';
+import { BLEED_IN, HARDCOVER_WRAP_IN, SAFETY_IN, TRIMS, type Product } from './products.ts';
 
 /** What Lulu's `/cover-dimensions/` returns (L1 ~8220). */
 export interface CoverDimensions {
@@ -26,7 +26,7 @@ export interface CoverLayout {
   spineX: number;
   frontX: number;
   spineText: boolean;
-  /** True for the offline estimate, and for hardcovers until open question #7 is answered. */
+  /** True for the offline estimate (D39). */
   approximate: boolean;
 }
 
@@ -42,8 +42,9 @@ export const SPINE_TEXT_MIN_PAGES = 81;
 
 /**
  * Panel geometry from Lulu's sheet size. The spine is what's left after two trim-width panels and
- * the outer edges; the edge is read from the height, so the same maths covers a hardcover wrap.
- * Hardcover hinge areas aren't modelled yet (ASSUMPTIONS "not yet verified" #7).
+ * the outer edges; the edge is read from the height, so the same maths covers a hardcover wrap
+ * (0.75″ wrap + 0.125″ bleed, checked against the sandbox). A hardcover's hinge, about 0.25″ either
+ * side of the spine, needs no geometry of its own: cover text keeps 0.5″ from every fold.
  */
 export function coverLayout(product: Product, pages: number, dims: CoverDimensions, wantSpineText = true, approximate = false): CoverLayout {
   const t = TRIMS[product.trim];
@@ -63,17 +64,34 @@ export function coverLayout(product: Product, pages: number, dims: CoverDimensio
     spineX: edge + t.widthIn,
     frontX: edge + t.widthIn + spine,
     spineText: wantSpineText && pages >= SPINE_TEXT_MIN_PAGES,
-    approximate: approximate || product.binding === 'hardcover',
+    approximate,
   };
 }
 
 /**
- * Offline stand-in for `/cover-dimensions/`, for the builder preview only (D39). Uses the guide's
- * paperback spine formula (pages/444 + 0.06″, L3 p.13) for both bindings; printed covers always use
- * Lulu's numbers.
+ * Hardcover spine width in inches by the largest page count of each step, exactly as the sandbox's
+ * `/cover-dimensions/` returned it for every even count from 24 to 800 (2026-10-07). Roughly
+ * sixteenths, but Lulu's own rounding (0.688, then 1.687 and 1.937).
+ */
+const HARDCOVER_SPINE_STEPS: [maxPages: number, spineIn: number][] = [
+  [84, 0.25], [140, 0.5], [168, 0.625], [194, 0.688], [222, 0.75], [250, 0.813], [278, 0.875],
+  [306, 0.938], [334, 1], [360, 1.063], [388, 1.125], [416, 1.188], [444, 1.25], [472, 1.313],
+  [500, 1.375], [528, 1.438], [556, 1.5], [582, 1.563], [610, 1.625], [638, 1.687], [666, 1.75],
+  [694, 1.813], [722, 1.875], [750, 1.937], [778, 2], [798, 2.063], [800, 2.125],
+];
+
+/**
+ * Offline stand-in for `/cover-dimensions/`, for the builder preview only (D39). Paperbacks use the
+ * guide's spine formula (pages/444 + 0.06″, L3 p.13); hardcovers the wrap plus Lulu's spine steps.
+ * Both matched the sandbox to within 0.01 mm when recorded; printed covers still always ask Lulu.
  */
 export function estimateCoverDimensions(product: Product, pages: number): CoverDimensions {
   const t = TRIMS[product.trim];
+  if (product.binding === 'hardcover') {
+    const edge = HARDCOVER_WRAP_IN + BLEED_IN;
+    const step = HARDCOVER_SPINE_STEPS.find(([max]) => pages <= max) ?? HARDCOVER_SPINE_STEPS.at(-1)!;
+    return { width: 2 * t.widthIn + step[1] + 2 * edge, height: t.heightIn + 2 * edge, unit: 'inch' };
+  }
   const spine = pages / 444 + 0.06;
   return { width: 2 * t.widthIn + spine + 2 * BLEED_IN, height: t.heightIn + 2 * BLEED_IN, unit: 'inch' };
 }

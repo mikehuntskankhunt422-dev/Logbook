@@ -25,6 +25,7 @@ import {
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { BookPreview, PreviewCancelled, PreviewImages, coverPreviewDocument, spreadStarts } from '../lib/book-preview.ts';
+import { fetchCoverDimensions } from '../lib/cover-dims.ts';
 import { formatLongDate } from './common.tsx';
 
 type Step = 'entries' | 'product' | 'cover' | 'options' | 'preview';
@@ -395,6 +396,8 @@ function PreviewStep({
   const [renderedKey, setRenderedKey] = useState('');
   const [spread, setSpread] = useState(0);
   const [single, setSingle] = useState(() => matchMedia('(max-width: 640px)').matches);
+  const [coverExact, setCoverExact] = useState(false);
+  const runs = useRef(0);
   const stale = status === 'done' && previewKey !== renderedKey;
 
   useEffect(() => () => images.dispose(), [images]);
@@ -429,6 +432,7 @@ function PreviewStep({
   const run = async () => {
     if (!frame.current) return;
     preview.current ??= new BookPreview(frame.current);
+    const thisRun = ++runs.current;
     setStatus('running');
     setSpread(0);
     try {
@@ -445,7 +449,14 @@ function PreviewStep({
       setStatus('done');
       setMessage(`Preview ready: ${result.pages} pages.`);
       const front = options.cover.kind === 'photo' ? urls.get(options.cover.mediaId) : undefined;
+      // The estimate shows at once; Lulu's exact size replaces it when the API answers (D39).
+      setCoverExact(false);
       if (coverFrame.current) coverFrame.current.srcdoc = coverPreviewDocument(options, selected, result.pages, front).html;
+      void fetchCoverDimensions(options.product, result.pages).then((dims) => {
+        if (!dims || thisRun !== runs.current || !coverFrame.current) return;
+        coverFrame.current.srcdoc = coverPreviewDocument(options, selected, result.pages, front, dims).html;
+        setCoverExact(true);
+      });
     } catch (err) {
       if (err instanceof PreviewCancelled) {
         setStatus('idle');
@@ -535,7 +546,10 @@ function PreviewStep({
       <div hidden={status !== 'done'}>
         <h3>Cover</h3>
         <iframe ref={coverFrame} className="cover-frame" title="Cover preview" onLoad={fitCover} />
-        <p className="hint">Back, spine and front. The spine width is approximate until the print file is made.</p>
+        <p className="hint">
+          {coverExact ? "Back, spine and front, at the printer's exact size for this page count." : 'Back, spine and front. The spine width is approximate until the print file is made.'}
+          {options.product.binding === 'hardcover' && ' The outer edge wraps around the boards.'}
+        </p>
       </div>
 
       <Warnings warnings={warnings} />

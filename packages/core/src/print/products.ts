@@ -30,6 +30,11 @@ export type FinishId = keyof typeof FINISHES;
 export const BLEED_IN = 0.125;
 /** Nothing important may sit closer than this to a trim edge (L3 p.23). */
 export const SAFETY_IN = 0.5;
+/**
+ * A hardcover's printed case wrap folds this far around the board on each outer edge, on top of the
+ * bleed (Lulu help centre; the sandbox's `/cover-dimensions/` gives trim + 0.875″ per edge).
+ */
+export const HARDCOVER_WRAP_IN = 0.75;
 
 const keys = <T extends object>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 

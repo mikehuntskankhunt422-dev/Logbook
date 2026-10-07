@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.ts';
 import { ConfigError, loadConfig } from '../src/config.ts';
+import { LuluClient } from '../src/lulu/client.ts';
 import { CONTENT_FIELDS, loggerOptions } from '../src/log.ts';
 
 describe('config (D18)', () => {
@@ -64,6 +65,64 @@ describe('API', () => {
     const app = buildApp(loadConfig({}), { logger: false });
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false });
+    await app.close();
+  });
+});
+
+describe('GET /api/cover-dimensions (D39)', () => {
+  const config = loadConfig({ LULU_SANDBOX_CLIENT_KEY: 'k', LULU_SANDBOX_CLIENT_SECRET: 's' });
+  function fakeLulu(answer: () => Response) {
+    const asked: unknown[] = [];
+    const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith('/token')) return Response.json({ access_token: 't', expires_in: 3600 });
+      asked.push(JSON.parse(String(init?.body)));
+      return answer();
+    }) as typeof globalThis.fetch;
+    return { lulu: new LuluClient(config.lulu!, { fetch }), asked };
+  }
+  const url = (id: string, pages: number | string) => `/api/cover-dimensions?pod_package_id=${id}&pages=${pages}`;
+  const PB = '0600X0900.FC.PRE.PB.080CW444.MXX';
+
+  it("answers with Lulu's size, cached, and lets any origin read it", async () => {
+    const { lulu, asked } = fakeLulu(() => Response.json({ width: '324.690', height: '234.950', unit: 'mm' }, { status: 201 }));
+    const app = buildApp(config, { logger: false, lulu });
+    for (let i = 0; i < 2; i++) {
+      const res = await app.inject({ method: 'GET', url: url(PB, 210) });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ width: 324.69, height: 234.95, unit: 'mm' });
+      expect(res.headers['access-control-allow-origin']).toBe('*');
+      expect(res.headers['cache-control']).toBe('public, max-age=86400');
+    }
+    expect(asked).toEqual([{ pod_package_id: PB, interior_page_count: 210, unit: 'mm' }]);
+    await app.close();
+  });
+
+  it('passes nothing to Lulu but the packages we sell and page counts they can print', async () => {
+    const { lulu, asked } = fakeLulu(() => Response.json({ width: '1', height: '1', unit: 'mm' }, { status: 201 }));
+    const app = buildApp(config, { logger: false, lulu });
+    for (const [id, pages] of [
+      ['0600X0900.FC.STD.PB.080CW444.MXX', 100],
+      [PB, 30],
+      [PB, 101],
+      [PB, 802],
+      [PB, 'lots'],
+      ['0600X0900.FC.PRE.CW.080CW444.MXX', 22],
+    ] as const) {
+      expect((await app.inject({ method: 'GET', url: url(id, pages) })).statusCode).toBe(400);
+    }
+    expect(asked).toEqual([]);
+    await app.close();
+  });
+
+  it('says 503 without Lulu credentials and 502 when Lulu fails', async () => {
+    const off = buildApp(loadConfig({}), { logger: false });
+    expect((await off.inject({ method: 'GET', url: url(PB, 48) })).statusCode).toBe(503);
+    await off.close();
+    const { lulu } = fakeLulu(() => new Response('<html>Server Error</html>', { status: 500 }));
+    const app = buildApp(config, { logger: false, lulu });
+    const res = await app.inject({ method: 'GET', url: url(PB, 48) });
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({ error: 'Lulu did not answer.' });
     await app.close();
   });
 });

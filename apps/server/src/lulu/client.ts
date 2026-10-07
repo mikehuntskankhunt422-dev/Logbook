@@ -31,10 +31,20 @@ const tokenSchema = z.object({ access_token: z.string(), expires_in: z.number() 
 
 const coverDimensionsSchema = z.object({ width: num, height: num, unit: z.enum(['pt', 'mm', 'inch']) });
 
-/** `VALIDATING → VALIDATED`, or `NORMALIZING → NORMALIZED` when a package ID is given; `null` before Lulu starts. */
+/**
+ * Validation job states. The spec lists `VALIDATING → VALIDATED` (interiors), `NORMALIZING →
+ * NORMALIZED` (interiors with a package ID, and covers) and `ERROR`, but the sandbox also sends
+ * covers through `VALIDATING`, so any state is accepted and every "…ING" state counts as running.
+ * Jobs start with `null`.
+ */
+const validationStatus = z.string().nullable();
+export function validationRunning(status: string | null): boolean {
+  return status === null || status.endsWith('ING');
+}
+
 export const interiorValidationSchema = z.object({
   id: z.number(),
-  status: z.enum(['VALIDATING', 'VALIDATED', 'NORMALIZING', 'NORMALIZED', 'ERROR']).nullable(),
+  status: validationStatus,
   page_count: z.number().nullable().optional(),
   errors: z.array(z.string()).nullable().optional(),
   valid_pod_package_ids: z.array(z.string()).nullable().optional(),
@@ -43,7 +53,7 @@ export type InteriorValidation = z.infer<typeof interiorValidationSchema>;
 
 export const coverValidationSchema = z.object({
   id: z.number(),
-  status: z.enum(['NORMALIZING', 'NORMALIZED', 'ERROR']).nullable(),
+  status: validationStatus,
   errors: z.array(z.string()).nullable().optional(),
 });
 export type CoverValidation = z.infer<typeof coverValidationSchema>;
@@ -142,7 +152,7 @@ export class LuluClient {
     return coverValidationSchema.parse(await this.request('GET', `/validate-cover/${id}/`));
   }
 
-  /** Polls a validation job until it leaves the in-progress states, or throws after `timeoutMs`. */
+  /** Polls a validation job until it leaves the queued and running states, or throws after `timeoutMs`. */
   async waitForValidation<T extends { id: number; status: string | null }>(
     first: T,
     get: (id: number) => Promise<T>,
@@ -151,7 +161,7 @@ export class LuluClient {
     const interval = opts.intervalMs ?? 5_000;
     const deadline = this.now() + (opts.timeoutMs ?? 10 * 60_000);
     let job = first;
-    while (job.status === null || job.status === 'VALIDATING' || job.status === 'NORMALIZING') {
+    while (validationRunning(job.status)) {
       if (this.now() >= deadline) throw new LuluError(`Validation ${job.id} still ${job.status ?? 'queued'} after the timeout`, 0, null);
       await this.sleep(interval);
       job = await get(job.id);

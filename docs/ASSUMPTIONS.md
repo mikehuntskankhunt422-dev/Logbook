@@ -61,7 +61,15 @@ Sources:
 `npm run lulu:validate` (M2 slice D) rewrites the block below.
 
 <!-- lulu-validation:start (written by scripts/validate-samples.ts) -->
-Not run yet.
+**2026-10-07, Lulu sandbox: every sample file passed.** Files rendered by Chromium 153.0.8010.12 at commit `8dd6b6d` and fetched by Lulu from `https://github.com/mikehuntskankhunt422-dev/Logbook/releases/download/lulu-samples-5/`. Took 7 s in total.
+
+| Sample | Package ID | Pages | Interior (`/validate-interior/` with package ID) | Lulu page count | Cover (`/validate-cover/`) |
+|---|---|---|---|---|---|
+| 200-page--6x9-pb-matte | `0600X0900.FC.PRE.PB.080CW444.MXX` | 210 | NORMALIZED (job 1016540) | 210 | NORMALIZED (job 1016548) |
+| 200-page--8.5x11-cw-gloss | `0850X1100.FC.PRE.CW.080CW444.GXX` | 192 | NORMALIZED (job 1016545) | 192 | NORMALIZED (job 1016541) |
+| 40-page--6x9-bw-pb-matte | `0600X0900.BW.STD.PB.060UW444.MXX` | 48 | NORMALIZED (job 1016543) | 48 | NORMALIZED (job 1016544) |
+| 40-page--6x9-pb-matte | `0600X0900.FC.PRE.PB.080CW444.MXX` | 48 | NORMALIZED (job 1016547) | 48 | NORMALIZED (job 1016549) |
+| 40-page--8.5x11-cw-gloss | `0850X1100.FC.PRE.CW.080CW444.GXX` | 44 | NORMALIZED (job 1016546) | 44 | NORMALIZED (job 1016542) |
 <!-- lulu-validation:end -->
 
 ## Not yet verified (blocking the code that depends on them)

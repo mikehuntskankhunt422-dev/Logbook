@@ -9,6 +9,7 @@ import {
   planPagination,
   printCss,
   type BookOptions,
+  type CoverDimensions,
   type CoverLayout,
   type Entry,
   type Journal,
@@ -192,11 +193,17 @@ export class BookPreview {
 }
 
 /**
- * The cover for the preview. The spine width comes from the guide's formula and is labelled
- * approximate (D39) until the server can ask Lulu.
+ * The cover for the preview, at Lulu's size when the API could ask (D39); otherwise at the offline
+ * estimate, labelled approximate.
  */
-export function coverPreviewDocument(options: BookOptions, entries: Entry[], pages: number, frontImageUrl: string | undefined): { html: string; layout: CoverLayout } {
-  const layout = coverLayout(options.product, pages, estimateCoverDimensions(options.product, pages), options.spineText, true);
+export function coverPreviewDocument(
+  options: BookOptions,
+  entries: Entry[],
+  pages: number,
+  frontImageUrl: string | undefined,
+  dims?: CoverDimensions | null,
+): { html: string; layout: CoverLayout } {
+  const layout = coverLayout(options.product, pages, dims ?? estimateCoverDimensions(options.product, pages), options.spineText, !dims);
   const range = entries.length ? formatDateRange(entries[0]!.date, entries.at(-1)!.date) : '';
   const { css, body } = coverHtml({ options, layout, dateRange: range, frontImageUrl });
   const fit = `@media screen { html { background: transparent; } body { box-shadow: 0 2px 10px rgb(0 0 0 / 0.25); } }`;
