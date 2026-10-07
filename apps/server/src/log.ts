@@ -8,6 +8,10 @@ export const CONTENT_FIELDS = ['title', 'subtitle', 'author', 'backText', 'capti
 
 export const loggerOptions: FastifyServerOptions['logger'] = {
   level: process.env['LOG_LEVEL'] ?? 'info',
+  // Paths only: query strings can hold signed-URL signatures (D51) and order details.
+  serializers: {
+    req: (req: { method: string; url: string }) => ({ method: req.method, url: req.url.split('?')[0] }),
+  },
   redact: {
     paths: ['req.body', 'res.body', ...CONTENT_FIELDS.flatMap((f) => [f, `*.${f}`, `*.*.${f}`])],
     censor: '[content]',

@@ -1,20 +1,66 @@
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.ts';
 import { loggerOptions } from './log.ts';
 import { LuluClient, LuluError } from './lulu/client.ts';
+import { OrderDb } from './orders/db.ts';
+import { registerOrderRoutes } from './orders/routes.ts';
+import { OrderService } from './orders/service.ts';
 import { checkBook, Quoter } from './pricing/quote.ts';
+import { renderBook, type BookRender, type BookSource } from './render/book.ts';
+import { LocalStore } from './storage/local.ts';
+import { R2Store } from './storage/r2.ts';
+import type { ObjectStore } from './storage/store.ts';
+
+export interface AppOptions {
+  logger?: boolean;
+  lulu?: LuluClient;
+  /** Overrides for tests. */
+  store?: ObjectStore;
+  db?: OrderDb;
+  render?: (src: BookSource) => Promise<BookRender>;
+}
+
+function storeFor(config: Config): ObjectStore | undefined {
+  const s = config.storage;
+  if (!s) return undefined;
+  if (s.kind === 'r2') return new R2Store(s);
+  mkdirSync(s.dir, { recursive: true });
+  return new LocalStore(s.dir);
+}
 
 /**
  * The API: a health check, the cover-dimensions proxy (D39) and price quotes (M3). All three are
  * content-free. Rendering is reached through uploads (M2 slice E, now first in M3); until then the
  * renderer runs from scripts and tests only, so nothing deployed accepts journal content (PLAN §6).
  */
-export function buildApp(config: Config, opts: { logger?: boolean; lulu?: LuluClient } = {}): FastifyInstance {
+export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: opts.logger === false ? false : loggerOptions });
   const lulu = opts.lulu ?? (config.lulu ? new LuluClient(config.lulu) : undefined);
   const quoter = lulu && new Quoter(lulu);
+  const store = opts.store ?? storeFor(config);
+  const db = store ? (opts.db ?? new OrderDb(config.databasePath)) : undefined;
+  const orders =
+    store && db
+      ? new OrderService({ db, store, lulu, quoter, render: opts.render ?? renderBook, workRoot: tmpdir(), log: app.log })
+      : undefined;
+  registerOrderRoutes(app, orders, store, config.webOrigins);
+  if (orders && db) {
+    let sweep: NodeJS.Timeout | undefined;
+    app.addHook('onReady', async () => {
+      orders.resume();
+      // R2's lifecycle rule also deletes old files; the local store relies on this.
+      sweep = setInterval(() => void orders.sweep().catch(() => undefined), 60 * 60 * 1000).unref();
+    });
+    app.addHook('onClose', async () => {
+      clearInterval(sweep);
+      await orders.idle();
+      if (!opts.db) db.close();
+    });
+  }
 
-  app.get('/api/health', async () => ({ ok: true, mode: config.mode, lulu: Boolean(config.lulu) }));
+  app.get('/api/health', async () => ({ ok: true, mode: config.mode, lulu: Boolean(config.lulu), storage: store?.kind ?? null }));
 
   /**
    * Lulu's cover size for the builder's preview (D39). Takes only a package ID and a page count,

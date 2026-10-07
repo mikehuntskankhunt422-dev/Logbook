@@ -26,6 +26,7 @@ import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { BookPreview, PreviewCancelled, PreviewImages, coverPreviewDocument, spreadStarts } from '../lib/book-preview.ts';
 import { fetchBookPrice, fetchCoverDimensions } from '../lib/api.ts';
+import { PrepareBook } from './PrepareBook.tsx';
 import { formatLongDate } from './common.tsx';
 
 type Step = 'entries' | 'product' | 'cover' | 'options' | 'preview';
@@ -546,6 +547,8 @@ function PreviewStep({
           </span>
         </div>
       )}
+
+      {status === 'done' && plan && !plan.tooMany && !stale && <PrepareBook options={options} entries={selected} media={media} formatUsd={formatUsd} />}
 
       <div hidden={status !== 'done'}>
         <h3>Cover</h3>

@@ -45,6 +45,17 @@ describe('config (D18)', () => {
     expect(() => loadConfig({ STRIPE_TEST_WEBHOOK_SECRET: 'whsec_x' })).toThrow(/without STRIPE_TEST_SECRET_KEY/);
   });
 
+  it('stores orders in R2 when all four variables are set, or locally only when asked, in test mode, on this machine (D51)', () => {
+    const r2 = { R2_ACCOUNT_ID: 'a', R2_ACCESS_KEY_ID: 'k', R2_SECRET_ACCESS_KEY: 's', R2_BUCKET: 'b' };
+    expect(loadConfig(r2).storage).toEqual({ kind: 'r2', accountId: 'a', accessKeyId: 'k', secretAccessKey: 's', bucket: 'b', endpoint: undefined });
+    expect(() => loadConfig({ R2_ACCOUNT_ID: 'a', R2_BUCKET: 'b' })).toThrow(/missing R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY/);
+    expect(loadConfig({}).storage).toBeUndefined();
+    expect(loadConfig({ LOCAL_STORAGE: 'on' }).storage).toEqual({ kind: 'local', dir: '.data/storage' });
+    expect(() => loadConfig({ LOCAL_STORAGE: 'on', HOST: '0.0.0.0' })).toThrow(/loopback/);
+    expect(() => loadConfig({ LOCAL_STORAGE: 'on', APP_MODE: 'live', ALLOW_LIVE: 'true' })).toThrow(/APP_MODE=test/);
+    expect(loadConfig({ WEB_ORIGIN: 'https://logbook.example, https://www.logbook.example/' }).webOrigins).toEqual(['https://logbook.example', 'https://www.logbook.example']);
+  });
+
   it('refuses half a credential pair and nonsense values', () => {
     expect(() => loadConfig({ LULU_SANDBOX_CLIENT_KEY: 'k' })).toThrow(/both/);
     expect(() => loadConfig({ APP_MODE: 'prod' })).toThrow(ConfigError);
@@ -80,7 +91,7 @@ describe('API', () => {
   it('answers the health check', async () => {
     const app = buildApp(loadConfig({}), { logger: false });
     const res = await app.inject({ method: 'GET', url: '/api/health' });
-    expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false });
+    expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false, storage: null });
     await app.close();
   });
 });

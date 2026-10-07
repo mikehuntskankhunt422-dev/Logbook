@@ -391,7 +391,7 @@ All verified facts and their sources are in [ASSUMPTIONS.md](ASSUMPTIONS.md). St
 - the **pricing proposal** in Section 7: my table, or keep your anchors and drop products that can't hit them
 - launch countries: all Lulu destinations, or start narrower (AU, NZ, US, CA, UK, EU) while tax registrations are sorted
 
-**Before M2 slice D (moved earlier, see [M2.md](M2.md) §2):** ~~the Lulu sandbox client key and secret~~ (received 2026-10-07) and a Cloudflare R2 bucket (still needed for the consent-and-upload step, now the first item of M3).
+**Before M2 slice D (moved earlier, see [M2.md](M2.md) §2):** ~~the Lulu sandbox client key and secret~~ (received 2026-10-07) and a Cloudflare R2 bucket (still needed: the consent-and-upload step is built on a local storage backend and switches to R2 by configuration, M3 slice C).
 
 **Before M3/M4 (test mode only, never live keys):**
 - Stripe test secret and publishable keys, and permission for me to install the Stripe CLI on this PC

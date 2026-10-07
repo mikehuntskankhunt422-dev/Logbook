@@ -51,13 +51,13 @@ export default defineConfig({
       },
     }),
   ],
-  // In dev, `npm run dev -w @logbook/server` serves the API (cover sizes, D39). Preview and e2e run
-  // without it, so the builder falls back to its estimate there.
+  // `npm run dev -w @logbook/server` serves the API (cover sizes, quotes, orders) on port 4242; the
+  // e2e tests start it too. Without it the builder falls back to its estimates.
   server: {
     proxy: { '/api': 'http://127.0.0.1:4242' },
   },
   preview: {
-    proxy: {},
+    proxy: { '/api': 'http://127.0.0.1:4242' },
   },
   build: {
     target: 'es2022',

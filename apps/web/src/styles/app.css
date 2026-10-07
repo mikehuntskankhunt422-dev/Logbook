@@ -1517,6 +1517,26 @@ mark {
 .book-warnings h3 {
   margin: 0 0 4px;
 }
+.prepare {
+  margin: 20px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.prepare h3 {
+  margin: 0 0 4px;
+}
+.consent-list {
+  margin: 6px 0 10px;
+  padding-left: 1.2em;
+}
+.consent-list li + li {
+  margin-top: 4px;
+}
+.proof-links {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
 @media (max-width: 640px) {
   .book-frame {
     height: 62vh;

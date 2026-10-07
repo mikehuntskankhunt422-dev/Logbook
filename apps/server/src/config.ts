@@ -9,6 +9,14 @@ export interface Config {
   lulu?: { apiUrl: string; tokenUrl: string; clientKey: string; clientSecret: string };
   /** Stripe for the current mode (M3); webhooks need the signing secret too. */
   stripe?: { secretKey: string; webhookSecret?: string; taxEnabled: boolean };
+  /**
+   * Where order files go (D16, D51): R2 when its four variables are set; otherwise, with
+   * LOCAL_STORAGE=on in test mode on a loopback host only, a local folder. Without either, ordering is off.
+   */
+  storage?: { kind: 'r2'; accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string; endpoint?: string } | { kind: 'local'; dir: string };
+  databasePath: string;
+  /** Website origins allowed to call the order API from a browser (the website and API are hosted apart, D15). */
+  webOrigins: string[];
   /** Chromium to use instead of Playwright's bundled build (dev containers whose browser build differs). */
   chromiumPath?: string;
 }
@@ -46,6 +54,21 @@ function loadStripe(mode: 'test' | 'live', env: Record<string, string | undefine
   return { secretKey, webhookSecret, taxEnabled: env['STRIPE_TAX_ENABLED'] === 'true' };
 }
 
+const R2_VARS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'] as const;
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
+
+function loadStorage(mode: 'test' | 'live', host: string, env: Record<string, string | undefined>): Config['storage'] {
+  const set = R2_VARS.filter((v) => env[v]);
+  if (set.length === R2_VARS.length) {
+    return { kind: 'r2', accountId: env['R2_ACCOUNT_ID']!, accessKeyId: env['R2_ACCESS_KEY_ID']!, secretAccessKey: env['R2_SECRET_ACCESS_KEY']!, bucket: env['R2_BUCKET']!, endpoint: env['R2_ENDPOINT'] || undefined };
+  }
+  if (set.length) throw new ConfigError(`Set all of ${R2_VARS.join(', ')}, or none (missing ${R2_VARS.filter((v) => !env[v]).join(', ')}).`);
+  if (env['LOCAL_STORAGE'] !== 'on') return undefined;
+  // The local store routes content through this process, so it's for development on this machine only (D51).
+  if (mode !== 'test' || !LOOPBACK.has(host)) throw new ConfigError('LOCAL_STORAGE=on works only with APP_MODE=test on a loopback HOST; use R2 anywhere else.');
+  return { kind: 'local', dir: env['LOCAL_STORAGE_DIR'] || '.data/storage' };
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const mode = env['APP_MODE'] ?? 'test';
   if (mode !== 'test' && mode !== 'live') throw new ConfigError(`APP_MODE must be "test" or "live", not "${mode}".`);
@@ -64,9 +87,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const port = Number(env['PORT'] ?? 4242);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new ConfigError(`PORT must be a port number, not "${env['PORT']}".`);
 
+  const host = env['HOST'] ?? '127.0.0.1';
   return {
     mode,
-    host: env['HOST'] ?? '127.0.0.1',
+    host,
     port,
     lulu:
       clientKey && clientSecret
@@ -79,6 +103,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
           }
         : undefined,
     stripe: loadStripe(mode, env),
+    storage: loadStorage(mode, host, env),
+    databasePath: env['DATABASE_PATH'] || '.data/logbook.sqlite',
+    webOrigins: (env['WEB_ORIGIN'] ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
     chromiumPath: env['LOGBOOK_CHROMIUM_PATH'] || undefined,
   };
 }

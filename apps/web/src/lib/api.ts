@@ -31,3 +31,75 @@ export async function fetchBookPrice(product: Product, pages: number): Promise<n
   const q = (await apiGet('/api/quote', { pod_package_id: podPackageId(product), pages: String(pages) })) as { bookCents?: unknown; currency?: unknown } | null;
   return typeof q?.bookCents === 'number' && q.currency === 'usd' ? q.bookCents : null;
 }
+
+// ── Orders (M3 slice C): only a manifest goes to the API; files go straight to storage. ─────────
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function apiJson<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body) headers.set('content-type', 'application/json');
+  if (init.token) headers.set('authorization', `Bearer ${init.token}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API}${path}`, { ...init, headers });
+  } catch {
+    throw new ApiError("Couldn't reach Logbook's print service. Check your connection and try again.", 0);
+  }
+  const body = res.headers.get('content-type')?.includes('application/json') ? ((await res.json()) as { error?: string }) : null;
+  if (!res.ok || !body) throw new ApiError(body?.error ?? "Logbook's print service isn't available here yet.", res.status);
+  return body as T;
+}
+
+export interface OrderUpload {
+  path: string;
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+}
+
+export interface OrderView {
+  id: string;
+  state: string;
+  stage: string | null;
+  pages: number | null;
+  coverApproximate: boolean | null;
+  currency: 'usd';
+  bookCents: number | null;
+  lulu: { checked: true; interior: { status: string | null }; cover: { status: string | null } } | { checked: false; reason: string } | null;
+  error: string | null;
+  proof: { interior: string; cover: string } | null;
+}
+
+export function createOrder(manifest: { product: Product; bundle: { bytes: number; sha256: string }; files: { path: string; bytes: number; sha256: string }[] }) {
+  return apiJson<{ orderId: string; token: string; expiresInSeconds: number; uploads: OrderUpload[] }>('/api/orders', { method: 'POST', body: JSON.stringify(manifest) });
+}
+
+/** PUTs one file to its signed URL (storage, not the API), reporting bytes sent. */
+export function uploadFile(upload: OrderUpload, bytes: Uint8Array<ArrayBuffer>, onProgress: (sent: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', upload.url);
+    for (const [k, v] of Object.entries(upload.headers)) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? (onProgress(bytes.length), resolve()) : reject(new ApiError(`An upload failed (HTTP ${xhr.status}).`, xhr.status)));
+    xhr.onerror = () => reject(new ApiError('An upload failed. Check your connection and try again.', 0));
+    xhr.send(new Blob([bytes]));
+  });
+}
+
+export function submitOrder(id: string, token: string) {
+  return apiJson<OrderView>(`/api/orders/${encodeURIComponent(id)}/submit`, { method: 'POST', token });
+}
+
+export function getOrder(id: string, token: string) {
+  return apiJson<OrderView>(`/api/orders/${encodeURIComponent(id)}`, { token });
+}
