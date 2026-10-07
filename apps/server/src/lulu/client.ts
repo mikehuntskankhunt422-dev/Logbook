@@ -80,6 +80,18 @@ export const costCalculationSchema = z.object({
 });
 export type CostCalculation = z.infer<typeof costCalculationSchema>;
 
+/** One of Lulu's `/shipping-options/` answers (costs arrive as numbers here, unlike elsewhere). */
+export const shippingOptionSchema = z.object({
+  level: z.string(),
+  carrier_service_name: z.string(),
+  cost_excl_tax: num,
+  currency: z.string(),
+  total_days_min: z.number().nullable().optional(),
+  total_days_max: z.number().nullable().optional(),
+  is_active: z.boolean().optional(),
+});
+export type ShippingOption = z.infer<typeof shippingOptionSchema>;
+
 export interface CostRequest {
   lineItems: { podPackageId: string; pageCount: number; quantity: number }[];
   shippingAddress: { street1: string; city: string; countryCode: string; postcode: string; phoneNumber: string; stateCode?: string };
@@ -177,6 +189,16 @@ export class LuluClient {
       shipping_option: req.shippingOption,
     });
     return costCalculationSchema.parse(body);
+  }
+
+  /** Shipping choices for a destination country (and state); no street address needed. */
+  async shippingOptions(item: { podPackageId: string; pageCount: number; quantity: number }, country: string, state?: string): Promise<ShippingOption[]> {
+    const body = await this.request('POST', '/shipping-options/', {
+      line_items: [{ pod_package_id: item.podPackageId, page_count: item.pageCount, quantity: item.quantity }],
+      shipping_address: { country, ...(state ? { state } : {}) },
+      currency: 'USD',
+    });
+    return z.array(shippingOptionSchema).parse(body);
   }
 
   private async accessToken(force = false): Promise<string> {

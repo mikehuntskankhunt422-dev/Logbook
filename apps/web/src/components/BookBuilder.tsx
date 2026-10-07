@@ -25,7 +25,7 @@ import {
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { BookPreview, PreviewCancelled, PreviewImages, coverPreviewDocument, spreadStarts } from '../lib/book-preview.ts';
-import { fetchCoverDimensions } from '../lib/cover-dims.ts';
+import { fetchBookPrice, fetchCoverDimensions } from '../lib/api.ts';
 import { formatLongDate } from './common.tsx';
 
 type Step = 'entries' | 'product' | 'cover' | 'options' | 'preview';
@@ -397,6 +397,7 @@ function PreviewStep({
   const [spread, setSpread] = useState(0);
   const [single, setSingle] = useState(() => matchMedia('(max-width: 640px)').matches);
   const [coverExact, setCoverExact] = useState(false);
+  const [priceCents, setPriceCents] = useState<number | null>(null);
   const runs = useRef(0);
   const stale = status === 'done' && previewKey !== renderedKey;
 
@@ -435,14 +436,10 @@ function PreviewStep({
     const thisRun = ++runs.current;
     setStatus('running');
     setSpread(0);
+    setPriceCents(null);
     try {
-      const urls = new Map<string, string>();
-      let n = 0;
-      for (const id of files) {
-        setMessage(`Preparing pictures (${++n} of ${files.length})…`);
-        const u = await images.url(id);
-        if (u) urls.set(id, u);
-      }
+      if (files.length) setMessage(`Preparing pictures (0 of ${files.length})…`);
+      const urls = await images.urls(files, (n) => setMessage(`Preparing pictures (${n} of ${files.length})…`));
       const result = await preview.current.render({ options, entries: selected, meta: (id) => media.get(id), images: urls, printedOn: today() }, setMessage);
       onPlan(result);
       setRenderedKey(previewKey);
@@ -457,6 +454,8 @@ function PreviewStep({
         coverFrame.current.srcdoc = coverPreviewDocument(options, selected, result.pages, front, dims).html;
         setCoverExact(true);
       });
+      // A price estimate from the printer's current cost (M3); none offline.
+      if (!result.tooMany) void fetchBookPrice(options.product, result.pages).then((cents) => thisRun === runs.current && setPriceCents(cents));
     } catch (err) {
       if (err instanceof PreviewCancelled) {
         setStatus('idle');
@@ -510,6 +509,11 @@ function PreviewStep({
               This book needs {plan.pages} pages and Lulu prints at most {limits.max}. Choose a shorter date range or fewer entries.
             </p>
           )}
+          {priceCents !== null && !stale && (
+            <p className="book-price">
+              About <strong>{formatUsd(priceCents)}</strong> plus shipping and any tax, from the printer's current cost. You see the final price with your proof.
+            </p>
+          )}
           <p className="hint">The print file is laid out the same way, so the page count usually matches, but browsers and browser versions can differ by a page or two. You approve the exact print file before paying. Ordering is coming soon.</p>
         </div>
       )}
@@ -555,6 +559,10 @@ function PreviewStep({
       <Warnings warnings={warnings} />
     </>
   );
+}
+
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol' }).format(cents / 100) + (navigator.language.startsWith('en-US') ? '' : ' USD');
 }
 
 function Warnings({ warnings }: { warnings: ReturnType<typeof imageWarnings> }) {

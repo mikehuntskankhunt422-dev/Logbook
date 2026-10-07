@@ -11,7 +11,8 @@
     "test:print": "vitest run --config vitest.golden.config.ts",
     "lulu:packages": "node --experimental-transform-types --no-warnings scripts/verify-lulu-packages.ts",
     "lulu:validate": "node --experimental-transform-types --no-warnings scripts/validate-samples.ts",
-    "samples:pack": "node --experimental-transform-types --no-warnings scripts/pack-samples.ts"
+    "samples:pack": "node --experimental-transform-types --no-warnings scripts/pack-samples.ts",
+    "pricing:table": "node --experimental-transform-types --no-warnings scripts/pricing-table.ts"
   },
   "dependencies": {
     "@fontsource/bricolage-grotesque": "5.3.0",
