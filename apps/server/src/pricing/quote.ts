@@ -36,6 +36,18 @@ export interface Quote {
   shipping?: ShippingQuote[];
 }
 
+/** A quote with Lulu's costs behind it: kept on the order so its prices can be reproduced, never sent to customers. */
+export interface CostedQuote extends Quote {
+  costCents: number;
+  shipping?: (ShippingQuote & { luluCents: number })[];
+}
+
+/** The customer-facing part of a quote. */
+export function publicQuote(q: CostedQuote): Quote {
+  const { costCents: _cost, shipping, ...rest } = q;
+  return { ...rest, ...(shipping ? { shipping: shipping.map(({ luluCents: _lulu, ...s }) => s) } : {}) };
+}
+
 /**
  * At most three choices for Checkout (PLAN §1.5 step 5): the cheapest, the fastest, and the cheapest
  * of the rest that arrives sooner than the cheapest. One per Lulu level.
@@ -71,14 +83,14 @@ export class Quoter {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async quote(podPackageId: string, pages: number, destination?: { country: string; state?: string }): Promise<Quote> {
+  async quote(podPackageId: string, pages: number, destination?: { country: string; state?: string }): Promise<CostedQuote> {
     const costCents = await this.cached(this.costs, `${podPackageId}@${pages}`, DAY_MS, async () => {
       const c = await this.lulu.costCalculation({ lineItems: [{ podPackageId, pageCount: pages, quantity: 1 }], shippingAddress: REFERENCE_ADDRESS, shippingOption: 'MAIL' });
       if (c.currency.toLowerCase() !== PRICING.currency) throw new Error(`Lulu quoted in ${c.currency}`);
       return toCents(c.line_item_costs[0]!.total_cost_excl_tax) + toCents(c.fulfillment_cost?.total_cost_excl_tax ?? 0);
     });
     const book = bookPrice({ printCents: costCents, fulfillmentCents: 0 });
-    const quote: Quote = { podPackageId, pages, currency: 'usd', bookCents: book.priceCents };
+    const quote: CostedQuote = { podPackageId, pages, currency: 'usd', bookCents: book.priceCents, costCents };
     if (!destination) return quote;
 
     const key = `${podPackageId}@${pages}@${destination.country}@${destination.state ?? ''}`;
@@ -92,6 +104,7 @@ export class Quoter {
       daysMin: o.total_days_min ?? null,
       daysMax: o.total_days_max ?? null,
       priceCents: shippingPrice(toCents(o.cost_excl_tax)),
+      luluCents: toCents(o.cost_excl_tax),
     }));
     return quote;
   }

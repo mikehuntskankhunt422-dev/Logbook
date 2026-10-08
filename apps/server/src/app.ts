@@ -7,7 +7,7 @@ import { LuluClient, LuluError } from './lulu/client.ts';
 import { OrderDb } from './orders/db.ts';
 import { registerOrderRoutes } from './orders/routes.ts';
 import { OrderService } from './orders/service.ts';
-import { checkBook, Quoter } from './pricing/quote.ts';
+import { checkBook, publicQuote, Quoter } from './pricing/quote.ts';
 import { renderBook, type BookRender, type BookSource } from './render/book.ts';
 import { LocalStore } from './storage/local.ts';
 import { S3Store } from './storage/s3.ts';
@@ -102,7 +102,7 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
     try {
       const quote = await quoter.quote(id, pages, country ? { country, state } : undefined);
       reply.header('Cache-Control', 'public, max-age=600');
-      return quote;
+      return publicQuote(quote);
     } catch (err) {
       const status = err instanceof LuluError ? err.status : undefined;
       req.log.warn({ status, pod: id, pages, country }, 'Lulu quote failed');

@@ -297,3 +297,43 @@ describe('order database', () => {
     expect(await local.size('orders/busy/upload/bundle.json')).toBe(1);
   });
 });
+
+describe('OrderDb migrations', () => {
+  it('upgrades a database made before migrations were numbered, keeping its orders', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const path = join(tmp(), 'old.sqlite');
+    const old = new DatabaseSync(path);
+    old.exec(`
+      create table orders (id text primary key, token_hash text not null, state text not null, stage text, pod_package_id text not null, product text not null, uploads text not null, pages integer, cover_approximate integer, book_cents integer, lulu text, error text, created_at text not null, updated_at text not null);
+      create table order_events (id integer primary key autoincrement, order_id text not null references orders(id), from_state text not null, to_state text not null, cause text not null, detail text, at text not null);
+      insert into orders values ('ord_old', 'h', 'quoted', null, '${PB}', '{}', '[]', 32, 0, 2499, null, null, '2026-10-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z');
+    `);
+    old.close();
+
+    const db = new OrderDb(path);
+    expect(db.get('ord_old')).toMatchObject({ state: 'quoted', bookCents: 2499, quote: null, checkout: null, payment: null });
+    expect(db.onceForStripeEvent({ id: 'evt_1', type: 't', orderId: 'ord_old' }, () => 'done')).toBe('done');
+    // A replayed event runs nothing.
+    expect(db.onceForStripeEvent({ id: 'evt_1', type: 't', orderId: 'ord_old' }, () => 'again')).toBeUndefined();
+    db.close();
+    // Opening again runs no migration twice.
+    const again = new OrderDb(path);
+    expect(again.stripeEvents('ord_old')).toMatchObject([{ id: 'evt_1', outcome: 'done' }]);
+    again.close();
+  });
+
+  it('rolls back everything a Stripe event changed when applying it fails', () => {
+    const db = new OrderDb(':memory:');
+    db.create({ id: 'ord_1', tokenHash: 'h', podPackageId: PB, product: {} as never, uploads: [] });
+    expect(() =>
+      db.onceForStripeEvent({ id: 'evt_2', type: 't', orderId: 'ord_1' }, () => {
+        db.move('ord_1', 'quoted', 'test');
+        throw new Error('boom');
+      }),
+    ).toThrow('boom');
+    expect(db.get('ord_1')!.state).toBe('draft');
+    expect(db.events('ord_1')).toEqual([]);
+    expect(db.stripeEvents()).toEqual([]);
+    db.close();
+  });
+});

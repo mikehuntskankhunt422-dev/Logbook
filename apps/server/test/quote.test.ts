@@ -66,7 +66,7 @@ describe('Quoter', () => {
     const { lulu, calls } = fakeLulu();
     const quoter = new Quoter(lulu, () => now);
     // $29.77 + $0.75 → $30.52 × 1.35 + $8 = $49.20 → $49.99 (PLAN §7 table)
-    expect(await quoter.quote(PB, 200)).toEqual({ podPackageId: PB, pages: 200, currency: 'usd', bookCents: 4999 });
+    expect(await quoter.quote(PB, 200)).toEqual({ podPackageId: PB, pages: 200, currency: 'usd', bookCents: 4999, costCents: 3052 });
     await quoter.quote(PB, 200);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.body).toMatchObject({ line_items: [{ pod_package_id: PB, page_count: 200, quantity: 1 }], shipping_option: 'MAIL' });
@@ -79,8 +79,8 @@ describe('Quoter', () => {
     const { lulu, calls } = fakeLulu({ AU });
     const q = await new Quoter(lulu).quote(PB, 200, { country: 'AU', state: 'SA' });
     expect(q.shipping).toEqual([
-      { level: 'MAIL', name: 'Australia Post Mail', daysMin: 11, daysMax: 12, priceCents: 1000 },
-      { level: 'EXPRESS', name: 'Australia Post Express Post Parcel', daysMin: 6, daysMax: 7, priceCents: 1750 },
+      { level: 'MAIL', name: 'Australia Post Mail', daysMin: 11, daysMax: 12, priceCents: 1000, luluCents: 834 },
+      { level: 'EXPRESS', name: 'Australia Post Express Post Parcel', daysMin: 6, daysMax: 7, priceCents: 1750, luluCents: 1519 },
     ]);
     expect(calls.find((c) => c.path === '/shipping-options/')!.body).toEqual({
       line_items: [{ pod_package_id: PB, page_count: 200, quantity: 1 }],
@@ -99,6 +99,8 @@ describe('GET /api/quote', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.json()).toMatchObject({ bookCents: 4999, currency: 'usd', country: 'US', shipping: [{ level: 'MAIL', priceCents: 750 }, { level: 'GROUND_HD' }, { level: 'EXPRESS' }] });
+    // Our costs stay on the server.
+    expect(res.body).not.toMatch(/costCents|luluCents/);
     await app.close();
   });
 
