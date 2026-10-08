@@ -56,17 +56,68 @@ Sources:
 | AU pricing: domestic cards 1.65% + A$0.30; international cards 3.5% + A$0.30 (page notes lower pricing from 1 Apr 2027); **+2% currency conversion**; Stripe Tax Basic 0.5% per transaction (no-code) or A$0.75 per transaction (API) where registered; fees are **not returned on refunds**; disputes A$25 | S4 |
 | Test cards: success `4242424242424242`; generic decline `4000000000000002`; insufficient funds `4000000000009995`; always requires 3DS and succeeds `4000002760003184`; 3DS then declined `4000008400001629` | S5 |
 
+### Lulu sandbox, checked by calling it
+
+Source **[LS]**: calls to `https://api.sandbox.lulu.com` on 2026-10-07, made by `npm run lulu:packages` (`apps/server/scripts/verify-lulu-packages.ts`), `npm run lulu:validate` and by hand while writing them. Production (`api.lulu.com`) isn't reachable from the build environment, so nothing here is checked against it.
+
+| Fact | Source |
+|---|---|
+| The sandbox token URL is the production path on the sandbox host: `POST https://api.sandbox.lulu.com/auth/realms/glasstree/protocol/openid-connect/token` with Basic auth and `grant_type=client_credentials`. The token lasts `expires_in: 3600` s; no refresh token (`refresh_expires_in: 0`) | LS |
+| `/cover-dimensions/` answers **HTTP 201** with numbers as **strings** (`{"width":"920.000","height":"666.000","unit":"pt"}`). Rounding depends on the unit: `pt` to whole points (920.374 → 920), `inch` to 0.001″, `mm` to 0.01 mm. So we ask in mm (D44) | LS |
+| `/cover-dimensions/` validates loosely: paperbacks get an answer even at 10 pages; hardcovers below 24 pages get 400 `["Wrong pages number"]`; an unknown binding gets 400 `["Unknown binding type XX"]`; an unknown paper code gets an **HTML 500 page**. It can't tell whether a package exists | LS |
+| A cost calculation is the reliable package check: an unknown ID gets 400 `{"line_items":{"0":{"pod_package_id":["Pod Package does not exist"]}}}`. **All 16 package IDs Logbook uses exist** | LS |
+| Sandbox print costs equal the spec-sheet list prices exactly (base + pages × per-page), for all 16 packages at 100 pages, e.g. 6×9 premium-colour paperback $1.99 + 100 × $0.1389 = $15.88, 6×9 premium-colour hardcover $24.57, 8.5×11 premium-colour hardcover $32.46 | LS, L2 |
+| A single copy to Portland, OR by `MAIL`: line item $15.88, `shipping_cost` $5.69, `fulfillment_cost` $0.75 (its own object; the response had no `fees[]` and no handling fee), tax $0, total $22.32 USD. Lulu normalises the address and says so in `shipping_address.warnings[]` (`"1 Main St -> 1 SE Main St"`, code `REPLACED`) | LS |
+| Paperback covers: trim + 0.125″ bleed on each outer edge; spine = pages/444 + 0.06″, the guide's formula, for both 080CW444 and 060UW444 paper | LS, L3 p.13 |
+| **Hardcover (case wrap) covers: trim + 0.875″ on each outer edge** (0.75″ wrap + 0.125″ bleed), with a stepped spine: 24–84 pages 0.25″, 86–140 0.5″, 142–168 0.625″, 170–194 0.688″, then about 1/16″ more per 28 pages, to 2.125″ at 800 (full table in `packages/core/src/print/cover.ts`). Lulu's help centre puts the hinge about 0.25″ from the spine on both boards. Answers open question #7 (D46) | LS; [Lulu help: hardcover casewrap cover](https://help.lulu.com/en/support/solutions/articles/64000308572-creating-your-hardcover-casewrap-cover) (read via search summary; the page itself is blocked from the build environment) |
+| Validation jobs answer 201 with `status: null` and are then polled. Interiors sent with a package ID go `NORMALIZING → NORMALIZED` and report `page_count` and `valid_pod_package_ids` (e.g. 872 IDs for a 6×9 48-page file). **Covers go `null → VALIDATING → NORMALIZED`**: the spec lists `NORMALIZING` for covers, not `VALIDATING`, so the client treats any "…ING" state as running | LS |
+| A file Lulu can't fetch ends in `ERROR` with `"Failed to fetch from the source URL '…', received a 404 status code."`. Lulu follows GitHub's 302 redirect from a release download to `release-assets.githubusercontent.com` (D43) | LS |
+| Timing: covers finish within a few seconds. On first submission the 200-page 8.5×11 interior was still normalizing after about 90 s. Resubmitting the same ten URLs a few minutes later finished in 7 s, so Lulu seems to reuse results for a file it has seen | LS |
+
+### Sample books validated by Lulu
+
+`npm run lulu:validate` (M2 slice D) rewrites the block below.
+
+<!-- lulu-validation:start (written by scripts/validate-samples.ts) -->
+**2026-10-07, Lulu sandbox: every sample file passed.** Files rendered by Chromium 153.0.8010.12 at commit `8dd6b6d` and fetched by Lulu from `https://github.com/mikehuntskankhunt422-dev/Logbook/releases/download/lulu-samples-5/`. Took 7 s in total.
+
+| Sample | Package ID | Pages | Interior (`/validate-interior/` with package ID) | Lulu page count | Cover (`/validate-cover/`) |
+|---|---|---|---|---|---|
+| 200-page--6x9-pb-matte | `0600X0900.FC.PRE.PB.080CW444.MXX` | 210 | NORMALIZED (job 1016540) | 210 | NORMALIZED (job 1016548) |
+| 200-page--8.5x11-cw-gloss | `0850X1100.FC.PRE.CW.080CW444.GXX` | 192 | NORMALIZED (job 1016545) | 192 | NORMALIZED (job 1016541) |
+| 40-page--6x9-bw-pb-matte | `0600X0900.BW.STD.PB.060UW444.MXX` | 48 | NORMALIZED (job 1016543) | 48 | NORMALIZED (job 1016544) |
+| 40-page--6x9-pb-matte | `0600X0900.FC.PRE.PB.080CW444.MXX` | 48 | NORMALIZED (job 1016547) | 48 | NORMALIZED (job 1016549) |
+| 40-page--8.5x11-cw-gloss | `0850X1100.FC.PRE.CW.080CW444.GXX` | 44 | NORMALIZED (job 1016546) | 44 | NORMALIZED (job 1016542) |
+<!-- lulu-validation:end -->
+
+### Stripe test mode, checked by calling it (2026-10-08)
+
+With the test keys in this environment and `npm run stripe:check -w @logbook/server` (M3 §3 E).
+
+| Fact | How it was checked |
+|---|---|
+| The test account is Australian (`country: AU`, default currency AUD); Checkout charges USD on it without any setup | `GET /v1/account`; sessions created in USD |
+| Tax codes `txcd_35010000` ("Books") and `txcd_92010001` ("Shipping") exist | `GET /v1/tax_codes/…` |
+| `stripe@22.6.2` pins API version `2026-08-26.dahlia`; in it the shipping address is at `collected_information.shipping_details`, not the older top-level `shipping_details` | SDK source; a real paid session's event, parsed by `paymentFromSession` |
+| A session with **one allowed country**, two `shipping_rate_data` options with business-day estimates, `tax_behavior: exclusive`, a `success_url` with a `#/order/<id>` fragment and `expires_at` one hour ahead is accepted. The hosted page shows the country fixed, the book as "Printed book · 6 × 9 in premium colour paperback, matte, 200 pages", and "Australia Post Mail (11-12 business days)" | Created through `CheckoutService`, screenshot (open question #9, first half) |
+| `4242 4242 4242 4242`: the page redirects to `success_url`; the session is `complete`/`paid`, total $59.99 (book $49.99 + Australia Post Mail $10.00); Stripe's real `checkout.session.completed` event moves the order to `paid` with the address, phone, email and the `MAIL` level; the same event again changes nothing | Headless Chromium on checkout.stripe.com; Events API |
+| `4000 0000 0000 0002`: the page says "Your credit card was declined. Try paying with a debit card instead."; the session stays `open` and the order `awaiting_payment`. Expiring the session sends `checkout.session.expired`, which returns the order to `quoted` | Same |
+| `4000 0027 6000 3184`: Stripe's "3D Secure 2 Test Page" opens in nested iframes from `testmode-acs.stripe.com` with Fail and Complete; after Complete the payment succeeds and the page redirects to `success_url`. A click before the page is ready can be lost, so the script retries | Same |
+| Automated browser runs against **test-mode** hosted Checkout work (open question #10): no bot challenge blocked the payment | Same |
+| The Stripe CLI (v1.51.1) gets a webhook signing secret with `stripe listen --print-secret` through `api.stripe.com`; forwarding events needs a websocket to `stripecli-ws-nw.stripe.com`. With both, Stripe's `checkout.session.completed` and `.expired` reach `POST /api/stripe/webhook`, pass signature verification and move the order | Proxy log; `stripe:check --listen` |
+| Hosts hosted Checkout needs in a browser: `checkout.stripe.com`, `js.stripe.com`, `m.stripe.network`, `b.stripecdn.com`, `q.stripe.com`, `r.stripe.com`, `hooks.stripe.com`; the 3-D Secure test page is on `testmode-acs.stripe.com`. Not needed for paying: `merchant-ui-api.stripe.com`, `checkout-cookies.stripe.com`, `m.stripe.com`, `hcaptcha.com` (all refused here, payment still worked) | Proxy log during the runs |
+
 ## Not yet verified (blocking the code that depends on them)
 
-1. The sandbox token URL path. I assume the same `/auth/realms/glasstree/…` path on `api.sandbox.lulu.com`; L1 lists only production.
+1. ~~The sandbox token URL path.~~ **Answered 2026-10-07:** same path on the sandbox host (LS above).
 2. `Lulu-HMAC-SHA256` encoding (hex or base64), and whether "API secret" means the client secret.
 3. Whether sandbox print jobs progress to `SHIPPED` or `DELIVERED`.
-4. Real sandbox cost-calculation output per package ID, single-copy `HANDLING_FEE` behaviour, and whether sandbox pricing matches production.
+4. ~~Real sandbox cost-calculation output per package ID~~ (**answered 2026-10-07:** sandbox print costs equal list prices for all 16 IDs, LS above). Still open: `HANDLING_FEE` for other destinations and quantities (none appeared for one copy to the US), and whether production prices match the sandbox.
 5. The set of destination countries Lulu ships to (will be built from `/shipping-options/`).
 6. Sandbox auto-payment with a test card on file.
-7. Case-wrap `/cover-dimensions/` output vs Lulu's template: do wrap and hinge areas fit inside the returned size?
+7. ~~Case-wrap `/cover-dimensions/` output vs Lulu's template.~~ **Answered 2026-10-07:** the size includes the 0.75″ wrap and bleed; the hinge sits inside the board panels (LS above, D46).
 8. How long Lulu needs file URLs to stay valid after print-job creation.
-9. Stripe hosted Checkout UX with a single allowed country, and Stripe Tax Calculation API availability on your account.
-10. Whether Stripe permits automated browser tests against hosted Checkout.
+9. ~~Stripe hosted Checkout UX with a single allowed country~~ (**answered 2026-10-08:** the country shows fixed, Stripe test mode above). Still open: Stripe Tax Calculation API availability on your account.
+10. ~~Whether Stripe permits automated browser tests against hosted Checkout.~~ **Answered 2026-10-08:** in test mode, yes, all three cards (Stripe test mode above).
 11. Azure Artifact Signing eligibility for an Australian individual.
 12. Which Lulu print sites serve which destinations (affects duties/VAT notices and AU GST treatment).

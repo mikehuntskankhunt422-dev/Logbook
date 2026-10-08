@@ -276,13 +276,17 @@ h2 {
     background: var(--bg-elev);
     border-top: 1px solid var(--line);
   }
+  /* Six items on one row: the layout above (e.g. .fab) assumes a single-row bar about 76px tall. */
   .nav a {
     display: flex;
     flex-direction: column;
     align-items: center;
-    font-size: 0.72rem;
-    padding: 6px 10px;
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: clamp(0.62rem, 2.9vw, 0.72rem);
+    padding: 6px 2px;
     gap: 2px;
+    white-space: nowrap;
   }
   .nav-icon {
     font-size: 1.2rem;
@@ -1325,4 +1329,283 @@ mark {
   .entry-card:hover {
     transform: none;
   }
+}
+
+/* ── book builder ───────────────────────────────────────────────────────────────────────────── */
+
+.steps ol {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+  overflow-x: auto;
+}
+.steps button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px 0 6px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--bg-elev);
+  color: var(--ink);
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.steps button[aria-current='step'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-sunk);
+  font-size: 0.85rem;
+}
+.steps button[aria-current='step'] .step-n {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.book-summary {
+  color: var(--ink-soft);
+  margin: 0 0 14px;
+}
+.book-builder .panel h2:focus {
+  outline: none;
+}
+.book-builder .segmented {
+  flex-wrap: wrap;
+  border-radius: 22px;
+}
+.book-builder .field {
+  flex: 1 1 200px;
+}
+.presets {
+  margin: 14px 0 6px;
+}
+.step-nav {
+  justify-content: space-between;
+}
+.step-nav .btn-primary {
+  margin-left: auto;
+}
+.choice {
+  border: none;
+  padding: 0;
+  margin: 0 0 18px;
+}
+.choice legend {
+  font-weight: 650;
+  margin-bottom: 8px;
+  padding: 0;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 600;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.pick-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.pick-list li + li {
+  border-top: 1px solid var(--line);
+}
+.pick-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.pick-list input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.pick-date {
+  color: var(--ink-soft);
+  min-width: 7.5em;
+  font-variant-numeric: tabular-nums;
+}
+.cover-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cover-photo {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border-radius: 12px;
+  border: 3px solid transparent;
+  background: var(--bg-sunk);
+  overflow: hidden;
+  cursor: pointer;
+}
+.cover-photo[aria-pressed='true'] {
+  border-color: var(--ink);
+}
+.cover-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.book-viewer {
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunk);
+  margin-top: 12px;
+}
+.book-viewer:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.book-frame {
+  display: block;
+  width: 100%;
+  height: min(72vh, 680px);
+  border: 0;
+}
+/* Laid out invisibly at full size: browsers may throttle rendering in collapsed frames. */
+.book-frame[data-state='running'] {
+  visibility: hidden;
+}
+.book-frame[data-state='idle'],
+.book-frame[data-state='error'] {
+  height: 0;
+}
+.viewer-controls {
+  justify-content: center;
+  margin: 12px 0 18px;
+}
+.page-slider input {
+  width: min(320px, 50vw);
+  accent-color: var(--accent);
+}
+.cover-frame {
+  display: block;
+  width: 100%;
+  height: 320px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--bg-sunk);
+}
+.book-warnings ul {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+}
+.book-warnings h3 {
+  margin: 0 0 4px;
+}
+.prepare {
+  margin: 20px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.prepare h3 {
+  margin: 0 0 4px;
+}
+.consent-list {
+  margin: 6px 0 10px;
+  padding-left: 1.2em;
+}
+.consent-list li + li {
+  margin-top: 4px;
+}
+.proof-links {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+@media (max-width: 640px) {
+  .book-frame {
+    height: 62vh;
+  }
+}
+
+/* Print order: proof, destination, price, pay (M3) */
+.order-page {
+  max-width: 720px;
+}
+.order-page section {
+  margin: 24px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.order-page h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+.order-page .field select {
+  max-width: 360px;
+}
+.order-price dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+.order-price dt {
+  font-weight: 650;
+}
+.order-price dd {
+  margin: 0;
+}
+.shipping-choices {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+}
+.shipping-choices li + li {
+  margin-top: 2px;
+}
+.order-total {
+  font-size: 1.1rem;
+}
+@media (max-width: 480px) {
+  .order-price dl {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .order-price dd {
+    margin-bottom: 8px;
+  }
+}
+.proof-viewer {
+  margin: 12px 0;
+}
+.proof-canvas {
+  margin-top: 10px;
+  min-height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--bg-sunk);
+  border-radius: var(--radius);
+}
+.proof-canvas canvas {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  background: #fff;
+  max-width: 100%;
 }

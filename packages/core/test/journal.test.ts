@@ -3,6 +3,7 @@ import { ConflictError, Journal, LockedError } from '../src/journal.ts';
 import { MemoryStore, isSealed } from '../src/storage.ts';
 import { WrongPasscodeError } from '../src/crypto.ts';
 import { emptyDoc } from '../src/richtext.ts';
+import { bookOptionsSchema } from '../src/print/options.ts';
 import { FAST_KDF, pngBytes } from './helpers.ts';
 
 async function fresh() {
@@ -146,5 +147,75 @@ describe('backup reminder', () => {
     await journal.updateSettings({ backupSnoozedUntil: inDays(17).toISOString() });
     expect(journal.needsBackupReminder(inDays(15))).toBe(false);
     expect(journal.needsBackupReminder(inDays(18))).toBe(true);
+  });
+});
+
+describe('print orders', () => {
+  const ref = (n: number) => ({ id: `ord_${'a'.repeat(15)}${n}`, token: `token-${'x'.repeat(20)}-${n}`, createdAt: `2026-10-08T00:00:${String(n % 60).padStart(2, '0')}.000Z` });
+
+  it('keeps the newest orders first, sealed while a passcode is on', async () => {
+    const { store, journal } = await fresh();
+    expect(await journal.listBookOrders()).toEqual([]);
+    await journal.saveBookOrder(ref(1));
+    await journal.saveBookOrder(ref(2));
+    await journal.saveBookOrder(ref(1)); // saving again moves it to the front, once
+    expect((await journal.listBookOrders()).map((o) => o.id)).toEqual([ref(1).id, ref(2).id]);
+    expect(await journal.getBookOrder(ref(2).id)).toEqual(ref(2));
+
+    await journal.enableEncryption('correct horse', FAST_KDF);
+    const sealed = await store.getKey('bookOrders');
+    expect(isSealed(sealed)).toBe(true);
+    expect(JSON.stringify(sealed)).not.toContain('token-');
+    journal.lock();
+    await expect(journal.listBookOrders()).rejects.toBeInstanceOf(LockedError);
+    await journal.unlock('correct horse');
+    expect(await journal.getBookOrder(ref(1).id)).toEqual(ref(1));
+    await journal.disableEncryption('correct horse');
+    expect(isSealed(await store.getKey('bookOrders'))).toBe(false);
+    expect(await journal.listBookOrders()).toHaveLength(2);
+  });
+
+  it('keeps at most 20, is cleared with the content, and rejects malformed references', async () => {
+    const { store, journal } = await fresh();
+    for (let n = 1; n <= 25; n++) await journal.saveBookOrder(ref(n));
+    const list = await journal.listBookOrders();
+    expect(list).toHaveLength(20);
+    expect(list[0]!.id).toBe(ref(25).id);
+    await expect(journal.saveBookOrder({ id: 'nope', token: 'short', createdAt: '' })).rejects.toThrow();
+    await journal.clearContent();
+    expect(await journal.listBookOrders()).toEqual([]);
+    await store.setKey('bookOrders', [{ id: 42 }]);
+    expect(await journal.listBookOrders()).toEqual([]);
+  });
+});
+
+describe('book draft', () => {
+  it('round-trips, is sealed while a passcode is on, and survives switching encryption on and off', async () => {
+    const { store, journal } = await fresh();
+    expect(await journal.getBookDraft()).toBeUndefined();
+    await journal.saveBookDraft(bookOptionsSchema.parse({ title: 'Secret trip', backText: 'Only for us' }));
+    expect(JSON.stringify(await store.getKey('bookDraft'))).toContain('Secret trip');
+
+    await journal.enableEncryption('correct horse', FAST_KDF);
+    const sealed = await store.getKey('bookDraft');
+    expect(isSealed(sealed)).toBe(true);
+    expect(JSON.stringify(sealed)).not.toContain('Secret');
+    journal.lock();
+    await expect(journal.getBookDraft()).rejects.toBeInstanceOf(LockedError);
+    await journal.unlock('correct horse');
+    expect((await journal.getBookDraft())?.title).toBe('Secret trip');
+
+    await journal.disableEncryption('correct horse');
+    expect(isSealed(await store.getKey('bookDraft'))).toBe(false);
+    expect((await journal.getBookDraft())?.backText).toBe('Only for us');
+  });
+
+  it('is cleared with the journal content and ignores drafts it cannot read', async () => {
+    const { store, journal } = await fresh();
+    await journal.saveBookDraft(bookOptionsSchema.parse({ title: 'x' }));
+    await journal.clearContent();
+    expect(await journal.getBookDraft()).toBeUndefined();
+    await store.setKey('bookDraft', { title: 42 });
+    expect(await journal.getBookDraft()).toBeUndefined();
   });
 });

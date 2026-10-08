@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { WrongPasscodeError } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
@@ -10,11 +10,16 @@ import { SettingsView } from '../components/SettingsView.tsx';
 import { StreakBadge } from '../components/common.tsx';
 import { downloadBackup } from '../lib/backup-io.ts';
 
+/** Print layout and Paged.js load only when someone opens the book builder. */
+const BookBuilder = lazy(() => import('../components/BookBuilder.tsx').then((m) => ({ default: m.BookBuilder })));
+const OrderPage = lazy(() => import('../components/OrderPage.tsx').then((m) => ({ default: m.OrderPage })));
+
 const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'home' }, label: 'Journal', icon: '📓' },
   { route: { name: 'calendar' }, label: 'Calendar', icon: '🗓️' },
   { route: { name: 'memories' }, label: 'On this day', icon: '🕰️' },
   { route: { name: 'search' }, label: 'Search', icon: '🔍' },
+  { route: { name: 'book' }, label: 'Book', icon: '📖' },
   { route: { name: 'settings' }, label: 'Settings', icon: '⚙️' },
 ];
 
@@ -31,9 +36,9 @@ export function App() {
   }, [journal, locked]);
 
   const firstRoute = useRef(true);
-  const routeKey = route.name === 'entry' ? route.id : '';
+  const routeKey = route.name === 'entry' || route.name === 'order' ? route.id : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', book: 'Make a book · Logbook', order: 'Your book order · Logbook', settings: 'Settings · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -47,7 +52,7 @@ export function App() {
 
   if (locked) return <LockScreen />;
 
-  const section = route.name === 'entry' || route.name === 'new' ? 'home' : route.name;
+  const section = route.name === 'entry' || route.name === 'new' ? 'home' : route.name === 'order' ? 'book' : route.name;
   return (
     <div className="app">
       <a className="skip-link" href="#main">
@@ -79,6 +84,16 @@ export function App() {
         {route.name === 'calendar' && <CalendarView month={route.month} />}
         {route.name === 'memories' && <Memories />}
         {route.name === 'search' && <SearchView tag={route.tag} />}
+        {route.name === 'book' && (
+          <Suspense fallback={<p className="muted">Opening the book builder…</p>}>
+            <BookBuilder />
+          </Suspense>
+        )}
+        {route.name === 'order' && (
+          <Suspense fallback={<p className="muted">Opening your order…</p>}>
+            <OrderPage key={route.id} id={route.id} cancelled={route.cancelled ?? false} />
+          </Suspense>
+        )}
         {route.name === 'settings' && <SettingsView />}
       </main>
       {route.name !== 'entry' && route.name !== 'new' && (

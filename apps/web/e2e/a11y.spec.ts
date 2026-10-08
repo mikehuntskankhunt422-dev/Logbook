@@ -11,6 +11,8 @@ async function expectNoSeriousViolations(page: Page, label: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   test(`no serious accessibility violations across views (${theme})`, async ({ page }) => {
+    // Eight axe scans plus a full book layout: more than the default 60 s on a CI runner.
+    test.slow();
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await page.goto('/');
     await expectNoSeriousViolations(page, 'empty home');
@@ -20,16 +22,34 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('img', { name: 'a.png' })).toBeVisible();
     await expectNoSeriousViolations(page, 'entry editor');
 
-    for (const path of ['/', '/#/calendar', '/#/memories', '/#/search', '/#/settings']) {
+    // Wait for each view's own heading, not 'networkidle': the book builder's preview iframes keep
+    // Playwright from ever reporting the page idle, and idle can also come before a lazy view renders.
+    const views: [string, string | RegExp][] = [
+      ['/', /Nice work today|How was today/],
+      ['/#/calendar', 'Calendar'],
+      ['/#/memories', 'On this day'],
+      ['/#/search', 'Search'],
+      ['/#/book', 'Make a book'],
+      ['/#/settings', 'Settings'],
+    ];
+    for (const [path, heading] of views) {
       await page.goto(path);
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
       await expectNoSeriousViolations(page, path);
     }
+
+    await page.goto('/#/book');
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.getByRole('button', { name: 'Make preview' }).click();
+    await expect(page.getByText(/Preview ready/)).toBeVisible({ timeout: 60_000 });
+    await expectNoSeriousViolations(page, 'book preview');
   });
 }
 
 test('keyboard users can reach the main actions with visible focus', async ({ page }) => {
   await page.goto('/');
+  // The skip link is rendered by the app, so wait until it has mounted.
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content' });
   await expect(skip).toBeFocused();

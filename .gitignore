@@ -9,6 +9,8 @@ coverage/
 .env.*
 !.env.example
 *.sqlite
+# Local order storage and database (development)
+.data/
 *.sqlite-journal
 *.db
 apps/desktop/src-tauri/target/
@@ -21,3 +23,7 @@ Thumbs.db
 
 # Third-party reference snapshots (copyright Lulu); kept locally, linked from docs/ASSUMPTIONS.md
 docs/reference/
+
+# Generated sample books (CI uploads them as artifacts)
+samples/out/
+samples/release/

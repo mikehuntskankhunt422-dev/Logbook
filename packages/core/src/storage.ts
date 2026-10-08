@@ -21,6 +21,10 @@ export type StoreName = keyof StoreRecords;
 export interface StoreKeys {
   settings: unknown;
   vault: Vault;
+  /** The book builder's last settings: plaintext, or a SealedRecord when a passcode is on. */
+  bookDraft: unknown;
+  /** Print orders' IDs and secret tokens: plaintext, or a SealedRecord when a passcode is on. */
+  bookOrders: unknown;
 }
 
 /**

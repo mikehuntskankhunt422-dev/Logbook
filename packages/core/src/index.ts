@@ -9,3 +9,4 @@ export * from './journal.ts';
 export * from './backup.ts';
 export * from './search.ts';
 export * from './media.ts';
+export * from './print/index.ts';

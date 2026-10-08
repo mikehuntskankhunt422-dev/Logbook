@@ -1,9 +1,19 @@
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 
+const require = createRequire(import.meta.url);
+
 export default defineConfig({
+  resolve: {
+    alias: [
+      // Paged.js 0.4.3 (D34) runs inside the book preview iframe; its package exports hide dist/.
+      { find: /^pagedjs-polyfill(?=\?|$)/, replacement: join(dirname(dirname(require.resolve('pagedjs'))), 'dist', 'paged.polyfill.min.js') },
+    ],
+  },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
   },
@@ -35,12 +45,22 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,webmanifest}'],
+        // pdf.js shows proofs on the order page, which needs a connection anyway: not worth every install's offline cache.
+        globIgnores: ['**/pdf-*.js', '**/pdf.worker*'],
         navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         cleanupOutdatedCaches: true,
       },
     }),
   ],
+  // `npm run dev -w @logbook/server` serves the API (cover sizes, quotes, orders) on port 4242; the
+  // e2e tests start it too. Without it the builder falls back to its estimates.
+  server: {
+    proxy: { '/api': 'http://127.0.0.1:4242' },
+  },
+  preview: {
+    proxy: { '/api': 'http://127.0.0.1:4242' },
+  },
   build: {
     target: 'es2022',
     sourcemap: true,
