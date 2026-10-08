@@ -15,7 +15,10 @@ const DB_VERSION = 1;
 export class IndexedDbStore implements RecordStore {
   readonly kind = 'indexeddb' as const;
 
-  private constructor(private db: IDBPDatabase<LogbookDB>) {}
+  private db: IDBPDatabase<LogbookDB>;
+  private constructor(db: IDBPDatabase<LogbookDB>) {
+    this.db = db;
+  }
 
   static async open(name = 'logbook'): Promise<IndexedDbStore> {
     const db = await openDB<LogbookDB>(name, DB_VERSION, {

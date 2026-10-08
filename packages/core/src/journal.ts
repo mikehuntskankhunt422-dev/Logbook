@@ -45,7 +45,10 @@ export class Journal {
   /** Records that failed validation on the last load; surfaced in Settings rather than silently dropped. */
   issues: LoadIssue[] = [];
 
-  private constructor(readonly store: RecordStore) {}
+  readonly store: RecordStore;
+  private constructor(store: RecordStore) {
+    this.store = store;
+  }
 
   static async open(store: RecordStore): Promise<Journal> {
     const j = new Journal(store);
@@ -445,12 +448,13 @@ export class Journal {
 }
 
 export class ConflictError extends Error {
-  constructor(
-    readonly id: string,
-    readonly current: Entry,
-  ) {
+  readonly id: string;
+  readonly current: Entry;
+  constructor(id: string, current: Entry) {
     super('This entry was changed somewhere else.');
     this.name = 'ConflictError';
+    this.id = id;
+    this.current = current;
   }
 }
 

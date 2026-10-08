@@ -134,7 +134,10 @@ export function isSealedBlob(bytes: Uint8Array): boolean {
 
 /** Holds the unwrapped data key. The key is non-extractable; dropping the Cipher is "locking". */
 export class Cipher {
-  constructor(private readonly key: CryptoKey) {}
+  private readonly key: CryptoKey;
+  constructor(key: CryptoKey) {
+    this.key = key;
+  }
 
   /** The record id is bound as associated data, so ciphertexts can't be swapped between records. */
   async sealJson(scope: string, id: string, value: unknown): Promise<SealedRecord> {
