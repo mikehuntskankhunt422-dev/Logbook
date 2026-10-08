@@ -41,7 +41,13 @@ export async function openPdf(url: string, opts: { signal?: AbortSignal; onProgr
     at += c.length;
   }
   const m = await pdfjs();
-  return m.getDocument({ data }).promise;
+  const doc = await m.getDocument({ data }).promise;
+  // Finished after the viewer went away: free its worker rather than keep the PDF in memory.
+  if (opts.signal?.aborted) {
+    void doc.loadingTask.destroy();
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  return doc;
 }
 
 /** Draws page `n` (1-based) `cssWidth` CSS pixels wide, sharp on high-density screens. */
@@ -53,6 +59,7 @@ export async function drawPage(doc: PDFDocumentProxy, n: number, canvas: HTMLCan
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
   canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
+  // The height follows the canvas's own proportions, so a narrower box can't squash the page.
+  canvas.style.height = 'auto';
   return page.render({ canvas, viewport });
 }

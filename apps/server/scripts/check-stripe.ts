@@ -39,6 +39,7 @@ import { CheckoutService } from '../src/orders/checkout.ts';
 import { OrderDb, type Order } from '../src/orders/db.ts';
 import type { OrderState } from '../src/orders/machine.ts';
 import { StripeGateway, type CheckoutSession } from '../src/payments/stripe.ts';
+import { LocalStore } from '../src/storage/local.ts';
 import { Quoter } from '../src/pricing/quote.ts';
 
 const CARDS = {
@@ -72,15 +73,20 @@ const SITE = 'http://localhost:4173/';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A prepared order (print files made and checked), as "Prepare my book" leaves it. */
-function newOrder(db: OrderDb, id: string, token: string) {
+async function newOrder(driver: Driver, id: string, token: string) {
+  const { db, store } = driver;
   db.create({ id, tokenHash: createHash('sha256').update(token).digest('hex'), podPackageId: podPackageId(PRODUCT), product: PRODUCT, uploads: [] });
   db.update(id, { pages: 200, stage: null });
+  // Checkout is refused once the print files are gone (D65), so the API's storage needs some.
+  for (const f of ['interior', 'cover']) await store?.put(`orders/${id}/print/${f}.pdf`, new TextEncoder().encode('%PDF-1.7 stripe:check stand-in'));
   db.move(id, 'quoted', 'job:prepare');
 }
 
 /** How a run quotes, opens Checkout and gets Stripe's verdict to the order. */
 interface Driver {
   db: OrderDb;
+  /** The API's storage, where it looks for the print files (--listen only). */
+  store?: LocalStore;
   quote(id: string, token: string): Promise<Order>;
   checkout(id: string, token: string, quoteVersion: number): Promise<string>;
   /** Waits until the order reaches `state` through Stripe's `type` event; returns how it got there. */
@@ -107,7 +113,7 @@ async function localDriver(): Promise<Driver> {
         }
         await sleep(1500);
       }
-      return `no ${type} event found`;
+      throw new Error(`no ${type} event found for ${session}`);
     },
     close: async () => db.close(),
   };
@@ -181,6 +187,7 @@ async function listenDriver(): Promise<Driver> {
   const events = 'checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired';
   const forward = await start(cli, ['listen', '--events', events, '--forward-to', `${base}/api/stripe/webhook`], cliEnv, /Ready!/, 'stripe listen', children);
   const db = new OrderDb(env.DATABASE_PATH);
+  const store = new LocalStore(env.LOCAL_STORAGE_DIR);
   const call = async <T>(path: string, token: string, body: unknown): Promise<T> => {
     const res = await fetch(`${base}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const json = (await res.json()) as T & { error?: string };
@@ -189,6 +196,7 @@ async function listenDriver(): Promise<Driver> {
   };
   return {
     db,
+    store,
     async quote(id, token) {
       await call(`/api/orders/${id}/quote`, token, { country });
       return db.get(id)!;
@@ -201,7 +209,7 @@ async function listenDriver(): Promise<Driver> {
         if (row && o.state === state) return `webhook ${row.id.slice(0, 8)}… delivered by stripe listen → ${row.outcome}`;
         await sleep(1000);
       }
-      return `no ${type} webhook for ${session} within a minute`;
+      throw new Error(`no ${type} webhook for ${session} within a minute`);
     },
     async close() {
       db.close();
@@ -270,7 +278,7 @@ async function run(card: Card, driver: Driver, browser: Browser | null) {
   const { db } = driver;
   const id = `ord_check_${card}_${randomBytes(4).toString('hex')}`;
   const token = randomBytes(24).toString('base64url');
-  newOrder(db, id, token);
+  await newOrder(driver, id, token);
   const quoted = await driver.quote(id, token);
   const url = await driver.checkout(id, token, quoted.quote!.version);
   const sessionId = db.get(id)!.checkout!.sessionId;
@@ -317,7 +325,28 @@ async function run(card: Card, driver: Driver, browser: Browser | null) {
   }
   result.state = db.get(id)!.state;
   result.events = db.events(id).map((e) => `${e.from}→${e.to} (${e.cause.replace(/evt_\w+/, 'evt_…')})`);
-  return result;
+  return { ...result, problems: check(card, result) };
+}
+
+/** What each card must end in ("Done when", M3 §4); an empty list means it did. */
+function check(card: Card, r: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+  const expect = (ok: boolean, what: string) => ok || problems.push(what);
+  const stripeSide = r['stripe'] as { status?: string; payment_status?: string } | undefined;
+  const events = (r['events'] as string[] | undefined) ?? [];
+  if (card === 'decline') {
+    expect(stripeSide?.status === 'open' && stripeSide.payment_status === 'unpaid', 'Stripe kept the declined page open and unpaid');
+    expect(r['afterDecline'] === 'awaiting_payment', 'the order stayed awaiting_payment after the decline');
+    expect(r['state'] === 'quoted' && events.at(-1) === 'awaiting_payment→quoted (stripe:evt_…)', 'the expired page returned the order to quoted, through Stripe\'s event');
+  } else {
+    expect(stripeSide?.status === 'complete' && stripeSide.payment_status === 'paid', 'Stripe reports the session complete and paid');
+    expect(String(r['returnedTo'] ?? '').includes('#/order/'), 'Stripe returned the customer to the order page');
+    expect(r['state'] === 'paid' && events.at(-1) === 'awaiting_payment→paid (stripe:evt_…)', 'the order is paid, through Stripe\'s event');
+    if (!listen) expect(r['replay'] === 'event duplicate', 'the same event again changed nothing');
+    const p = r['payment'] as { shippingLevel?: string | null; country?: string | null; hasPhone?: boolean; hasEmail?: boolean } | null;
+    expect(Boolean(p?.shippingLevel && p.country === country && p.hasPhone && p.hasEmail), 'the payment has a shipping level, the address, phone and email');
+  }
+  return problems.map((p) => `expected: ${p}`);
 }
 
 const driver = listen ? await listenDriver().catch((err: unknown) => {
@@ -325,15 +354,22 @@ const driver = listen ? await listenDriver().catch((err: unknown) => {
   process.exit(1);
 }) : await localDriver();
 const browser = openOnly ? null : await chromium.launch({ executablePath: config.chromiumPath });
+const failed: string[] = [];
 try {
   for (const card of only ? [only] : (Object.keys(CARDS) as Card[])) {
     try {
-      console.log(JSON.stringify(await run(card, driver, browser), null, 2));
+      const result = await run(card, driver, browser);
+      console.log(JSON.stringify(result, null, 2));
+      if ((result as { problems?: string[] }).problems?.length) failed.push(card);
     } catch (err) {
       console.log(JSON.stringify({ card, error: String(err).slice(0, 500) }, null, 2));
+      failed.push(card);
     }
   }
 } finally {
   await browser?.close();
   await driver.close();
 }
+if (!openOnly) console.log(failed.length ? `✗ Not as expected: ${failed.join(', ')}` : '✓ Every card ended as expected');
+// A wrong state or a missing event fails the run (and CI, should it ever run this).
+process.exitCode = failed.length ? 1 : 0;

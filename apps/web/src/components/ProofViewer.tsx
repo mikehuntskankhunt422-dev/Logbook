@@ -23,28 +23,46 @@ export function ProofViewer({ orderId, interior, cover }: { orderId: string; int
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
 
-  // Load the shown file the first time it's needed, once per order.
+  // Each file loads the first time it's shown, once per order, and keeps loading while the other is
+  // shown. Leaving the page aborts what's loading and frees pdf.js's workers (each holds a whole PDF).
   const current = docs[which];
+  const loads = useRef(new Map<Which, AbortController>());
+  const opened = useRef<PDFDocumentProxy[]>([]);
   useEffect(() => {
-    if (current) return;
+    if (loads.current.has(which)) return;
     const abort = new AbortController();
+    loads.current.set(which, abort);
     const set = (l: Loaded) => setDocs((d) => ({ ...d, [which]: l }));
     set({ kind: 'loading', received: 0, total: null });
     openPdf(urls.current[which], { signal: abort.signal, onProgress: (received, total) => set({ kind: 'loading', received, total }) }).then(
-      (doc) => set({ kind: 'ready', doc }),
+      (doc) => {
+        opened.current.push(doc);
+        set({ kind: 'ready', doc });
+      },
       () => !abort.signal.aborted && set({ kind: 'failed' }),
     );
-    return () => abort.abort();
-    // `current` is read only to skip loaded files; reloading on new signed links is what this avoids.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, which]);
+  useEffect(
+    () => () => {
+      for (const a of loads.current.values()) a.abort();
+      loads.current.clear();
+      for (const d of opened.current.splice(0)) void d.loadingTask.destroy();
+      setDocs({ pages: undefined, cover: undefined });
+    },
+    [],
+  );
 
+  // The canvas fits the box's content width (inside its padding), so pages keep their proportions.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      setWidth(Math.floor(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)));
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setWidth(el.clientWidth);
+    measure();
     return () => ro.disconnect();
   }, []);
 

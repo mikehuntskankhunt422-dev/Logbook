@@ -164,6 +164,35 @@ test('order: back from Stripe through a dropped connection, the page keeps askin
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+/** The drawn size's proportions against the canvas's own (the PDF page's), as a ratio: 1 = undistorted. */
+function distortion(c: HTMLCanvasElement): number {
+  return c.clientWidth / c.clientHeight / (c.width / c.height);
+}
+
+test('order: the proof keeps its proportions on a phone, and switching mid-download still loads both', async ({ page }) => {
+  test.slow();
+  const id = await preparedOrder(page);
+  await page.setViewportSize({ width: 412, height: 915 });
+  // The pages arrive slowly, so the customer switches to the cover while they're still loading.
+  let slow = true;
+  await page.route('**/api/local-storage/orders/**/interior.pdf**', async (route) => {
+    if (slow) await new Promise((r) => setTimeout(r, 3000));
+    slow = false;
+    await route.continue();
+  });
+  await page.reload();
+  await expect(page.getByText(/Loading the pages/)).toBeVisible();
+  await page.getByRole('button', { name: 'Cover', exact: true }).click();
+  const coverImg = page.getByRole('img', { name: 'The cover: back, spine and front' });
+  await expect(coverImg).toBeVisible({ timeout: 30_000 });
+  expect(await coverImg.evaluate(distortion)).toBeCloseTo(1, 2);
+  await page.getByRole('button', { name: 'Pages', exact: true }).click();
+  const first = page.getByRole('img', { name: `Page 1 of 32` });
+  await expect(first).toBeVisible({ timeout: 30_000 });
+  expect(await first.evaluate(distortion)).toBeCloseTo(1, 2);
+  expect(page.url()).toContain(id);
+});
+
 test('order: an order from another browser', async ({ page }) => {
   await page.goto('/#/order/ord_not_here');
   await expect(page.getByText("This order isn't saved in this browser.")).toBeVisible();
