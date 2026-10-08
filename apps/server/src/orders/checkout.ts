@@ -3,7 +3,8 @@ import { LuluError } from '../lulu/client.ts';
 import type { Quoter } from '../pricing/quote.ts';
 import { StripeApiError, StripeSignatureError, type CheckoutParams, type CheckoutSession, type StripeEvent, type StripeGateway } from '../payments/stripe.ts';
 import type { CheckoutRef, Order, OrderDb, Payment, StoredQuote } from './db.ts';
-import { OrderError } from './service.ts';
+import type { ObjectStore } from '../storage/store.ts';
+import { OrderError, printFilesExist } from './service.ts';
 
 /** Stripe's page for an order stays open this long (Stripe's minimum is 30 minutes). */
 export const CHECKOUT_TTL_MIN = 60;
@@ -31,6 +32,8 @@ export class PriceChangedError extends OrderError {
 
 export interface CheckoutDeps {
   db: OrderDb;
+  /** Where the print files are: a book is paid for only while they still exist. */
+  store?: ObjectStore;
   quoter?: Quoter;
   stripe?: StripeGateway;
   taxEnabled: boolean;
@@ -234,6 +237,9 @@ export class CheckoutService {
       if (o.state !== 'quoted') throw new OrderError(this.notPayable(o), 409);
       if (!o.quote) throw new OrderError('Choose where to send the book first.', 409);
       if (o.quote.version !== input.quoteVersion) throw new PriceChangedError();
+      if (this.deps.store && !(await printFilesExist(this.deps.store, o.id))) {
+        throw new OrderError("The print files have been deleted (they're kept for 7 days). Prepare the book again to order it.", 410);
+      }
       if (now.getTime() - Date.parse(o.quote.at) > QUOTE_MAX_AGE_MS) {
         await this.priceFor(o, { country: o.quote.country, state: o.quote.state }, 'job:requote');
         throw new PriceChangedError('The price was more than a day old, so it has been checked again. Please look it over before paying.');

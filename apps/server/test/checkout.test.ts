@@ -154,7 +154,8 @@ async function setup() {
   const db = new OrderDb(':memory:');
   const stripe = fakeStripe();
   const clock = { now: new Date('2026-10-08T10:00:00Z') };
-  const app = buildApp(loadConfig({}), { logger: false, store: new LocalStore(mkdtempSync(join(tmpdir(), 'logbook-checkout-'))), db, lulu: fakeLulu(), stripe: stripe.gateway, now: () => clock.now });
+  const store = new LocalStore(mkdtempSync(join(tmpdir(), 'logbook-checkout-')));
+  const app = buildApp(loadConfig({}), { logger: false, store, db, lulu: fakeLulu(), stripe: stripe.gateway, now: () => clock.now });
   apps.push(app);
   await app.ready();
   // An order whose print files are made and checked: 200 pages, $49.99 (PLAN §7).
@@ -162,12 +163,13 @@ async function setup() {
   db.create({ id: 'ord_1', tokenHash: sha(token), podPackageId: PB, product: PRODUCT, uploads: [] });
   db.update('ord_1', { pages: 200, bookCents: 4999, stage: null });
   db.move('ord_1', 'quoted', 'job:prepare');
+  for (const f of ['interior', 'cover']) await store.put(`orders/ord_1/print/${f}.pdf`, new TextEncoder().encode('%PDF-1.7 fake'));
   const auth = { authorization: `Bearer ${token}` };
   const view = async () => (await app.inject({ method: 'GET', url: '/api/orders/ord_1', headers: auth })).json();
   const quote = (country: string) => app.inject({ method: 'POST', url: '/api/orders/ord_1/quote', headers: auth, payload: { country } });
   const pay = (body: Record<string, unknown> = {}) => app.inject({ method: 'POST', url: '/api/orders/ord_1/checkout', headers: auth, payload: { quoteVersion: 1, returnUrl: SITE, checked: true, ...body } });
   const hook = (e: ReturnType<typeof signed>) => app.inject({ method: 'POST', url: '/api/stripe/webhook', headers: e.headers, payload: e.payload });
-  return { app, db, stripe, clock, view, quote, pay, hook };
+  return { app, db, store, stripe, clock, view, quote, pay, hook };
 }
 
 describe('quote for a destination (M3 slice D)', () => {
@@ -265,6 +267,17 @@ describe('Stripe Checkout (M3 slice E)', () => {
     expect((await pay({ returnUrl: 'javascript:alert(1)' })).statusCode).toBe(400);
     const stale = await pay({ quoteVersion: 7 });
     expect([stale.statusCode, stale.json().error]).toEqual([409, 'The price has changed since this page was loaded. Please check it again.']);
+    expect(stripe.calls.filter((c) => c.method === 'POST')).toEqual([]);
+  });
+
+  it('stops offering the proof, and payment, once the print files are deleted', async () => {
+    const { quote, pay, view, store, stripe } = await setup();
+    await quote('AU');
+    expect((await view()).proof).not.toBeNull();
+    await store.deletePrefix('orders/ord_1/print/');
+    expect((await view()).proof).toBeNull();
+    const res = await pay();
+    expect([res.statusCode, res.json().error]).toEqual([410, "The print files have been deleted (they're kept for 7 days). Prepare the book again to order it."]);
     expect(stripe.calls.filter((c) => c.method === 'POST')).toEqual([]);
   });
 

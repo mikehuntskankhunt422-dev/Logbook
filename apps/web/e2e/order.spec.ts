@@ -45,6 +45,7 @@ async function preparedOrder(page: Page): Promise<string> {
   // The page prices the guessed country at once; the e2e API has no Lulu, so it says so. Waiting for
   // that keeps its answer from landing after the stand-ins below are in place.
   await expect(page.getByText('Prices are not available on this server.')).toBeVisible();
+  await expect(page.getByLabel('Country')).toHaveAttribute('aria-invalid', 'true');
   return /#\/order\/([\w-]+)/.exec(page.url())![1]!;
 }
 
@@ -54,7 +55,7 @@ async function preparedOrder(page: Page): Promise<string> {
  */
 async function fakePayments(page: Page, orderId: string) {
   const sent: { path: string; body: unknown }[] = [];
-  const mock = { state: 'quoted', quote: null as null | Record<string, unknown>, version: 0 };
+  const mock = { state: 'quoted', quote: null as null | Record<string, unknown>, version: 0, dropReads: 0 };
   const merge = async (route: Route) => {
     const url = route.request().url().replace(/\/(quote|checkout)$/, '');
     const real = (await (await page.request.get(url, { headers: { authorization: route.request().headers()['authorization']! } })).json()) as Record<string, unknown>;
@@ -74,6 +75,10 @@ async function fakePayments(page: Page, orderId: string) {
       mock.state = 'paid';
       // Stripe's success_url: a full page load back on the order page.
       return route.fulfill({ json: { url: `http://localhost:4173/?from=stripe#/order/${orderId}` } });
+    }
+    if (mock.dropReads > 0) {
+      mock.dropReads--;
+      return route.abort('internetdisconnected');
     }
     return route.fulfill({ json: await merge(route) });
   });
@@ -103,12 +108,12 @@ test('order: proof, destination and price, the required check, Stripe, and back'
   await expect(page.getByRole('img', { name: 'Page 2 of 32' })).toBeVisible();
   // en-US: the United States is guessed and priced straight away.
   await expect(page.getByLabel('Country')).toHaveValue('US');
-  await expect(page.getByText('Total from $32.49')).toBeVisible();
+  await expect(page.getByText('Total from $32.49', { exact: true })).toBeVisible();
 
   await page.getByLabel('Country').selectOption('AU');
   await expect(page.getByText('Australia Post Express Post Parcel')).toBeVisible();
   await expect(page.getByText('6–7 business days')).toBeVisible();
-  await expect(page.getByText('Total from $34.99')).toBeVisible();
+  await expect(page.getByText('Total from $34.99', { exact: true })).toBeVisible();
   await expect(page.getByText(/Any tax is worked out from your address/)).toBeVisible();
 
   const axe = await new AxeBuilder({ page }).include('.order-page').withTags(['wcag2a', 'wcag2aa']).analyze();
@@ -138,7 +143,25 @@ test('order: back from Stripe without paying', async ({ page }) => {
   await page.goto(`/#/order/${id}?cancelled=1`);
   await expect(page.getByText('You left the payment page, so nothing was charged.')).toBeVisible();
   await expect(page.getByLabel('Country')).toHaveValue('AU');
-  await expect(page.getByText('Total from $34.99')).toBeVisible();
+  await expect(page.getByText('Total from $34.99', { exact: true })).toBeVisible();
+});
+
+test('order: back from Stripe through a dropped connection, the page keeps asking until it’s paid', async ({ page }) => {
+  test.slow();
+  const id = await preparedOrder(page);
+  const { mock } = await fakePayments(page, id);
+  mock.quote = { version: 1, at: new Date().toISOString(), country: 'AU', ...QUOTES['AU'] };
+  mock.state = 'awaiting_payment';
+  await page.reload();
+  await expect(page.getByText(/Waiting for Stripe to confirm your payment/)).toBeVisible();
+  // The connection drops twice; meanwhile the webhook marks the order paid.
+  mock.dropReads = 2;
+  mock.state = 'paid';
+  await expect(page.getByRole('alert').filter({ hasText: /Couldn't reach Logbook's print service/ })).toBeVisible();
+  const paid = page.getByRole('heading', { name: "Thank you, it's paid" });
+  await expect(paid).toBeVisible({ timeout: 30_000 });
+  await expect(paid).toBeFocused();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('order: an order from another browser', async ({ page }) => {

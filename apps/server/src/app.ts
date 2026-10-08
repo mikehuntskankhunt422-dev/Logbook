@@ -53,7 +53,7 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
   const stripe = opts.stripe ?? (config.stripe ? new StripeGateway(config.stripe.secretKey, config.stripe.webhookSecret) : undefined);
   const checkout =
     orders && db
-      ? new CheckoutService({ db, quoter, stripe, taxEnabled: config.stripe?.taxEnabled ?? false, webOrigins: config.webOrigins, allowLoopbackReturn: config.mode === 'test', log: app.log, now: opts.now })
+      ? new CheckoutService({ db, store, quoter, stripe, taxEnabled: config.stripe?.taxEnabled ?? false, webOrigins: config.webOrigins, allowLoopbackReturn: config.mode === 'test', log: app.log, now: opts.now })
       : undefined;
   registerOrderRoutes(app, orders, store, config.webOrigins, undefined, checkout);
   if (orders && db) {

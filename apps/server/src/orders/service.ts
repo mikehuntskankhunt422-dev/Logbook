@@ -78,6 +78,15 @@ const uploadKey = (id: string, path: string) => `orders/${id}/upload/${path}`;
 const printKey = (id: string, file: 'interior' | 'cover') => `orders/${id}/print/${file}.pdf`;
 
 /**
+ * Whether the order's print files are still in storage. They go 7 days after they were made (the
+ * bucket's lifecycle rule) or after the order sat idle that long (the sweep), whichever is first.
+ */
+export async function printFilesExist(store: ObjectStore, id: string): Promise<boolean> {
+  const [interior, cover] = await Promise.all([store.size(printKey(id, 'interior')), store.size(printKey(id, 'cover'))]);
+  return interior !== null && cover !== null;
+}
+
+/**
  * Orders from upload to quote (PLAN §1.5 steps 2–3). The client uploads straight to storage with
  * signed URLs; the server checks every file against the hashes it was promised, renders, asks Lulu
  * to validate, and prices from Lulu's live cost. Content never reaches the database or the logs.
@@ -129,7 +138,8 @@ export class OrderService {
   }
 
   async view(order: Order): Promise<OrderView> {
-    const hasPrint = order.pages !== null && order.state !== 'failed';
+    // Links only to files that are still there: after the 7-day deletion the page says so instead.
+    const hasPrint = order.pages !== null && order.state !== 'failed' && (await printFilesExist(this.deps.store, order.id));
     return {
       id: order.id,
       state: order.state,

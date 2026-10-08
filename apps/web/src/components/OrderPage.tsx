@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { productLabel, SHIP_COUNTRIES, type BookOrderRef } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
@@ -18,6 +18,10 @@ const PREPARING: Record<string, string> = {
 const PAID_STATES = ['paid', 'files_generated', 'files_validated', 'submitted_to_lulu', 'in_production', 'shipped', 'delivered'];
 /** After coming back from Stripe, how long to keep asking whether the payment has been confirmed. */
 const CONFIRM_POLLS = 40;
+/** Proof links last an hour (PROOF_TTL_S); the page fetches fresh ones before they run out. */
+const LINK_REFRESH_MS = 50 * 60 * 1000;
+/** Typing in the closed country list changes it per keystroke; price only once it settles. */
+const QUOTE_DELAY_MS = 600;
 
 const message = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong.');
 
@@ -49,6 +53,11 @@ export function OrderPage({ id, cancelled }: { id: string; cancelled: boolean })
   const [ref, setRef] = useState<BookOrderRef | null | undefined>(undefined);
   const [order, setOrder] = useState<OrderView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Bumped to load again now: "Try again", or the page coming back from the back/forward cache. */
+  const [visit, setVisit] = useState(0);
+  // Seen waiting for payment in this visit, so "paid" can be announced when it arrives.
+  const [sawWaiting, setSawWaiting] = useState(false);
+  if (order?.state === 'awaiting_payment' && !sawWaiting) setSawWaiting(true);
 
   useEffect(() => {
     let alive = true;
@@ -58,30 +67,55 @@ export function OrderPage({ id, cancelled }: { id: string; cancelled: boolean })
     };
   }, [journal, id]);
 
+  // Back from Stripe with the browser's Back button can restore this page as it was left
+  // ("Opening the payment page…"); start it afresh and re-read the order.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => e.persisted && setVisit((v) => v + 1);
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+
   useEffect(() => {
     if (!ref) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let polls = 0;
+    let failures = 0;
+    let loadedAt = 0;
+    const later = (ms: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => void load(), ms);
+    };
     const load = async () => {
       try {
         const view = await getOrder(ref.id, ref.token);
         if (!alive) return;
+        failures = 0;
+        loadedAt = Date.now();
         setOrder(view);
         setLoadError(null);
-        // Keep asking while the print files are being made, or while a payment is being confirmed.
+        // Keep asking while the print files are being made, or while a payment is being confirmed;
+        // otherwise come back for fresh proof links before these expire.
         const confirming = view.state === 'awaiting_payment' && !cancelled && polls++ < CONFIRM_POLLS;
-        if (view.state === 'draft' || confirming) timer = setTimeout(() => void load(), view.state === 'draft' ? 1500 : 3000);
+        if (view.state === 'draft' || confirming) later(view.state === 'draft' ? 1500 : 3000);
+        else if (view.proof) later(LINK_REFRESH_MS);
       } catch (err) {
-        if (alive) setLoadError(message(err));
+        if (!alive) return;
+        setLoadError(message(err));
+        // A dropped connection or a restarting server mustn't strand the page; a missing order will stay missing.
+        if (!(err instanceof ApiError) || err.status === 0 || err.status === 429 || err.status >= 500) later(Math.min(30_000, 2000 * 2 ** Math.min(++failures, 4)));
       }
     };
+    // A tab left in the background may have missed the refresh (timers are throttled there).
+    const onVisible = () => document.visibilityState === 'visible' && loadedAt && Date.now() - loadedAt > LINK_REFRESH_MS && void load();
+    document.addEventListener('visibilitychange', onVisible);
     void load();
     return () => {
       alive = false;
       clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [ref, cancelled]);
+  }, [ref, cancelled, visit]);
 
   return (
     <div className="order-page">
@@ -94,16 +128,19 @@ export function OrderPage({ id, cancelled }: { id: string; cancelled: boolean })
         <p className="notice">This order isn't saved in this browser. Orders can be opened only from the browser that prepared them.</p>
       )}
       {loadError && (
-        <p className="notice notice-warn" role="alert">
-          {loadError}
-        </p>
+        <div className="notice notice-warn row" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-small" onClick={() => setVisit((v) => v + 1)}>
+            Try again
+          </button>
+        </div>
       )}
-      {ref && order && <OrderBody order={order} orderRef={ref} cancelled={cancelled} onChange={setOrder} />}
+      {ref && order && <OrderBody key={visit} order={order} orderRef={ref} cancelled={cancelled} announcePaid={sawWaiting} onChange={setOrder} />}
     </div>
   );
 }
 
-function OrderBody({ order, orderRef, cancelled, onChange }: { order: OrderView; orderRef: BookOrderRef; cancelled: boolean; onChange: (o: OrderView) => void }) {
+function OrderBody({ order, orderRef, cancelled, announcePaid, onChange }: { order: OrderView; orderRef: BookOrderRef; cancelled: boolean; announcePaid: boolean; onChange: (o: OrderView) => void }) {
   if (order.state === 'draft') {
     return (
       <p className="hint" role="status" aria-live="polite">
@@ -118,7 +155,7 @@ function OrderBody({ order, orderRef, cancelled, onChange }: { order: OrderView;
       </p>
     );
   }
-  if (PAID_STATES.includes(order.state)) return <Paid order={order} />;
+  if (PAID_STATES.includes(order.state)) return <Paid order={order} announce={announcePaid} />;
   if (order.state === 'needs_attention') return <p className="notice notice-warn">Something went wrong after your payment. We've been told and will sort it out with you by email.</p>;
   if (order.state === 'refunded') return <p className="notice">This order was cancelled and your payment refunded.</p>;
   return <ProofAndPay order={order} orderRef={orderRef} cancelled={cancelled} onChange={onChange} />;
@@ -171,38 +208,48 @@ function ProofAndPay({ order, orderRef, cancelled, onChange }: { order: OrderVie
     if (order.quote) setCountry(order.quote.country);
   }
   const [checked, setChecked] = useState(false);
-  const [busy, setBusy] = useState<'quote' | 'pay' | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [quoting, setQuoting] = useState(false);
+  const [quoteProblem, setQuoteProblem] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const latest = useRef(0);
+  const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const price = async (code: string) => {
+  /**
+   * Prices `code` after `delay` ms. The list stays usable meanwhile (typing a country's name changes
+   * it per keystroke), and only the newest request's answer is shown: the server keeps that one too.
+   */
+  const price = (code: string, delay = 0) => {
+    clearTimeout(pending.current);
+    setQuoteProblem(null);
     if (!code) return;
-    setBusy('quote');
-    setProblem(null);
-    try {
-      onChange(await quoteOrder(orderRef.id, orderRef.token, code));
-    } catch (err) {
-      setProblem(message(err));
-    } finally {
-      setBusy(null);
-    }
+    pending.current = setTimeout(() => {
+      const mine = ++latest.current;
+      setQuoting(true);
+      quoteOrder(orderRef.id, orderRef.token, code).then(
+        (view) => mine === latest.current && onChange(view),
+        (err: unknown) => mine === latest.current && setQuoteProblem(message(err)),
+      ).finally(() => mine === latest.current && setQuoting(false));
+    }, delay);
   };
+  useEffect(() => () => clearTimeout(pending.current), []);
 
   // Price the guessed country straight away, so the page opens with real numbers.
   useEffect(() => {
-    if (!order.quote && country) void price(country);
+    if (!order.quote && country) price(country);
     // Only on first show.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pay = async () => {
     if (!order.quote) return;
-    setBusy('pay');
+    setPaying(true);
     setProblem(null);
     try {
       const { url } = await checkoutOrder(orderRef.id, orderRef.token, { quoteVersion: order.quote.version, returnUrl: `${location.origin}${location.pathname}`, checked });
       location.assign(url);
     } catch (err) {
-      setBusy(null);
+      setPaying(false);
       setProblem(message(err));
       // The price may have moved (409): show the current one.
       if (err instanceof ApiError && err.status === 409) onChange(await getOrder(orderRef.id, orderRef.token).catch(() => order));
@@ -210,6 +257,7 @@ function ProofAndPay({ order, orderRef, cancelled, onChange }: { order: OrderVie
   };
 
   const quote = order.quote?.country === country ? order.quote : null;
+  const countryName = countries.find((c) => c.code === country)?.name ?? country;
   const cheapest = quote?.shipping.reduce((m, s) => Math.min(m, s.priceCents), Number.POSITIVE_INFINITY);
   const duties = quote?.shipping.some((s) => /\bDDU\b/i.test(s.name));
   const waiting = order.state === 'awaiting_payment';
@@ -232,10 +280,11 @@ function ProofAndPay({ order, orderRef, cancelled, onChange }: { order: OrderVie
           <select
             id="ship-country"
             value={country}
-            disabled={busy !== null}
+            aria-describedby={quoteProblem ? 'quote-problem' : undefined}
+            aria-invalid={quoteProblem ? true : undefined}
             onChange={(e) => {
               setCountry(e.target.value);
-              void price(e.target.value);
+              price(e.target.value, QUOTE_DELAY_MS);
             }}
           >
             <option value="">Choose a country…</option>
@@ -247,8 +296,16 @@ function ProofAndPay({ order, orderRef, cancelled, onChange }: { order: OrderVie
           </select>
         </div>
         <p className="hint" role="status" aria-live="polite">
-          {busy === 'quote' && 'Asking the printer for prices…'}
+          {quoting ? 'Asking the printer for prices…' : quote && <span className="sr-only">Total from {formatUsd(quote.bookCents + (cheapest ?? 0))} to {countryName}.</span>}
         </p>
+        {quoteProblem && (
+          <div className="notice notice-warn row" id="quote-problem" role="alert">
+            <span>{quoteProblem}</span>
+            <button type="button" className="btn btn-small" onClick={() => price(country)}>
+              Try again
+            </button>
+          </div>
+        )}
         {quote && (
           <div className="order-price">
             <dl>
@@ -292,8 +349,8 @@ function ProofAndPay({ order, orderRef, cancelled, onChange }: { order: OrderVie
           </p>
         )}
         <p>
-          <button type="button" className="btn btn-primary" disabled={!quote || !checked || busy !== null || !order.proof} onClick={() => void pay()}>
-            {busy === 'pay' ? 'Opening the payment page…' : 'Continue to payment'}
+          <button type="button" className="btn btn-primary" disabled={!quote || !checked || quoting || paying || !order.proof} onClick={() => void pay()}>
+            {paying ? 'Opening the payment page…' : 'Continue to payment'}
           </button>
         </p>
         <p className="hint">Payment is taken by Stripe on its own page. Logbook never sees your card.</p>
@@ -302,11 +359,18 @@ function ProofAndPay({ order, orderRef, cancelled, onChange }: { order: OrderVie
   );
 }
 
-function Paid({ order }: { order: OrderView }) {
+function Paid({ order, announce }: { order: OrderView; announce: boolean }) {
   const paid = order.paid;
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Arriving here from "waiting for payment": take screen-reader and keyboard users to the news.
+  useEffect(() => {
+    if (announce) heading.current?.focus();
+  }, [announce]);
   return (
     <section aria-labelledby="paid-h">
-      <h2 id="paid-h">Thank you, it's paid</h2>
+      <h2 id="paid-h" ref={heading} tabIndex={-1}>
+        Thank you, it's paid
+      </h2>
       {paid && (
         <p>
           You paid <strong>{formatUsd(paid.amountTotalCents)}</strong>
