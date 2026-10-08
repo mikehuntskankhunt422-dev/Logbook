@@ -21,3 +21,5 @@ Thumbs.db
 
 # Third-party reference snapshots (copyright Lulu); kept locally, linked from docs/ASSUMPTIONS.md
 docs/reference/
+__pycache__/
+*.pyc
