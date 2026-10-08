@@ -13,12 +13,12 @@ export interface PagePlan {
 
 export class PageCountError extends Error {
   override name = 'PageCountError';
-  constructor(
-    readonly pageCount: number,
-    readonly maxPages: number,
-  ) {
-    const volumes = Math.ceil(pageCount / maxPages);
-    super(`This book needs ${pageCount} pages, more than the ${maxPages} Lulu can bind. Split it into ${volumes} volumes.`);
+  readonly pageCount: number;
+  readonly maxPages: number;
+  constructor(pageCount: number, maxPages: number) {
+    super(`This book needs ${pageCount} pages, more than the ${maxPages} Lulu can bind. Split it into ${Math.ceil(pageCount / maxPages)} volumes.`);
+    this.pageCount = pageCount;
+    this.maxPages = maxPages;
   }
   get suggestedVolumes(): number {
     return Math.ceil(this.pageCount / this.maxPages);

@@ -318,7 +318,9 @@ describe('cover', () => {
 
   it('lays out back, spine and front with spine text above 80 pages', () => {
     const doc = coverDocument({ options: options({ author: 'Sam' }), entries: [entry({ date: '2026-01-01' })], media: new Map(), mediaUrl: () => null, pageCount: 120, dims });
-    expect(doc.css).toContain(`size: ${dims.widthIn}in ${dims.heightIn}in`);
+    const r4 = (n: number) => Math.round(n * 1e4) / 1e4;
+    expect(doc.css).toContain(`size: ${r4(dims.widthIn + 0.05)}in ${r4(dims.heightIn + 0.05)}in`);
+    expect(doc.html).toContain(`style="width:${dims.widthIn}in;height:${dims.heightIn}in;`);
     expect(doc.html).toContain('class="spine-text"');
     expect(doc.html).toContain('<p>1 entry</p>');
     expect(doc.html).toContain('<p class="author">Sam</p>');

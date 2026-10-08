@@ -16,6 +16,24 @@ export const PRINT_FONTS = {
   emoji: 'Noto Emoji',
 } as const;
 
+/**
+ * Fontsource stylesheets for PRINT_FONTS (static instances, SIL OFL). Hosts load exactly these so the
+ * browser preview and the server measure text with the same files.
+ */
+export const PRINT_FONT_STYLESHEETS = [
+  '@fontsource/newsreader/400.css',
+  '@fontsource/newsreader/400-italic.css',
+  '@fontsource/newsreader/600.css',
+  '@fontsource/newsreader/600-italic.css',
+  '@fontsource/newsreader/700.css',
+  '@fontsource/newsreader/700-italic.css',
+  '@fontsource/bricolage-grotesque/400.css',
+  '@fontsource/bricolage-grotesque/600.css',
+  '@fontsource/bricolage-grotesque/700.css',
+  '@fontsource/bricolage-grotesque/800.css',
+  '@fontsource/noto-emoji/400.css',
+] as const;
+
 const SERIF = `'${PRINT_FONTS.serif}', '${PRINT_FONTS.emoji}', Georgia, serif`;
 const SANS = `'${PRINT_FONTS.sans}', '${PRINT_FONTS.emoji}', Arial, sans-serif`;
 
@@ -153,11 +171,18 @@ ${opts.preview && product.interior === 'bw' ? `\nimg { filter: grayscale(1); }` 
 `;
 }
 
+/**
+ * Chromium snaps PDF page sizes to a 1/300″ grid and can round down, which would clip the sheet's
+ * edge. The cover prints on a page this much larger; the renderer then crops the PDF's MediaBox to
+ * the exact size (top-left anchored), so nothing is lost and the dimensions are exact.
+ */
+export const COVER_PAGE_SLACK_IN = 0.05;
+
 /** The cover is one page, laid out absolutely; Paged.js isn't needed. */
 export function coverCss(g: CoverGeometry): string {
   const inset = SAFETY_IN + 0.15;
   return `
-@page { size: ${g.widthIn}in ${g.heightIn}in; margin: 0; }
+@page { size: ${round4(g.widthIn + COVER_PAGE_SLACK_IN)}in ${round4(g.heightIn + COVER_PAGE_SLACK_IN)}in; margin: 0; }
 html, body { margin: 0; padding: 0; }
 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .sheet { position: relative; overflow: hidden; font-family: ${SANS}; }
@@ -177,6 +202,10 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .spine-text { writing-mode: vertical-rl; margin: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: ${round2(g.heightIn - 2 * (BLEED_IN + 0.75))}in; }
 .spine-author { font-weight: 400; margin-inline-start: 1.2em; }
 `;
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
 }
 
 function round2(n: number): number {

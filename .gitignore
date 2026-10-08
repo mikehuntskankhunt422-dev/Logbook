@@ -21,3 +21,6 @@ Thumbs.db
 
 # Third-party reference snapshots (copyright Lulu); kept locally, linked from docs/ASSUMPTIONS.md
 docs/reference/
+
+# Generated sample books (tens of MB); recreate with `npm run samples`
+samples/*/

@@ -14,11 +14,14 @@
     "dev": "npm run dev -w @logbook/web",
     "build": "npm run build -w @logbook/web",
     "preview": "npm run preview -w @logbook/web",
+    "server": "npm run dev -w @logbook/server",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run test:e2e -w @logbook/web",
+    "test:render": "npm run test:render -w @logbook/server",
+    "samples": "npm run samples -w @logbook/server",
     "lhci": "npx --yes @lhci/cli@0.15.x autorun --config=apps/web/lighthouserc.json"
   },
   "devDependencies": {

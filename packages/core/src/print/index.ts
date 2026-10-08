@@ -6,3 +6,4 @@ export * from './images.ts';
 export * from './qr.ts';
 export * from './css.ts';
 export * from './html.ts';
+export * from './bundle.ts';

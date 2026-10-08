@@ -123,11 +123,14 @@ ${doc.html}
 class Ctx {
   readonly images: ImageUse[] = [];
   readonly warnings: PrintWarning[] = [];
-  constructor(
-    private readonly src: MediaSource,
-    readonly geo: InteriorGeometry,
-    readonly options: BookOptions,
-  ) {}
+  private readonly src: MediaSource;
+  readonly geo: InteriorGeometry;
+  readonly options: BookOptions;
+  constructor(src: MediaSource, geo: InteriorGeometry, options: BookOptions) {
+    this.src = src;
+    this.geo = geo;
+    this.options = options;
+  }
 
   meta(id: string): MediaMeta | undefined {
     return this.src.media.get(id);
