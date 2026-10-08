@@ -192,6 +192,9 @@ export class Fulfilment {
     const check = await validateWithLulu(lulu, this.deps.store, o.id, o.podPackageId, o.pages);
     this.deps.db.update(o.id, { lulu: check }, this.now());
     const problem = validationProblem(check, o.pages);
+    // Lulu couldn't download a file we just found in storage: a hiccup, not a bad file; try again.
+    const fetchFailed = [...(check.interior.errors ?? []), ...(check.cover.errors ?? [])].some((e) => /failed to fetch/i.test(e));
+    if (problem && fetchFailed) throw new Error(redactUrls(problem));
     if (problem) throw new Unfixable(problem, true);
     return this.move(o, 'files_validated', 'job:fulfil', `lulu ${check.interior.id}/${check.cover.id}`);
   }

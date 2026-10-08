@@ -1,9 +1,10 @@
+import { LULU_COUNTRIES } from './lulu-countries.ts';
+
 /**
  * Countries a Stripe Checkout Session can ship to (`shipping_address_collection.allowed_countries`
- * in Stripe's API, 2026-08-26), without "ZZ". Lulu ships to most of them; for the rest Lulu's
- * shipping quote says so (D26). Each order is restricted to one of these (D11).
+ * in Stripe's API, 2026-08-26), without "ZZ".
  */
-export const SHIP_COUNTRIES: readonly string[] = [
+export const STRIPE_CHECKOUT_COUNTRIES: readonly string[] = [
   'AC', 'AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE',
   'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CD', 'CF',
   'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CV', 'CW', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC',
@@ -17,6 +18,13 @@ export const SHIP_COUNTRIES: readonly string[] = [
   'SZ', 'TA', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG',
   'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VN', 'VU', 'WF', 'WS', 'XK', 'YE', 'YT', 'ZA', 'ZM', 'ZW',
 ];
+
+/**
+ * Where a book can be sent: Stripe's Checkout countries that Lulu ships to (D60, open question #5;
+ * `lulu-countries.ts` is refreshed from Lulu by a script). Each order is restricted to one (D11).
+ */
+const lulu = new Set(LULU_COUNTRIES);
+export const SHIP_COUNTRIES: readonly string[] = STRIPE_CHECKOUT_COUNTRIES.filter((c) => lulu.has(c));
 
 /** Lulu needs the recipient's tax ID for these destinations; Checkout asks for it (D26). */
 export const TAX_ID_COUNTRIES: Readonly<Record<string, string>> = {

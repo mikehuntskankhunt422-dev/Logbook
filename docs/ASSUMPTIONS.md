@@ -135,7 +135,7 @@ Calls to `https://api.sandbox.lulu.com` from the build environment with the sand
 2. `Lulu-HMAC-SHA256` encoding (hex or base64), and whether "API secret" means the client secret. Needs a real delivery to a public URL; until then both encodings are accepted (D69).
 3. Whether sandbox print jobs progress to `SHIPPED` or `DELIVERED`. Blocked by #6: jobs stop at `UNPAID`.
 4. ~~Real sandbox cost-calculation output per package ID~~ (**answered 2026-10-07:** sandbox print costs equal list prices for all 16 IDs, LS above). Still open: `HANDLING_FEE` for other destinations and quantities (none appeared for one copy to the US), and whether production prices match the sandbox.
-5. The set of destination countries Lulu ships to (will be built from `/shipping-options/`).
+5. ~~The set of destination countries Lulu ships to.~~ **Answered 2026-10-08** from the sandbox's `/shipping-options/`: 206 of Stripe's 237 Checkout countries (D75). Still open: whether production's list is the same.
 6. ~~Sandbox auto-payment with a test card on file.~~ **Answered 2026-10-08:** no card is on file in the sandbox account, so jobs stop at `UNPAID` (above). Still open: what happens once a test card is added.
 7. ~~Case-wrap `/cover-dimensions/` output vs Lulu's template.~~ **Answered 2026-10-07:** the size includes the 0.75″ wrap and bleed; the hinge sits inside the board panels (LS above, D46).
 8. ~~How long Lulu needs file URLs to stay valid after print-job creation.~~ **Answered 2026-10-08:** seconds; Lulu copies the files when it accepts the job (above, D71).

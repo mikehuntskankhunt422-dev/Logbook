@@ -55,12 +55,13 @@ async function preparedOrder(page: Page): Promise<string> {
  */
 async function fakePayments(page: Page, orderId: string) {
   const sent: { path: string; body: unknown }[] = [];
-  const mock = { state: 'quoted', quote: null as null | Record<string, unknown>, version: 0, dropReads: 0 };
+  const mock = { state: 'quoted', quote: null as null | Record<string, unknown>, version: 0, dropReads: 0, extra: {} as Record<string, unknown> };
   const merge = async (route: Route) => {
     const url = route.request().url().replace(/\/(quote|checkout)$/, '');
     const real = (await (await page.request.get(url, { headers: { authorization: route.request().headers()['authorization']! } })).json()) as Record<string, unknown>;
-    const paid = mock.state === 'paid' ? { amountTotalCents: 3499, amountShippingCents: 1000, amountTaxCents: 0, currency: 'usd', shippingLevel: 'MAIL', paidAt: '2026-10-08T00:00:00.000Z' } : null;
-    return { ...real, state: mock.state, quote: mock.quote, checkoutUrl: mock.state === 'awaiting_payment' ? 'https://checkout.stripe.com/c/pay/cs_test_x' : null, paid };
+    const unpaid = ['draft', 'quoted', 'awaiting_payment', 'failed'].includes(mock.state);
+    const paid = unpaid ? null : { amountTotalCents: 3499, amountShippingCents: 1000, amountTaxCents: 0, currency: 'usd', shippingLevel: 'MAIL', paidAt: '2026-10-08T00:00:00.000Z' };
+    return { ...real, state: mock.state, quote: mock.quote, checkoutUrl: mock.state === 'awaiting_payment' ? 'https://checkout.stripe.com/c/pay/cs_test_x' : null, paid, ...mock.extra };
   };
   await page.route(`**/api/orders/${orderId}**`, async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -162,6 +163,34 @@ test('order: back from Stripe through a dropped connection, the page keeps askin
   await expect(paid).toBeVisible({ timeout: 30_000 });
   await expect(paid).toBeFocused();
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('order: after payment the page says where the book is, with tracking once it ships, or the refund', async ({ page }) => {
+  test.slow();
+  const id = await preparedOrder(page);
+  const { mock } = await fakePayments(page, id);
+  mock.quote = { version: 1, at: new Date().toISOString(), country: 'AU', ...QUOTES['AU'] };
+  mock.state = 'submitted_to_lulu';
+  mock.extra = { delivery: { carrier: null, trackingUrls: [], arrivalMin: '2026-10-20', arrivalMax: '2026-10-24' } };
+  await page.reload();
+  const progress = page.getByRole('list', { name: 'Where your book is' });
+  await expect(progress.locator('[aria-current="step"]')).toHaveText('With the printer');
+  await expect(page.getByText(/expects it to arrive between October 20 and October 24/)).toBeVisible();
+  await expect(page.getByText("We'll email you the tracking link when it ships.")).toBeVisible();
+
+  mock.state = 'shipped';
+  mock.extra = { delivery: { carrier: 'Australia Post', trackingUrls: ['https://track.example/TRK123'], arrivalMin: '2026-10-20', arrivalMax: '2026-10-24' } };
+  await page.reload();
+  await expect(progress.locator('[aria-current="step"]')).toHaveText('On its way');
+  await expect(page.getByRole('link', { name: 'follow your parcel' })).toHaveAttribute('href', 'https://track.example/TRK123');
+  await expect(page.getByText(/Australia Post tracking/)).toBeVisible();
+  const axe = await new AxeBuilder({ page }).include('.order-page').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([]);
+
+  mock.state = 'refunded';
+  mock.extra = { refunded: { amountCents: 3499, currency: 'usd', at: '2026-10-09T00:00:00.000Z' } };
+  await page.reload();
+  await expect(page.getByText(/your payment of \$34\.99 was refunded in full/)).toBeVisible();
 });
 
 /** The drawn size's proportions against the canvas's own (the PDF page's), as a ratio: 1 = undistorted. */

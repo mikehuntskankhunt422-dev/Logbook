@@ -32,7 +32,7 @@ function fakeLulu() {
   const jobs = new Map<number, Job>();
   const created: Record<string, unknown>[] = [];
   const cancelled: number[] = [];
-  const s = { validation: 'NORMALIZED', pageCount: 200, down: false, loseCreates: 0, refuseCreate: null as unknown, createStatus: 'UNPAID' };
+  const s = { validation: 'NORMALIZED', validationError: 'Fonts not embedded', pageCount: 200, down: false, loseCreates: 0, refuseCreate: null as unknown, createStatus: 'UNPAID' };
   let next = 345200;
   const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -42,7 +42,7 @@ function fakeLulu() {
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
     const path = url.pathname;
     if (method === 'POST' && path === '/validate-interior/') return Response.json({ id: 11, status: null }, { status: 201 });
-    if (method === 'GET' && path === '/validate-interior/11/') return Response.json({ id: 11, status: s.validation, page_count: s.pageCount, errors: s.validation === 'ERROR' ? ['Fonts not embedded'] : null });
+    if (method === 'GET' && path === '/validate-interior/11/') return Response.json({ id: 11, status: s.validation, page_count: s.pageCount, errors: s.validation === 'ERROR' ? [s.validationError] : null });
     if (method === 'POST' && path === '/validate-cover/') return Response.json({ id: 12, status: null }, { status: 201 });
     if (method === 'GET' && path === '/validate-cover/12/') return Response.json({ id: 12, status: s.validation === 'ERROR' ? 'ERROR' : 'NORMALIZED', errors: null });
     if (method === 'POST' && path === '/print-jobs/') {
@@ -367,6 +367,20 @@ describe('failures after payment (PLAN §1.5 step 9)', () => {
     refused.lulu.state.validation = 'ERROR';
     await refused.run();
     expect(refused.order()).toMatchObject({ state: 'refunded', error: 'The printer could not use the print files: Fonts not embedded' });
+  });
+
+  it('tries again, rather than refunding, when Lulu only failed to download a file', async () => {
+    const t = await setup();
+    t.lulu.state.validation = 'ERROR';
+    t.lulu.state.validationError = "Failed to fetch from the source URL 'https://bucket.example/i.pdf?X-Amz-Signature=s', received a 503 status code.";
+    await t.run();
+    expect(t.order().state).toBe('files_generated');
+    expect(t.db.jobs(t.id)[0]).toMatchObject({ kind: 'fulfil', state: 'queued', attempts: 1 });
+    expect(t.db.jobs(t.id)[0]!.lastError).not.toContain('X-Amz-Signature');
+    t.lulu.state.validation = 'NORMALIZED';
+    await t.later(60_000);
+    expect(t.order().state).toBe('submitted_to_lulu');
+    expect(t.stripe.refunds).toEqual([]);
   });
 
   it('retries while Lulu is down, then hands over to a person without refunding', async () => {

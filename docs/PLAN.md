@@ -6,7 +6,8 @@ This plan covers the architecture, the shared-core layout for web and desktop, m
 
 - [DECISIONS.md](DECISIONS.md): every decision I made instead of asking, with the reasoning.
 - [M2.md](M2.md): the detailed plan for milestone 2 (book builder and print PDFs), with spike results.
-- [M3.md](M3.md): milestone 3 (pricing and Stripe): progress, prices from sandbox costs, and what it still needs.
+- [M3.md](M3.md): milestone 3 (pricing and Stripe): prices from sandbox costs, Checkout and webhooks in Stripe test mode.
+- [M4.md](M4.md): milestone 4 (Lulu fulfilment): sandbox findings, the fulfilment design, end-to-end results, and what it still needs.
 - [ASSUMPTIONS.md](ASSUMPTIONS.md): Stripe and Lulu facts I verified against official sources today, with links, and the ones I could not verify yet.
 - [reference/](reference/): dated snapshots of Lulu's OpenAPI spec, product spec sheet and Book Creation Guide, so later work can be checked against the exact text I read.
 

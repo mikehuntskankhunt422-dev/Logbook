@@ -412,17 +412,6 @@ export class OrderDb {
     return (this.db.prepare("select * from jobs where state = 'queued' and run_at <= ? order by run_at, id limit ?").all(now.toISOString(), limit) as Row[]).map(toJob);
   }
 
-  /** When the next queued job is due, if any. */
-  nextJobAt(): Date | undefined {
-    const row = this.db.prepare("select min(run_at) as at from jobs where state = 'queued'").get() as { at: string | null };
-    return row.at ? new Date(row.at) : undefined;
-  }
-
-  job(id: number): JobRow | undefined {
-    const row = this.db.prepare('select * from jobs where id = ?').get(id) as Row | undefined;
-    return row && toJob(row);
-  }
-
   jobs(orderId: string): JobRow[] {
     return (this.db.prepare('select * from jobs where order_id = ? order by id').all(orderId) as Row[]).map(toJob);
   }
