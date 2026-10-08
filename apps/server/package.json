@@ -17,6 +17,7 @@
     "pricing:table": "node --experimental-transform-types --no-warnings scripts/pricing-table.ts",
     "storage:setup": "node --experimental-transform-types --no-warnings scripts/storage-setup.ts",
     "stripe:check": "node --experimental-transform-types --no-warnings scripts/check-stripe.ts",
+    "email:check": "node --experimental-transform-types --no-warnings scripts/check-email.ts",
     "lulu:e2e": "node --experimental-transform-types --no-warnings scripts/check-fulfilment.ts"
   },
   "dependencies": {

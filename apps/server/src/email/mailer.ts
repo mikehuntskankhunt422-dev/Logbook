@@ -30,8 +30,7 @@ export const noMailer: Mailer = { enabled: false, send: async () => ({ id: null 
 
 /**
  * Resend's HTTP API (D17): `POST https://api.resend.com/emails` with a bearer key and an
- * `Idempotency-Key`. Not yet checked against Resend itself, which is blocked from the build
- * environment (ASSUMPTIONS, Resend).
+ * `Idempotency-Key`. Checked against Resend with `npm run email:check` (ASSUMPTIONS, Resend).
  */
 export class ResendMailer implements Mailer {
   readonly enabled = true;

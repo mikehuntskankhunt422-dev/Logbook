@@ -123,11 +123,15 @@ Calls to `https://api.sandbox.lulu.com` from the build environment with the sand
 | Webhooks: `POST /webhooks/ {topics, url}` → 201 `{id (UUID), is_active, topics, url}`; `POST /webhooks/{id}/test-submission/PRINT_JOB_STATUS_CHANGED/` → 200 "Test webhook submission queued", delivering a dummy print job (`id` 1); `GET /webhook-submissions/` lists deliveries with `payload` (`{topic, data}`), `is_success`, `response_code`, `attempts`, but **not the signature**; `DELETE /webhooks/{id}/` → 204 | A subscription to `https://example.com/…` (answered 405), then deleted |
 | The spec documents a print-job status `ERROR` (after `IN_PRODUCTION`) and line-item statuses `CREATED`, `ACCEPTED`, `REJECTED`, `IN_PRODUCTION`, `ERROR`, `SHIPPED` | Spec copy; `ACCEPTED` and `REJECTED` seen in the sandbox |
 
-### Not checkable from the build environment
+### Resend, checked by calling it (2026-10-08)
 
-| Claim | Why not |
+With the Resend key, sender and alert address in this environment and `npm run email:check -w @logbook/server` (M4 §3).
+
+| Fact | How it was checked |
 |---|---|
-| Resend: `POST https://api.resend.com/emails` with `Authorization: Bearer <key>`, JSON `{from, to[], subject, text, tags[]}`, an `Idempotency-Key` header, answering `{id}` (D73) | `api.resend.com` is refused by the environment's proxy; there's no key yet (M4 §6) |
+| `POST https://api.resend.com/emails` with `Authorization: Bearer <key>`, JSON `{from, to[], subject, text, tags[]}` and an `Idempotency-Key` header is accepted and answers `{id}` (D73) | The `alert` email for a test order, sent by the real job runner and `ResendMailer` to `OWNER_EMAIL`: email `01a11c32-c337-7c0a-a263-c72f0797aa96` |
+| The key in this environment can only send: `GET /emails/{id}` answers 401 `restricted_api_key` ("This API key is restricted to only send emails"), so whether an email was delivered can't be read back from here | Same run |
+| `EMAIL_FROM` is Resend's shared test sender, `onboarding@resend.dev`. Resend sends from it only to the address the Resend account belongs to, so customer emails (`problem`, `shipped`, `refunded`) need a domain of yours verified in Resend and `EMAIL_FROM` on that domain | Resend's documented rule, not tested: testing it would mean emailing someone else. The alert to `OWNER_EMAIL` was accepted, which fits |
 
 ## Not yet verified (blocking the code that depends on them)
 

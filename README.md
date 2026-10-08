@@ -59,6 +59,7 @@ Once Stripe says an order is paid, the server's job runner confirms the print fi
 
 - `OWNER_EMAIL`: your address, Lulu's contact for print jobs and where alerts go (required in live mode).
 - `RESEND_API_KEY` and `EMAIL_FROM`: emails to customers (problem, shipped with tracking, refunded) and alerts to you. Without them, emails are logged as not sent.
+  `npm run email:check -w @logbook/server` sends a test alert to `OWNER_EMAIL`. Resend's test sender `onboarding@resend.dev` only reaches your own address; customers need `EMAIL_FROM` on a domain verified in Resend.
 - `LOGBOOK_FAULTS` (test mode only): `files-missing`, `lulu-down` or `lulu-reject` make fulfilment fail on purpose.
 
 ```bash
