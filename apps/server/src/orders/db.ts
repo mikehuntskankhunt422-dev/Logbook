@@ -43,7 +43,7 @@ export interface CheckoutRef {
   url: string;
   expiresAt: string;
   quoteVersion: number;
-  /** Counts sessions for this order, so a new session after an expired one gets a new idempotency key. */
+  /** Which Checkout attempt for this order made the session (part of its idempotency key, D55). */
   attempt: number;
 }
 
@@ -142,6 +142,10 @@ create table stripe_events (
   received_at text not null
 );
 `,
+  // Checkout attempts are counted before Stripe is asked, so an idempotency key is never reused (D55).
+  `
+alter table orders add column checkout_attempts integer not null default 0;
+`,
 ];
 
 export interface StripeEventRow {
@@ -179,7 +183,10 @@ export class OrderDb {
     }
   }
 
-  /** Runs `fn` atomically; nested calls join the outer transaction through a savepoint. */
+  /**
+   * Runs `fn` atomically; nested calls join the outer transaction through a savepoint. The depth is
+   * counted down exactly once whatever fails, so a failed commit can't wedge later transactions.
+   */
   transaction<T>(fn: () => T): T {
     const outer = this.depth === 0;
     const sp = `sp${this.depth}`;
@@ -187,13 +194,18 @@ export class OrderDb {
     this.depth++;
     try {
       const result = fn();
-      this.depth--;
       this.db.exec(outer ? 'commit' : `release ${sp}`);
       return result;
     } catch (err) {
-      this.depth--;
-      this.db.exec(outer ? 'rollback' : `rollback to ${sp}; release ${sp}`);
+      try {
+        if (!outer) this.db.exec(`rollback to ${sp}; release ${sp}`);
+        else if (this.db.isTransaction) this.db.exec('rollback');
+      } catch {
+        // The original error says what went wrong; a failed rollback leaves SQLite to roll back.
+      }
       throw err;
+    } finally {
+      this.depth--;
     }
   }
 
@@ -245,6 +257,17 @@ export class OrderDb {
       this.db.prepare('insert into order_events (order_id, from_state, to_state, cause, detail, at) values (?, ?, ?, ?, ?, ?)').run(id, event.from, event.to, event.cause, event.detail ?? null, event.at);
       return event;
     });
+  }
+
+  /**
+   * Counts a new Checkout attempt for the order and returns its number. Called before Stripe is
+   * asked, so a session that was created but never stored (a timeout, a restart) never shares its
+   * idempotency key with the next attempt, whose parameters differ (D55).
+   */
+  nextCheckoutAttempt(id: string): number {
+    const row = this.db.prepare('update orders set checkout_attempts = checkout_attempts + 1 where id = ? returning checkout_attempts').get(id) as { checkout_attempts: number } | undefined;
+    if (!row) throw new Error(`No order ${id}`);
+    return row.checkout_attempts;
   }
 
   /**

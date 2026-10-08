@@ -140,9 +140,11 @@ async function listenDriver(): Promise<Driver> {
   const cli = process.env['STRIPE_CLI'] || 'stripe';
   const work = await mkdtemp(join(tmpdir(), 'logbook-stripe-listen-'));
   const port = 4299;
+  // The key goes to the CLI through its environment, not its command line, where `ps` would show it.
+  const cliEnv = { ...process.env, STRIPE_API_KEY: secretKey };
   const base = `http://127.0.0.1:${port}`;
   const secret = await new Promise<string>((resolve, reject) => {
-    const p = spawn(cli, ['listen', '--api-key', secretKey, '--print-secret'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(cli, ['listen', '--print-secret'], { env: cliEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     let text = '';
     p.stdout.on('data', (c: Buffer) => (text += c.toString()));
     p.on('exit', () => {
@@ -177,7 +179,7 @@ async function listenDriver(): Promise<Driver> {
   const health = (await (await fetch(`${base}/api/health`)).json()) as { payments?: { webhooks?: boolean } };
   if (!health.payments?.webhooks) throw new Error('The API can’t verify webhooks.');
   const events = 'checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired';
-  const forward = await start(cli, ['listen', '--api-key', secretKey, '--events', events, '--forward-to', `${base}/api/stripe/webhook`], process.env, /Ready!/, 'stripe listen', children);
+  const forward = await start(cli, ['listen', '--events', events, '--forward-to', `${base}/api/stripe/webhook`], cliEnv, /Ready!/, 'stripe listen', children);
   const db = new OrderDb(env.DATABASE_PATH);
   const call = async <T>(path: string, token: string, body: unknown): Promise<T> => {
     const res = await fetch(`${base}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });

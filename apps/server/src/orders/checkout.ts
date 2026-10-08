@@ -211,7 +211,8 @@ export class CheckoutService {
 
   /**
    * Stripe's page for the quote the customer saw (`quoteVersion`). The same open session is handed
-   * out again; a new one gets a new idempotency key, `checkout:<order>:<quote version>:<attempt>`.
+   * out again; a new one gets a new idempotency key, `checkout:<order>:<quote version>:<attempt>`,
+   * with the attempt counted before Stripe is asked (D55).
    */
   checkout(order: Order, input: { quoteVersion: number; returnUrl: string; checked: boolean }): Promise<{ url: string }> {
     return this.locked(order.id, async () => {
@@ -224,8 +225,10 @@ export class CheckoutService {
       let o = this.deps.db.get(order.id)!;
       const now = this.now();
       if (o.state === 'awaiting_payment' && o.checkout) {
+        // A page showing an older quote is refused before anything happens to the open payment page.
+        if (input.quoteVersion !== o.checkout.quoteVersion) throw new PriceChangedError();
         const fresh = Date.parse(o.checkout.expiresAt) - now.getTime() > REUSE_MARGIN_MS;
-        if (fresh && o.checkout.quoteVersion === input.quoteVersion) return { url: o.checkout.url };
+        if (fresh) return { url: o.checkout.url };
         o = await this.closeCheckout(o, 'customer:checkout');
       }
       if (o.state !== 'quoted') throw new OrderError(this.notPayable(o), 409);
@@ -236,7 +239,7 @@ export class CheckoutService {
         throw new PriceChangedError('The price was more than a day old, so it has been checked again. Please look it over before paying.');
       }
 
-      const attempt = (o.checkout?.attempt ?? 0) + 1;
+      const attempt = this.deps.db.nextCheckoutAttempt(o.id);
       const key = `checkout:${o.id}:${o.quote.version}:${attempt}`;
       let session: CheckoutSession;
       try {

@@ -69,12 +69,19 @@ type FakeSession = Record<string, unknown> & { id: string; status: string; payme
 function fakeStripe() {
   const sessions = new Map<string, FakeSession>();
   const calls: { method: string; path: string; form: URLSearchParams; key: string | null }[] = [];
+  const faults = { lostCreates: 0 };
   let n = 0;
   const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
     const method = init?.method ?? 'GET';
     const form = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
     calls.push({ method, path: u.pathname, form, key: new Headers(init?.headers).get('idempotency-key') });
+    if (method === 'POST' && u.pathname === '/v1/checkout/sessions' && faults.lostCreates > 0) {
+      // Stripe made a session, but the answer never arrived.
+      faults.lostCreates--;
+      sessions.set(`cs_test_lost_${faults.lostCreates}`, { id: `cs_test_lost_${faults.lostCreates}`, status: 'open', payment_status: 'unpaid', shipping_options: [] });
+      throw new TypeError('fetch failed');
+    }
     if (method === 'POST' && u.pathname === '/v1/checkout/sessions') {
       const id = `cs_test_${++n}`;
       const shipping = [...form.keys()].filter((k) => /^shipping_options\[\d+\]\[shipping_rate_data\]\[fixed_amount\]\[amount\]$/.test(k));
@@ -127,7 +134,7 @@ function fakeStripe() {
     });
     return s;
   }
-  return { gateway: new StripeGateway('sk_test_fake', SECRET, { fetch }), sessions, calls, pay };
+  return { gateway: new StripeGateway('sk_test_fake', SECRET, { fetch }), sessions, calls, pay, faults };
 }
 
 let events = 0;
@@ -295,6 +302,29 @@ describe('Stripe Checkout (M3 slice E)', () => {
     expect((await pay({ quoteVersion: 2 })).json().url).toMatch(/cs_test_2$/);
     expect(stripe.calls.filter((c) => c.path === '/v1/checkout/sessions').map((c) => c.key)).toEqual(['checkout:ord_1:1:1', 'checkout:ord_1:2:2']);
     expect((await view()).state).toBe('awaiting_payment');
+  });
+
+  it('never reuses an idempotency key after a lost answer, since each attempt’s parameters differ', async () => {
+    const { stripe, quote, pay, clock } = await setup();
+    await quote('AU');
+    stripe.faults.lostCreates = 3; // the SDK's two retries are lost too
+    const lost = await pay();
+    expect([lost.statusCode, lost.json().error]).toEqual([502, "The payment page couldn't be opened. Please try again in a moment."]);
+    clock.now = new Date(clock.now.getTime() + 60_000); // a new expires_at: different parameters
+    expect((await pay()).statusCode).toBe(200);
+    const keys = stripe.calls.filter((c) => c.path === '/v1/checkout/sessions').map((c) => c.key);
+    expect(new Set(keys.slice(0, 3))).toEqual(new Set(['checkout:ord_1:1:1']));
+    expect(keys.at(-1)).toBe('checkout:ord_1:1:2');
+  }, 20_000);
+
+  it('refuses a page showing an older quote without touching the open payment page', async () => {
+    const { stripe, quote, pay, view } = await setup();
+    await quote('AU');
+    await pay();
+    const stale = await pay({ quoteVersion: 7 });
+    expect(stale.statusCode).toBe(409);
+    expect(stripe.sessions.get('cs_test_1')!.status).toBe('open');
+    expect(await view()).toMatchObject({ state: 'awaiting_payment', checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_1' });
   });
 
   it('won’t re-quote once the customer has paid, even if the webhook hasn’t arrived', async () => {

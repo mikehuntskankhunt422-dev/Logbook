@@ -322,6 +322,29 @@ describe('OrderDb migrations', () => {
     again.close();
   });
 
+  it('keeps working after a commit fails', () => {
+    const db = new OrderDb(':memory:');
+    db.create({ id: 'ord_1', tokenHash: 'h', podPackageId: PB, product: {} as never, uploads: [] });
+    const raw = (db as unknown as { db: { exec(sql: string): void } }).db;
+    const exec = raw.exec.bind(raw);
+    let failNext = true;
+    raw.exec = (sql: string) => {
+      if (sql === 'commit' && failNext) {
+        failNext = false;
+        throw new Error('disk I/O error');
+      }
+      exec(sql);
+    };
+    expect(() => db.move('ord_1', 'quoted', 'test')).toThrow('disk I/O error');
+    expect(db.get('ord_1')!.state).toBe('draft');
+    // The next transaction starts cleanly instead of failing on a broken savepoint name.
+    db.move('ord_1', 'quoted', 'test');
+    expect(db.get('ord_1')!.state).toBe('quoted');
+    expect(db.nextCheckoutAttempt('ord_1')).toBe(1);
+    expect(db.nextCheckoutAttempt('ord_1')).toBe(2);
+    db.close();
+  });
+
   it('rolls back everything a Stripe event changed when applying it fails', () => {
     const db = new OrderDb(':memory:');
     db.create({ id: 'ord_1', tokenHash: 'h', podPackageId: PB, product: {} as never, uploads: [] });
