@@ -13,6 +13,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`no serious accessibility violations across views (${theme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await page.goto('/');
+    await expect(page.getByRole('link', { name: 'Skip to content' })).toBeAttached();
     await expectNoSeriousViolations(page, 'empty home');
 
     await writeEntry(page, 'Accessible entry', 'Some words with a https://example.com link.');
@@ -30,8 +31,10 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('keyboard users can reach the main actions with visible focus', async ({ page }) => {
   await page.goto('/');
-  await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content' });
+  // The app renders after IndexedDB opens, which can be after the load event; Tab too early lands on <body>.
+  await expect(skip).toBeAttached();
+  await page.keyboard.press('Tab');
   await expect(skip).toBeFocused();
   await expect(skip).toBeInViewport();
   const outline = await skip.evaluate((el) => getComputedStyle(el).outlineStyle);
