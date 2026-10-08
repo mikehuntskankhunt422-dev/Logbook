@@ -102,7 +102,9 @@ With the test keys in this environment and `npm run stripe:check -w @logbook/ser
 | A session with **one allowed country**, two `shipping_rate_data` options with business-day estimates, `tax_behavior: exclusive`, a `success_url` with a `#/order/<id>` fragment and `expires_at` one hour ahead is accepted. The hosted page shows the country fixed, the book as "Printed book · 6 × 9 in premium colour paperback, matte, 200 pages", and "Australia Post Mail (11-12 business days)" | Created through `CheckoutService`, screenshot (open question #9, first half) |
 | `4242 4242 4242 4242`: the page redirects to `success_url`; the session is `complete`/`paid`, total $59.99 (book $49.99 + Australia Post Mail $10.00); Stripe's real `checkout.session.completed` event moves the order to `paid` with the address, phone, email and the `MAIL` level; the same event again changes nothing | Headless Chromium on checkout.stripe.com; Events API |
 | `4000 0000 0000 0002`: the page says "Your credit card was declined. Try paying with a debit card instead."; the session stays `open` and the order `awaiting_payment`. Expiring the session sends `checkout.session.expired`, which returns the order to `quoted` | Same |
+| `4000 0027 6000 3184`: Stripe's "3D Secure 2 Test Page" opens in nested iframes from `testmode-acs.stripe.com` with Fail and Complete; after Complete the payment succeeds and the page redirects to `success_url`. A click before the page is ready can be lost, so the script retries | Same |
 | Automated browser runs against **test-mode** hosted Checkout work (open question #10): no bot challenge blocked the payment | Same |
+| The Stripe CLI (v1.51.1) gets a webhook signing secret with `stripe listen --print-secret` through `api.stripe.com`, but forwarding events needs a websocket to `stripecli-ws-nw.stripe.com` | Proxy log |
 | Hosts hosted Checkout needs in a browser: `checkout.stripe.com`, `js.stripe.com`, `m.stripe.network`, `b.stripecdn.com`, `q.stripe.com`, `r.stripe.com`, `hooks.stripe.com`; the 3-D Secure test page is on `testmode-acs.stripe.com`. Not needed for paying: `merchant-ui-api.stripe.com`, `checkout-cookies.stripe.com`, `m.stripe.com`, `hcaptcha.com` (all refused here, payment still worked) | Proxy log during the runs |
 
 ## Not yet verified (blocking the code that depends on them)
@@ -116,6 +118,6 @@ With the test keys in this environment and `npm run stripe:check -w @logbook/ser
 7. ~~Case-wrap `/cover-dimensions/` output vs Lulu's template.~~ **Answered 2026-10-07:** the size includes the 0.75″ wrap and bleed; the hinge sits inside the board panels (LS above, D46).
 8. How long Lulu needs file URLs to stay valid after print-job creation.
 9. ~~Stripe hosted Checkout UX with a single allowed country~~ (**answered 2026-10-08:** the country shows fixed, Stripe test mode above). Still open: Stripe Tax Calculation API availability on your account.
-10. ~~Whether Stripe permits automated browser tests against hosted Checkout.~~ **Answered 2026-10-08:** in test mode, yes (Stripe test mode above). The 3-D Secure card still needs `testmode-acs.stripe.com` allowed in this environment.
+10. ~~Whether Stripe permits automated browser tests against hosted Checkout.~~ **Answered 2026-10-08:** in test mode, yes, all three cards (Stripe test mode above).
 11. Azure Artifact Signing eligibility for an Australian individual.
 12. Which Lulu print sites serve which destinations (affects duties/VAT notices and AU GST treatment).
