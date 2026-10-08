@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "geo-sleuth": {
+      "source": "Oldcircle/geo-sleuth",
+      "sourceType": "github",
+      "skillPath": "skills/geo-sleuth/SKILL.md",
+      "computedHash": "e17ee7fa1d37221e3b1f9c75444fc5f15baff3cc773699753597fdd79ac42911"
+    }
+  }
+}
