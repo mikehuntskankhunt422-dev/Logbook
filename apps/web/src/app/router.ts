@@ -7,6 +7,7 @@ export type Route =
   | { name: 'calendar'; month?: string }
   | { name: 'memories' }
   | { name: 'search'; tag?: string }
+  | { name: 'book' }
   | { name: 'settings' };
 
 export function parseHash(hash: string): Route {
@@ -24,6 +25,8 @@ export function parseHash(hash: string): Route {
       return { name: 'memories' };
     case 'search':
       return { name: 'search', tag: q.get('tag') ?? undefined };
+    case 'book':
+      return { name: 'book' };
     case 'settings':
       return { name: 'settings' };
     default:
@@ -45,6 +48,8 @@ export function href(route: Route): string {
       return '#/memories';
     case 'search':
       return route.tag ? `#/search?tag=${encodeURIComponent(route.tag)}` : '#/search';
+    case 'book':
+      return '#/book';
     case 'settings':
       return '#/settings';
   }

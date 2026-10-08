@@ -1,6 +1,6 @@
 # Logbook: Plan
 
-Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · Owner: you · Author: Claude
+Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · M1 done 2026-10-07 · M2 done 2026-10-08, except running the sample PDFs through Lulu's sandbox `/validate-*` (needs sandbox credentials) · Owner: you · Author: Claude
 
 This plan covers the architecture, the shared-core layout for web and desktop, milestones with acceptance criteria, risks, and the API facts still to verify. Companion documents:
 

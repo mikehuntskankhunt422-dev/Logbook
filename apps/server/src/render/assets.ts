@@ -44,7 +44,7 @@ export async function loadRenderAssets(): Promise<RenderAssets> {
     }
   }
   // pagedjs's exports map hides dist/, so resolve the package entry and step across.
-  const paged = path.join(path.dirname(require.resolve('pagedjs')), '..', 'dist', 'paged.polyfill.js');
+  const paged = path.join(path.dirname(require.resolve('pagedjs')), '..', 'dist', 'paged.polyfill.min.js');
   files.set('/paged.polyfill.js', { body: await readFile(paged), contentType: 'text/javascript' });
   return { fontCss: css.join('\n'), files };
 }

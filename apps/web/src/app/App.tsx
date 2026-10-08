@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { WrongPasscodeError } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
@@ -10,11 +10,15 @@ import { SettingsView } from '../components/SettingsView.tsx';
 import { StreakBadge } from '../components/common.tsx';
 import { downloadBackup } from '../lib/backup-io.ts';
 
+/** The builder pulls in print layout code; load it only when someone opens it. */
+const BookBuilder = lazy(() => import('../components/BookBuilder.tsx'));
+
 const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'home' }, label: 'Journal', icon: '📓' },
   { route: { name: 'calendar' }, label: 'Calendar', icon: '🗓️' },
   { route: { name: 'memories' }, label: 'On this day', icon: '🕰️' },
   { route: { name: 'search' }, label: 'Search', icon: '🔍' },
+  { route: { name: 'book' }, label: 'Book', icon: '📖' },
   { route: { name: 'settings' }, label: 'Settings', icon: '⚙️' },
 ];
 
@@ -33,7 +37,7 @@ export function App() {
   const firstRoute = useRef(true);
   const routeKey = route.name === 'entry' ? route.id : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', book: 'Make a book · Logbook', settings: 'Settings · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -79,6 +83,11 @@ export function App() {
         {route.name === 'calendar' && <CalendarView month={route.month} />}
         {route.name === 'memories' && <Memories />}
         {route.name === 'search' && <SearchView tag={route.tag} />}
+        {route.name === 'book' && (
+          <Suspense fallback={<p className="muted">Loading the book builder…</p>}>
+            <BookBuilder />
+          </Suspense>
+        )}
         {route.name === 'settings' && <SettingsView />}
       </main>
       {route.name !== 'entry' && route.name !== 'new' && (

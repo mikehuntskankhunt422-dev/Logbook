@@ -10,6 +10,7 @@ describe('hash router', () => {
     ['#/calendar?month=2026-10', { name: 'calendar', month: '2026-10' }],
     ['#/search?tag=beach-day', { name: 'search', tag: 'beach-day' }],
     ['#/memories', { name: 'memories' }],
+    ['#/book', { name: 'book' }],
     ['#/settings', { name: 'settings' }],
     ['#/nonsense', { name: 'home' }],
     ['#/entry/', { name: 'home' }],
@@ -18,7 +19,7 @@ describe('hash router', () => {
   });
 
   it('round-trips href → parseHash', () => {
-    const routes: Route[] = [{ name: 'entry', id: 'a b/c' }, { name: 'new', date: '2026-01-02' }, { name: 'search', tag: 'x&y' }, { name: 'calendar', month: '2025-12' }];
+    const routes: Route[] = [{ name: 'entry', id: 'a b/c' }, { name: 'new', date: '2026-01-02' }, { name: 'search', tag: 'x&y' }, { name: 'calendar', month: '2025-12' }, { name: 'book' }];
     for (const r of routes) expect(parseHash(href(r))).toMatchObject(r);
   });
 });

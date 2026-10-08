@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SearchIndex, type Entry, type Journal, type Settings } from '@logbook/core';
 import { requestPersistentStorage } from '@logbook/storage-idb';
+import { clearBookDraft } from '../lib/book-draft.ts';
 
 interface JournalCtx {
   journal: Journal;
@@ -25,6 +26,7 @@ export function JournalProvider({ journal, children }: { journal: Journal; child
   const reload = useCallback(async () => {
     setLocked(journal.isLocked);
     if (journal.isLocked) {
+      clearBookDraft();
       setEntries([]);
       search.rebuild([]);
       setLoaded(true);

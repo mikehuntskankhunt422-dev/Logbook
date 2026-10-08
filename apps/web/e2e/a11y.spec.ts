@@ -21,7 +21,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('img', { name: 'a.png' })).toBeVisible();
     await expectNoSeriousViolations(page, 'entry editor');
 
-    for (const path of ['/', '/#/calendar', '/#/memories', '/#/search', '/#/settings']) {
+    for (const path of ['/', '/#/calendar', '/#/memories', '/#/search', '/#/book', '/#/settings']) {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
       await expectNoSeriousViolations(page, path);
