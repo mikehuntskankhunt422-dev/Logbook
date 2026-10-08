@@ -68,6 +68,7 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
   const stripe = opts.stripe ?? (config.stripe ? new StripeGateway(config.stripe.secretKey, config.stripe.webhookSecret) : undefined);
   const f = config.fulfilment;
   const mailer = opts.mailer ?? (f.resend ? new ResendMailer(f.resend.apiKey, f.resend.from) : noMailer);
+  if (mailer.enabled && !mailer.reachesCustomers) app.log.info("customer emails off: EMAIL_FROM is Resend's test sender; alerts still go to OWNER_EMAIL (D76)");
   const fulfilment =
     store && db
       ? new Fulfilment({ db, store, lulu, stripe, mailer, contactEmail: f.contactEmail, ownerEmail: f.ownerEmail, faults: new Set(f.faults), trackEveryMs: f.trackEveryMs, kick: () => jobs?.kick(), log: app.log, now: opts.now })

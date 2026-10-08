@@ -176,7 +176,7 @@ test('order: after payment the page says where the book is, with tracking once i
   const progress = page.getByRole('list', { name: 'Where your book is' });
   await expect(progress.locator('[aria-current="step"]')).toHaveText('With the printer');
   await expect(page.getByText(/expects it to arrive between October 20 and October 24/)).toBeVisible();
-  await expect(page.getByText("We'll email you the tracking link when it ships.")).toBeVisible();
+  await expect(page.getByText("The tracking link will appear here when it ships.")).toBeVisible();
 
   mock.state = 'shipped';
   mock.extra = { delivery: { carrier: 'Australia Post', trackingUrls: ['https://track.example/TRK123'], arrivalMin: '2026-10-20', arrivalMax: '2026-10-24' } };

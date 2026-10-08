@@ -12,6 +12,8 @@ export interface EmailMessage {
 export interface Mailer {
   /** False when no provider is configured: emails are recorded as not sent. */
   readonly enabled: boolean;
+  /** False when only alerts to you can be delivered: customer emails are recorded as not sent (D76). */
+  readonly reachesCustomers: boolean;
   send(message: EmailMessage): Promise<{ id: string | null }>;
 }
 
@@ -26,7 +28,15 @@ export class MailerError extends Error {
 }
 
 /** No provider configured (development, or before the Resend key arrives, M4 §6). */
-export const noMailer: Mailer = { enabled: false, send: async () => ({ id: null }) };
+export const noMailer: Mailer = { enabled: false, reachesCustomers: false, send: async () => ({ id: null }) };
+
+/**
+ * Resend's shared test sender (`onboarding@resend.dev`, or any `@resend.dev` address) delivers only
+ * to the Resend account's own address, so with it Logbook emails you and not customers (D76).
+ */
+export function isResendTestSender(from: string): boolean {
+  return /@resend\.dev>?\s*$/i.test(from);
+}
 
 /**
  * Resend's HTTP API (D17): `POST https://api.resend.com/emails` with a bearer key and an
@@ -34,6 +44,7 @@ export const noMailer: Mailer = { enabled: false, send: async () => ({ id: null 
  */
 export class ResendMailer implements Mailer {
   readonly enabled = true;
+  readonly reachesCustomers: boolean;
   private readonly fetch: typeof fetch;
 
   constructor(
@@ -42,6 +53,7 @@ export class ResendMailer implements Mailer {
     opts: { fetch?: typeof fetch } = {},
   ) {
     this.fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.reachesCustomers = !isResendTestSender(from);
   }
 
   async send(m: EmailMessage): Promise<{ id: string | null }> {

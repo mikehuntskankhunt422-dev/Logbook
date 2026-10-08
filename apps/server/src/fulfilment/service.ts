@@ -393,6 +393,10 @@ export class Fulfilment {
       this.deps.log.info({ orderId: id, template }, 'email not sent: no RESEND_API_KEY');
       return { done: true };
     }
+    if (template !== 'alert' && !this.deps.mailer.reachesCustomers) {
+      this.deps.log.info({ orderId: id, template }, "email not sent: EMAIL_FROM is Resend's test sender, which reaches only OWNER_EMAIL");
+      return { done: true };
+    }
     const { subject, text } = renderEmail(template, o);
     // The key is per order and email, hashed so the provider never sees our order IDs in it.
     const idempotencyKey = createHash('sha256').update(`email:${id}:${key}`).digest('hex').slice(0, 48);

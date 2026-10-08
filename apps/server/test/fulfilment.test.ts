@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Product } from '@logbook/core';
 import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
-import type { EmailMessage, Mailer } from '../src/email/mailer.ts';
+import { isResendTestSender, ResendMailer, type EmailMessage, type Mailer } from '../src/email/mailer.ts';
 import { renderEmail } from '../src/email/templates.ts';
 import { AddressError, fitStreet, luluAddress } from '../src/fulfilment/address.ts';
 import { backoffMs, JobRunner, MAX_ATTEMPTS, PermanentJobError } from '../src/jobs/runner.ts';
@@ -109,9 +109,9 @@ function fakeStripe() {
   return { gateway: new StripeGateway('sk_test_fake', 'whsec_x', { fetch }), refunds, state: s };
 }
 
-function recordingMailer(): Mailer & { sent: EmailMessage[] } {
+function recordingMailer(reachesCustomers = true): Mailer & { sent: EmailMessage[] } {
   const sent: EmailMessage[] = [];
-  return { enabled: true, sent, send: async (m) => (sent.push(m), { id: `em_${sent.length}` }) };
+  return { enabled: true, reachesCustomers, sent, send: async (m) => (sent.push(m), { id: `em_${sent.length}` }) };
 }
 
 /** The local store, pretending Lulu can reach it. */
@@ -140,13 +140,13 @@ afterEach(async () => {
   for (const a of apps.splice(0)) await a.close();
 });
 
-async function setup(opts: { faults?: string; reachable?: boolean; payment?: Partial<Payment> } = {}) {
+async function setup(opts: { faults?: string; reachable?: boolean; payment?: Partial<Payment>; reachesCustomers?: boolean } = {}) {
   const db = new OrderDb(':memory:');
   const local = new LocalStore(mkdtempSync(join(tmpdir(), 'logbook-fulfil-')));
   const store = opts.reachable === false ? local : reachable(local);
   const lulu = fakeLulu();
   const stripe = fakeStripe();
-  const mailer = recordingMailer();
+  const mailer = recordingMailer(opts.reachesCustomers);
   const clock = { now: new Date('2026-10-08T10:00:00Z') };
   const cfg = opts.faults ? loadConfig({ LULU_SANDBOX_CLIENT_KEY: 'k', LULU_SANDBOX_CLIENT_SECRET: 'lulu-secret', OWNER_EMAIL: 'owner@example.com', LOGBOOK_FAULTS: opts.faults }) : config;
   const app = buildApp(cfg, { logger: false, store, db, lulu: lulu.client, stripe: stripe.gateway, mailer, startJobs: false, now: () => clock.now });
@@ -472,5 +472,22 @@ describe('emails', () => {
     }
     expect(renderEmail('shipped', o).text).toContain('handed to DHL');
     expect(renderEmail('shipped', o).text).toContain('arrive by 2026-10-24');
+  });
+
+  it("go only to you while EMAIL_FROM is Resend's test sender (D76)", async () => {
+    expect(['Logbook <onboarding@resend.dev>', 'onboarding@resend.dev', 'Logbook <ONBOARDING@Resend.dev> '].map(isResendTestSender)).toEqual([true, true, true]);
+    expect(['Logbook <orders@example.com>', 'a@resend.dev.example.com', 'resend.dev <a@example.com>'].map(isResendTestSender)).toEqual([false, false, false]);
+    expect(new ResendMailer('re_x', 'Logbook <onboarding@resend.dev>').reachesCustomers).toBe(false);
+    expect(new ResendMailer('re_x', 'Logbook <orders@example.com>').reachesCustomers).toBe(true);
+
+    const t = await setup({ faults: 'files-missing', reachesCustomers: false });
+    await t.run();
+    expect(t.order().state).toBe('refunded');
+    expect(t.mailer.sent.map((m) => [m.to, m.tag])).toEqual([['owner@example.com', 'alert']]);
+    // The skipped customer email is settled, not retried.
+    expect(t.db.jobs(t.id).filter((j) => j.kind === 'email').map((j) => [j.key, j.state, j.attempts]).sort()).toEqual([
+      ['alert:1', 'done', 0],
+      ['refunded', 'done', 0],
+    ]);
   });
 });

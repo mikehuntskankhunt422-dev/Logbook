@@ -431,7 +431,7 @@ function Progress({ order }: { order: OrderView }) {
           ))}
         </p>
       )}
-      {at < 3 && <p className="hint">We'll email you the tracking link when it ships.</p>}
+      {at < 3 && <p className="hint">The tracking link will appear here when it ships.</p>}
     </>
   );
 }

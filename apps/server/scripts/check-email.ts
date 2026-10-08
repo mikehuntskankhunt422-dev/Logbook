@@ -50,6 +50,7 @@ const resendMailer = new ResendMailer(resend.apiKey, resend.from);
 let emailId: string | null = null;
 const mailer: Mailer = {
   enabled: true,
+  reachesCustomers: resendMailer.reachesCustomers,
   send: async (m) => {
     const sent = await resendMailer.send(m);
     emailId = sent.id;
@@ -65,6 +66,7 @@ if (job?.state !== 'done' || !emailId) {
   process.exit(1);
 }
 console.log(`✓ Resend accepted the alert for ${id}: email ${emailId}, from ${resend.from} to ${ownerEmail}`);
+console.log(resendMailer.reachesCustomers ? 'Customer emails: on.' : "Customer emails: off. EMAIL_FROM is Resend's test sender, which reaches only your address (D76).");
 
 // Resend's view of it: "sent" until the receiving mail server answers, then "delivered" or "bounced".
 const PENDING = new Set(['queued', 'scheduled', 'sent']);
