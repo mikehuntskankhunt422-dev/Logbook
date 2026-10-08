@@ -88,7 +88,7 @@ describe('S3-compatible store (R2, B2)', () => {
     expect(url.searchParams.get('X-Amz-Credential')).toMatch(/^keyid\/\d{8}\/us-west-004\/s3\/aws4_request$/);
   });
 
-  it('sets the bucket up: browser uploads from the website, and 7-day deletion of orders', async () => {
+  it('sets the bucket up: browser uploads and proof downloads from the website, and 7-day deletion of orders', async () => {
     const sent: { url: string; body: string; md5: string | null }[] = [];
     const fetchImpl = (async (req: Request) => {
       sent.push({ url: req.url, body: await req.text(), md5: req.headers.get('content-md5') });
@@ -96,7 +96,7 @@ describe('S3-compatible store (R2, B2)', () => {
     }) as unknown as typeof fetch;
     await new S3Store(R2, fetchImpl).configureBucket({ origins: ['http://localhost:5173', 'https://logbook.example'], retentionDays: 7 });
     expect(sent.map((s) => new URL(s.url).search)).toEqual(['?cors', '?lifecycle']);
-    expect(sent[0]!.body).toContain('<AllowedOrigin>http://localhost:5173</AllowedOrigin><AllowedOrigin>https://logbook.example</AllowedOrigin><AllowedMethod>PUT</AllowedMethod><AllowedHeader>content-type</AllowedHeader>');
+    expect(sent[0]!.body).toContain('<AllowedOrigin>http://localhost:5173</AllowedOrigin><AllowedOrigin>https://logbook.example</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedHeader>content-type</AllowedHeader>');
     expect(sent[1]!.body).toContain('<Prefix>orders/</Prefix>');
     expect(sent[1]!.body).toContain('<Expiration><Days>7</Days></Expiration>');
     expect(sent[1]!.body).toContain('<NoncurrentVersionExpiration><NoncurrentDays>1</NoncurrentDays></NoncurrentVersionExpiration>');

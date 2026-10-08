@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { productLabel, SHIP_COUNTRIES, type BookOrderRef } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { ApiError, checkoutOrder, getOrder, quoteOrder, type OrderView, type ShippingChoice } from '../lib/api.ts';
 import { formatUsd } from '../lib/money.ts';
+
+const ProofViewer = lazy(() => import('./ProofViewer.tsx').then((m) => ({ default: m.ProofViewer })));
 
 const PREPARING: Record<string, string> = {
   'awaiting upload': 'Waiting for the upload to finish…',
@@ -145,6 +147,11 @@ function Proof({ order }: { order: OrderView }) {
         </ul>
       ) : (
         <p className="notice">The print files have been deleted (they're kept for 7 days). Prepare the book again to order it.</p>
+      )}
+      {order.proof && (
+        <Suspense fallback={<p className="hint">Opening the proof…</p>}>
+          <ProofViewer orderId={order.id} interior={order.proof.interior} cover={order.proof.cover} />
+        </Suspense>
       )}
       <p className="hint">
         {lulu?.checked ? 'The printer has checked both files and accepted them.' : `Not checked by the printer yet (${lulu?.reason ?? 'unknown'}).`}

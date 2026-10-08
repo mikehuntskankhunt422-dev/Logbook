@@ -3,9 +3,11 @@
  *
  *   npm run storage:setup -w @logbook/server
  *
- * 1. CORS: browsers on the website (http://localhost:5173 and :4173, and every WEB_ORIGIN) may PUT uploads.
+ * 1. CORS: browsers on the website (http://localhost:5173 and :4173, and every WEB_ORIGIN) may PUT
+ *    uploads and GET the proof PDFs (the order page shows them with pdf.js).
  * 2. Lifecycle: files under `orders/` are deleted after 7 days; hidden or replaced versions after a day.
- * 3. A check: a browser-style CORS preflight, an upload through a signed URL, a download, a delete.
+ * 3. A check: a browser-style CORS preflight, an upload through a signed URL, a browser-style
+ *    download, a delete.
  *
  * Reads the R2_* or S3_* variables. The key must be allowed to change bucket settings (on
  * Backblaze B2, a key for all buckets; bucket-restricted keys can't).
@@ -23,7 +25,7 @@ const where = `${config.storage.provider} bucket "${config.storage.bucket}" at $
 
 console.log(`Setting up ${where}`);
 await store.configureBucket({ origins, retentionDays: RETENTION_DAYS });
-console.log(`✓ Browsers on ${origins.join(', ')} may upload; orders/ is deleted after ${RETENTION_DAYS} days`);
+console.log(`✓ Browsers on ${origins.join(', ')} may upload and read proofs; orders/ is deleted after ${RETENTION_DAYS} days`);
 
 const key = `orders/_setup-check/${Date.now()}.json`;
 const body = new TextEncoder().encode(JSON.stringify({ check: 'logbook storage setup' }));
@@ -36,9 +38,11 @@ console.log('✓ A browser on the website is allowed to upload');
 
 const put = await fetch(up.url, { method: 'PUT', headers: up.headers, body });
 if (!put.ok) throw new Error(`Upload through a signed link failed (HTTP ${put.status}): ${(await put.text()).slice(0, 300)}`);
-const got = await fetch(await store.signGet(key, 300));
+const got = await fetch(await store.signGet(key, 300), { headers: { Origin: origins[0]! } });
 if (!got.ok || (await got.text()) !== new TextDecoder().decode(body)) throw new Error(`Download through a signed link failed (HTTP ${got.status})`);
-console.log('✓ Upload and download through signed links work (the same kind Lulu will use)');
+const readable = got.headers.get('access-control-allow-origin');
+if (readable !== origins[0] && readable !== '*') throw new Error(`The bucket doesn't let ${origins[0]} read proofs yet (no CORS header on GET). Rules can take a minute to apply; try again.`);
+console.log('✓ Upload and download through signed links work (the same kind Lulu will use), and the website may read them');
 
 await store.deletePrefix('orders/_setup-check/');
 console.log('✓ Cleaned up. Storage is ready: restart the API and "Prepare my book" will use it.');

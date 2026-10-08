@@ -20,6 +20,14 @@ const QUOTES: Record<string, { bookCents: number; shipping: { level: string; nam
   },
 };
 
+/** True when a canvas has been drawn on: some pixel isn't blank or white. Runs in the page. */
+function inked(c: HTMLCanvasElement): boolean {
+  if (!c.width || !c.height) return false;
+  const px = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+  for (let i = 0; i < px.length; i += 4) if (px[i + 3]! > 0 && (px[i]! < 240 || px[i + 1]! < 240 || px[i + 2]! < 240)) return true;
+  return false;
+}
+
 /** A real order from "Prepare my book" (local API, no Lulu), opened on its order page. */
 async function preparedOrder(page: Page): Promise<string> {
   await writeEntry(page, 'Order me', 'Words for the order test.');
@@ -34,6 +42,9 @@ async function preparedOrder(page: Page): Promise<string> {
   await expect(page.getByText('Your print files are ready: 32 pages.')).toBeVisible({ timeout: 120_000 });
   await page.getByRole('link', { name: 'Check the proof and order →' }).click();
   await expect(page.getByRole('heading', { name: 'Your book order' })).toBeVisible();
+  // The page prices the guessed country at once; the e2e API has no Lulu, so it says so. Waiting for
+  // that keeps its answer from landing after the stand-ins below are in place.
+  await expect(page.getByText('Prices are not available on this server.')).toBeVisible();
   return /#\/order\/([\w-]+)/.exec(page.url())![1]!;
 }
 
@@ -77,6 +88,19 @@ test('order: proof, destination and price, the required check, Stripe, and back'
 
   await expect(page.getByText('32 pages, 6 × 9 in premium colour paperback, matte.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open the pages (PDF)' })).toBeVisible();
+
+  // The real print files, drawn in the page by pdf.js.
+  const first = page.getByRole('img', { name: 'Page 1 of 32' });
+  await expect(first).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => first.evaluate(inked)).toBe(true);
+  await page.getByRole('button', { name: 'Next →' }).click();
+  await expect(page.getByRole('img', { name: 'Page 2 of 32' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cover', exact: true }).click();
+  const coverImg = page.getByRole('img', { name: 'The cover: back, spine and front' });
+  await expect(coverImg).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => coverImg.evaluate(inked)).toBe(true);
+  await page.getByRole('button', { name: 'Pages', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Page 2 of 32' })).toBeVisible();
   // en-US: the United States is guessed and priced straight away.
   await expect(page.getByLabel('Country')).toHaveValue('US');
   await expect(page.getByText('Total from $32.49')).toBeVisible();

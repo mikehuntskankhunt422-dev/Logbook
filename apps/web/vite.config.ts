@@ -45,6 +45,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,webmanifest}'],
+        // pdf.js shows proofs on the order page, which needs a connection anyway: not worth every install's offline cache.
+        globIgnores: ['**/pdf-*.js', '**/pdf.worker*'],
         navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         cleanupOutdatedCaches: true,

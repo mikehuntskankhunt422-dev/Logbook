@@ -1591,3 +1591,21 @@ mark {
     margin-bottom: 8px;
   }
 }
+.proof-viewer {
+  margin: 12px 0;
+}
+.proof-canvas {
+  margin-top: 10px;
+  min-height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--bg-sunk);
+  border-radius: var(--radius);
+}
+.proof-canvas canvas {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  background: #fff;
+  max-width: 100%;
+}
