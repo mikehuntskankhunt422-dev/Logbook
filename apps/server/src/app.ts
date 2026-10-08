@@ -4,9 +4,11 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.ts';
 import { loggerOptions } from './log.ts';
 import { LuluClient, LuluError } from './lulu/client.ts';
+import { CheckoutService } from './orders/checkout.ts';
 import { OrderDb } from './orders/db.ts';
 import { registerOrderRoutes } from './orders/routes.ts';
 import { OrderService } from './orders/service.ts';
+import { StripeGateway } from './payments/stripe.ts';
 import { checkBook, publicQuote, Quoter } from './pricing/quote.ts';
 import { renderBook, type BookRender, type BookSource } from './render/book.ts';
 import { LocalStore } from './storage/local.ts';
@@ -20,6 +22,8 @@ export interface AppOptions {
   store?: ObjectStore;
   db?: OrderDb;
   render?: (src: BookSource) => Promise<BookRender>;
+  stripe?: StripeGateway;
+  now?: () => Date;
 }
 
 function storeFor(config: Config): ObjectStore | undefined {
@@ -31,9 +35,10 @@ function storeFor(config: Config): ObjectStore | undefined {
 }
 
 /**
- * The API: a health check, the cover-dimensions proxy (D39) and price quotes (M3). All three are
- * content-free. Rendering is reached through uploads (M2 slice E, now first in M3); until then the
- * renderer runs from scripts and tests only, so nothing deployed accepts journal content (PLAN §6).
+ * The API: a health check, cover sizes (D39) and price estimates (D49), which are content-free; and,
+ * when storage is configured, orders (M3): upload by signed URLs, print files, a quote per
+ * destination, Stripe Checkout and Stripe's webhook. Journal content only ever reaches storage, never
+ * the database or the logs (PLAN §6).
  */
 export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: opts.logger === false ? false : loggerOptions });
@@ -43,9 +48,14 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
   const db = store ? (opts.db ?? new OrderDb(config.databasePath)) : undefined;
   const orders =
     store && db
-      ? new OrderService({ db, store, lulu, quoter, render: opts.render ?? renderBook, workRoot: tmpdir(), log: app.log })
+      ? new OrderService({ db, store, lulu, quoter, render: opts.render ?? renderBook, workRoot: tmpdir(), log: app.log, now: opts.now })
       : undefined;
-  registerOrderRoutes(app, orders, store, config.webOrigins);
+  const stripe = opts.stripe ?? (config.stripe ? new StripeGateway(config.stripe.secretKey, config.stripe.webhookSecret) : undefined);
+  const checkout =
+    orders && db
+      ? new CheckoutService({ db, quoter, stripe, taxEnabled: config.stripe?.taxEnabled ?? false, webOrigins: config.webOrigins, allowLoopbackReturn: config.mode === 'test', log: app.log, now: opts.now })
+      : undefined;
+  registerOrderRoutes(app, orders, store, config.webOrigins, undefined, checkout);
   if (orders && db) {
     let sweep: NodeJS.Timeout | undefined;
     app.addHook('onReady', async () => {
@@ -60,7 +70,13 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
     });
   }
 
-  app.get('/api/health', async () => ({ ok: true, mode: config.mode, lulu: Boolean(config.lulu), storage: store ? (store instanceof S3Store ? store.config.provider : store.kind) : null }));
+  app.get('/api/health', async () => ({
+    ok: true,
+    mode: config.mode,
+    lulu: Boolean(config.lulu),
+    storage: store ? (store instanceof S3Store ? store.config.provider : store.kind) : null,
+    payments: stripe ? { webhooks: stripe.canVerifyWebhooks, tax: config.stripe?.taxEnabled ?? false } : null,
+  }));
 
   /**
    * Lulu's cover size for the builder's preview (D39). Takes only a package ID and a page count,

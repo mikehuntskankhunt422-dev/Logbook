@@ -1,7 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
+import { StripeSignatureError } from '../payments/stripe.ts';
 import { LOCAL_STORAGE_ROUTE, LocalStore } from '../storage/local.ts';
 import type { ObjectStore } from '../storage/store.ts';
+import type { CheckoutService } from './checkout.ts';
 import { createOrderSchema, OrderError, type OrderService } from './service.ts';
+
+const quoteSchema = z.object({ country: z.string().regex(/^[A-Z]{2}$/), state: z.string().regex(/^[A-Z0-9]{1,3}$/).optional() });
+const checkoutSchema = z.object({ quoteVersion: z.number().int().positive(), returnUrl: z.string().max(2000), checked: z.boolean() });
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -14,6 +20,8 @@ const CONTENT_TYPES: Record<string, string> = { json: 'application/json', jpg: '
 
 /** New orders per client address per hour: each one hands out upload URLs into our storage (D53). */
 export const ORDERS_PER_HOUR = 10;
+/** Re-quotes and checkouts per order per hour: each can ask Lulu for prices or open a Stripe session. */
+export const PAYMENT_STEPS_PER_HOUR = 60;
 
 /** A sliding one-hour window per key, in memory (one process, D13). */
 export class HourlyLimit {
@@ -47,8 +55,17 @@ function fail(reply: FastifyReply, err: unknown) {
  * and hands out signed upload URLs; content goes straight to storage. Reading an order needs the
  * secret token returned when it was created.
  */
-export function registerOrderRoutes(app: FastifyInstance, service: OrderService | undefined, store: ObjectStore | undefined, webOrigins: string[], limit = new HourlyLimit(ORDERS_PER_HOUR)): void {
+export function registerOrderRoutes(
+  app: FastifyInstance,
+  service: OrderService | undefined,
+  store: ObjectStore | undefined,
+  webOrigins: string[],
+  limit = new HourlyLimit(ORDERS_PER_HOUR),
+  checkout?: CheckoutService,
+): void {
   app.decorate('orders', service);
+  const steps = new HourlyLimit(PAYMENT_STEPS_PER_HOUR);
+  const tooMany = (reply: FastifyReply) => reply.code(429).header('Retry-After', '3600').send({ error: 'Too many changes to this order in the last hour. Please try again later.' });
 
   // CORS for the website when it's hosted apart from the API (D15). Only listed origins.
   app.addHook('onRequest', async (req, reply) => {
@@ -86,13 +103,72 @@ export function registerOrderRoutes(app: FastifyInstance, service: OrderService 
     if (!service) return reply.code(503).send({ error: 'Ordering is not available on this server yet.' });
     try {
       reply.header('Cache-Control', 'no-store');
-      return await service.view(service.authorize(req.params.id, bearer(req)));
+      const order = service.authorize(req.params.id, bearer(req));
+      return await service.view(checkout ? await checkout.refresh(order) : order);
     } catch (err) {
       return fail(reply, err);
     }
   });
 
+  /** Prices the book for a destination country (PLAN §1.5 step 4). */
+  app.post<{ Params: { id: string } }>('/api/orders/:id/quote', async (req, reply) => {
+    if (!service || !checkout) return reply.code(503).send({ error: 'Ordering is not available on this server yet.' });
+    const parsed = quoteSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Choose a country from the list.' });
+    try {
+      reply.header('Cache-Control', 'no-store');
+      const order = service.authorize(req.params.id, bearer(req));
+      if (!steps.take(order.id)) return tooMany(reply);
+      return await service.view(await checkout.requote(order, parsed.data));
+    } catch (err) {
+      return fail(reply, err);
+    }
+  });
+
+  /** Opens Stripe Checkout for the quote the customer saw (PLAN §1.5 step 5). */
+  app.post<{ Params: { id: string } }>('/api/orders/:id/checkout', async (req, reply) => {
+    if (!service || !checkout) return reply.code(503).send({ error: 'Ordering is not available on this server yet.' });
+    const parsed = checkoutSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'The payment request is not valid.' });
+    try {
+      reply.header('Cache-Control', 'no-store');
+      const order = service.authorize(req.params.id, bearer(req));
+      if (!steps.take(order.id)) return tooMany(reply);
+      return await checkout.checkout(order, parsed.data);
+    } catch (err) {
+      return fail(reply, err);
+    }
+  });
+
+  if (checkout?.enabled) registerStripeWebhook(app, checkout);
+
   if (store instanceof LocalStore) registerLocalStorage(app, store);
+}
+
+/**
+ * Stripe's webhook (PLAN §1.5 step 6). The signature is checked on the raw bytes, so this route
+ * keeps the body as a buffer. A 400 tells Stripe the request wasn't ours; a 500 makes it retry, and
+ * because a failed event isn't recorded, the retry is processed in full.
+ */
+function registerStripeWebhook(app: FastifyInstance, checkout: CheckoutService): void {
+  void app.register(async (scope) => {
+    scope.removeAllContentTypeParsers();
+    scope.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: 1024 * 1024 }, (_req, body, done) => done(null, body));
+    scope.post('/api/stripe/webhook', async (req, reply) => {
+      const signature = req.headers['stripe-signature'];
+      let event;
+      try {
+        event = checkout.verifyWebhook(req.body as Buffer, typeof signature === 'string' ? signature : undefined);
+      } catch (err) {
+        if (err instanceof StripeSignatureError) {
+          req.log.warn({ reason: err.message.slice(0, 200) }, 'Stripe webhook refused');
+          return reply.code(400).send({ error: 'Invalid signature.' });
+        }
+        throw err;
+      }
+      return { received: true, outcome: checkout.handleEvent(event) };
+    });
+  });
 }
 
 /** Serves the local store's signed URLs (development and tests only, D51). */

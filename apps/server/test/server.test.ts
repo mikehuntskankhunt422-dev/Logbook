@@ -98,8 +98,14 @@ describe('API', () => {
   it('answers the health check', async () => {
     const app = buildApp(loadConfig({}), { logger: false });
     const res = await app.inject({ method: 'GET', url: '/api/health' });
-    expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false, storage: null });
+    expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false, storage: null, payments: null });
     await app.close();
+    // Says whether webhooks can be verified, never the keys.
+    const paid = buildApp(loadConfig({ STRIPE_TEST_SECRET_KEY: 'sk_test_abc', STRIPE_TEST_WEBHOOK_SECRET: 'whsec_abc' }), { logger: false });
+    const health = await paid.inject({ method: 'GET', url: '/api/health' });
+    expect(health.json()).toMatchObject({ payments: { webhooks: true, tax: false } });
+    expect(health.body).not.toMatch(/sk_test|whsec/);
+    await paid.close();
   });
 });
 

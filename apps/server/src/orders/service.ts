@@ -50,6 +50,12 @@ export interface OrderView {
   error: string | null;
   /** Links to the print files while they exist (an hour each time the order is read). */
   proof: { interior: string; cover: string } | null;
+  /** The price for the chosen destination: what Checkout charges (without Lulu's costs). */
+  quote: { version: number; at: string; country: string; bookCents: number; shipping: { level: string; name: string; daysMin: number | null; daysMax: number | null; priceCents: number }[] } | null;
+  /** Stripe's page while the order waits for payment. */
+  checkoutUrl: string | null;
+  /** What was charged, once paid. */
+  paid: { amountTotalCents: number; amountShippingCents: number; amountTaxCents: number; currency: string; shippingLevel: string | null; paidAt: string } | null;
 }
 
 export interface OrderDeps {
@@ -136,6 +142,20 @@ export class OrderService {
         ? {
             interior: await this.deps.store.signGet(printKey(order.id, 'interior'), PROOF_TTL_S, { downloadName: 'logbook-interior.pdf' }),
             cover: await this.deps.store.signGet(printKey(order.id, 'cover'), PROOF_TTL_S, { downloadName: 'logbook-cover.pdf' }),
+          }
+        : null,
+      quote: order.quote
+        ? { version: order.quote.version, at: order.quote.at, country: order.quote.country, bookCents: order.quote.bookCents, shipping: order.quote.shipping.map(({ luluCents: _cost, ...s }) => s) }
+        : null,
+      checkoutUrl: order.state === 'awaiting_payment' ? (order.checkout?.url ?? null) : null,
+      paid: order.payment
+        ? {
+            amountTotalCents: order.payment.amountTotal,
+            amountShippingCents: order.payment.amountShipping,
+            amountTaxCents: order.payment.amountTax,
+            currency: order.payment.currency,
+            shippingLevel: order.payment.shippingLevel,
+            paidAt: order.payment.paidAt,
           }
         : null,
     };
