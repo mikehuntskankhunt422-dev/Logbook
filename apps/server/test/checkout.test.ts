@@ -224,6 +224,7 @@ describe('Stripe Checkout (M3 slice E)', () => {
     expect(key).toBe('checkout:ord_1:1:1');
     expect(Object.fromEntries(form)).toMatchObject({
       mode: 'payment',
+      customer_creation: 'always',
       client_reference_id: 'ord_1',
       'metadata[order_id]': 'ord_1',
       'payment_intent_data[metadata][order_id]': 'ord_1',

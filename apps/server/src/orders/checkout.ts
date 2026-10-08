@@ -75,6 +75,8 @@ export function checkoutParams(order: Order, quote: StoredQuote, opts: { base: s
   const taxId = TAX_ID_COUNTRIES[quote.country];
   return {
     mode: 'payment',
+    // A Stripe customer with the buyer's email, so Stripe emails them about a refund (D76).
+    customer_creation: 'always',
     client_reference_id: order.id,
     metadata: { order_id: order.id, quote_version: String(quote.version) },
     payment_intent_data: { metadata: { order_id: order.id } },
