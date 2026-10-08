@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 export type CheckoutSession = Stripe.Checkout.Session;
 export type CheckoutParams = Stripe.Checkout.SessionCreateParams;
 export type StripeEvent = Stripe.Event;
+export type StripeRefund = Stripe.Refund;
 
 /** A webhook whose signature didn't match, or was too old. */
 export class StripeSignatureError extends Error {
@@ -55,6 +56,14 @@ export class StripeGateway {
   /** Expires an open session so it can't be paid any more. Stripe refuses once it's complete. */
   expireCheckout(id: string): Promise<CheckoutSession> {
     return this.call(() => this.stripe.checkout.sessions.expire(id));
+  }
+
+  /**
+   * Refunds a payment in full (PLAN §1.5 step 9). The idempotency key makes a repeat return the
+   * same refund instead of failing or refunding twice; Stripe refuses a second full refund anyway.
+   */
+  refund(paymentIntent: string, idempotencyKey: string, metadata: Record<string, string>): Promise<StripeRefund> {
+    return this.call(() => this.stripe.refunds.create({ payment_intent: paymentIntent, metadata }, { idempotencyKey }));
   }
 
   /** Checks the `Stripe-Signature` header against the raw body (5 minutes' tolerance) and parses the event. */

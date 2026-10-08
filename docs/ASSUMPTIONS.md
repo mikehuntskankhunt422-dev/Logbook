@@ -107,16 +107,38 @@ With the test keys in this environment and `npm run stripe:check -w @logbook/ser
 | The Stripe CLI (v1.51.1) gets a webhook signing secret with `stripe listen --print-secret` through `api.stripe.com`; forwarding events needs a websocket to `stripecli-ws-nw.stripe.com`. With both, Stripe's `checkout.session.completed` and `.expired` reach `POST /api/stripe/webhook`, pass signature verification and move the order | Proxy log; `stripe:check --listen` |
 | Hosts hosted Checkout needs in a browser: `checkout.stripe.com`, `js.stripe.com`, `m.stripe.network`, `b.stripecdn.com`, `q.stripe.com`, `r.stripe.com`, `hooks.stripe.com`; the 3-D Secure test page is on `testmode-acs.stripe.com`. Not needed for paying: `merchant-ui-api.stripe.com`, `checkout-cookies.stripe.com`, `m.stripe.com`, `hcaptcha.com` (all refused here, payment still worked) | Proxy log during the runs |
 
+### Lulu sandbox print jobs and webhooks, checked by calling it (2026-10-08)
+
+Calls to `https://api.sandbox.lulu.com` from the build environment with the sandbox keys (M4 §1). Lulu's documentation hosts are blocked there, so the spec text was read from a 2025 copy of `openapi_public.yml` in a public GitHub mirror (`devlimelabs/lulu-print-mcp`), and every fact below was checked against the sandbox itself.
+
+| Fact | How it was checked |
+|---|---|
+| `POST /print-jobs/` takes `pod_package_id` **inside** `line_items[].printable_normalization`; at the line-item level the sandbox answers 400 `{"line_items":{"0":{"printable_normalization":{"pod_package_id":["This field is required."]}}}}`. A job answers 201 with `status.name` `CREATED`, `production_delay` 60 (minutes, the default) and `is_cancellable: true` | Job 345111 |
+| With no card on file, a job goes `CREATED → UNPAID` ("Print-job was accepted and needs to be paid") within about 7 s and stays there. **The sandbox account has no card on file** (open question #6) | Jobs 345111–345113; a poller |
+| By the time a job is `UNPAID`, Lulu has downloaded both files (`source_file`), normalized them (`normalized_file`, `page_count`) and computed their MD5 (`source_md5sum`). Signed links valid for 10 minutes were enough (open question #8) | Jobs 345111 (GitHub release links) and 345112–345114 (Backblaze B2 signed links) |
+| `source_md5sum` is checked: a wrong value makes the job `REJECTED` ("One or more line-items were rejected."), with `line_items[].status.messages.printable_normalization.interior[]` = "Given md5sum doesn't match actual md5sum (…) of file from '<url>'". `source_md5_sum` (the spec's spelling) is ignored | Jobs 345113 (ignored) and 345114 (rejected) |
+| `GET /print-jobs/?search=<text>` finds jobs by `external_id` (and other fields) | Search for `logbook-m4-probe-1` |
+| `PUT /print-jobs/{id}/status/ {"name":"CANCELED"}` cancels an `UNPAID` job: 200, "Print-job was canceled" | Jobs 345112, 345113 |
+| `GET /print-jobs/{id}/costs/` for a 48-page 6 × 9 in premium-colour paperback by `MAIL` to Oregon: line item $8.66 (list price), shipping $5.69, fulfilment $0.75, tax $0, total $15.10 | Job 345111 |
+| Webhooks: `POST /webhooks/ {topics, url}` → 201 `{id (UUID), is_active, topics, url}`; `POST /webhooks/{id}/test-submission/PRINT_JOB_STATUS_CHANGED/` → 200 "Test webhook submission queued", delivering a dummy print job (`id` 1); `GET /webhook-submissions/` lists deliveries with `payload` (`{topic, data}`), `is_success`, `response_code`, `attempts`, but **not the signature**; `DELETE /webhooks/{id}/` → 204 | A subscription to `https://example.com/…` (answered 405), then deleted |
+| The spec documents a print-job status `ERROR` (after `IN_PRODUCTION`) and line-item statuses `CREATED`, `ACCEPTED`, `REJECTED`, `IN_PRODUCTION`, `ERROR`, `SHIPPED` | Spec copy; `ACCEPTED` and `REJECTED` seen in the sandbox |
+
+### Not checkable from the build environment
+
+| Claim | Why not |
+|---|---|
+| Resend: `POST https://api.resend.com/emails` with `Authorization: Bearer <key>`, JSON `{from, to[], subject, text, tags[]}`, an `Idempotency-Key` header, answering `{id}` (D73) | `api.resend.com` is refused by the environment's proxy; there's no key yet (M4 §6) |
+
 ## Not yet verified (blocking the code that depends on them)
 
 1. ~~The sandbox token URL path.~~ **Answered 2026-10-07:** same path on the sandbox host (LS above).
-2. `Lulu-HMAC-SHA256` encoding (hex or base64), and whether "API secret" means the client secret.
-3. Whether sandbox print jobs progress to `SHIPPED` or `DELIVERED`.
+2. `Lulu-HMAC-SHA256` encoding (hex or base64), and whether "API secret" means the client secret. Needs a real delivery to a public URL; until then both encodings are accepted (D69).
+3. Whether sandbox print jobs progress to `SHIPPED` or `DELIVERED`. Blocked by #6: jobs stop at `UNPAID`.
 4. ~~Real sandbox cost-calculation output per package ID~~ (**answered 2026-10-07:** sandbox print costs equal list prices for all 16 IDs, LS above). Still open: `HANDLING_FEE` for other destinations and quantities (none appeared for one copy to the US), and whether production prices match the sandbox.
 5. The set of destination countries Lulu ships to (will be built from `/shipping-options/`).
-6. Sandbox auto-payment with a test card on file.
+6. ~~Sandbox auto-payment with a test card on file.~~ **Answered 2026-10-08:** no card is on file in the sandbox account, so jobs stop at `UNPAID` (above). Still open: what happens once a test card is added.
 7. ~~Case-wrap `/cover-dimensions/` output vs Lulu's template.~~ **Answered 2026-10-07:** the size includes the 0.75″ wrap and bleed; the hinge sits inside the board panels (LS above, D46).
-8. How long Lulu needs file URLs to stay valid after print-job creation.
+8. ~~How long Lulu needs file URLs to stay valid after print-job creation.~~ **Answered 2026-10-08:** seconds; Lulu copies the files when it accepts the job (above, D71).
 9. ~~Stripe hosted Checkout UX with a single allowed country~~ (**answered 2026-10-08:** the country shows fixed, Stripe test mode above). Still open: Stripe Tax Calculation API availability on your account.
 10. ~~Whether Stripe permits automated browser tests against hosted Checkout.~~ **Answered 2026-10-08:** in test mode, yes, all three cards (Stripe test mode above).
 11. Azure Artifact Signing eligibility for an Australian individual.

@@ -66,6 +66,44 @@ export interface Payment {
   paidAt: string;
 }
 
+/** Size and hashes of one print file, recorded when it was rendered (the file the customer approves). */
+export interface PrintFileHash {
+  bytes: number;
+  sha256: string;
+  /** Lulu checks this against what it downloads (D66). */
+  md5: string;
+}
+
+export interface PrintFiles {
+  interior: PrintFileHash;
+  cover: PrintFileHash;
+  /** When they were made: Checkout refuses files close to the 7-day deletion (D71). */
+  at: string;
+}
+
+/** The Lulu print job for a paid order, as last read from Lulu (PLAN §1.5 step 8). No content. */
+export interface LuluJobRef {
+  id: number;
+  status: string;
+  message: string | null;
+  changedAt: string | null;
+  lineItemStatus: string | null;
+  tracking: { id: string | null; urls: string[]; carrier: string | null } | null;
+  arrival: { min: string | null; max: string | null } | null;
+  /** When we sent it to Lulu (or found it there). */
+  submittedAt: string;
+  /** When we last read it. */
+  checkedAt: string;
+}
+
+export interface Refund {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  at: string;
+}
+
 /** What Lulu said about the print files, or why they weren't sent. */
 export type LuluCheck =
   | { checked: true; interior: { id: number; status: string | null; pageCount?: number | null; errors?: string[] | null }; cover: { id: number; status: string | null; errors?: string[] | null } }
@@ -93,6 +131,9 @@ export interface Order {
   payment: Payment | null;
   /** Content-free reason for failed or needs_attention. */
   error: string | null;
+  printFiles: PrintFiles | null;
+  luluJob: LuluJobRef | null;
+  refund: Refund | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -146,7 +187,47 @@ create table stripe_events (
   `
 alter table orders add column checkout_attempts integer not null default 0;
 `,
+  // M4: print-file hashes, the Lulu print job, the refund; and jobs with retries and backoff (D68).
+  `
+alter table orders add column print_files text;
+alter table orders add column lulu_job_id integer;
+alter table orders add column lulu_job text;
+alter table orders add column refund text;
+create index orders_lulu_job on orders(lulu_job_id);
+create table jobs (
+  id integer primary key autoincrement,
+  order_id text not null references orders(id),
+  kind text not null,
+  key text not null default '',
+  state text not null,
+  run_at text not null,
+  attempts integer not null default 0,
+  last_error text,
+  version integer not null default 0,
+  created_at text not null,
+  updated_at text not null,
+  unique (order_id, kind, key)
+);
+create index jobs_due on jobs(state, run_at);
+`,
 ];
+
+/** Work done after payment, with retries (D68): fulfilment, tracking, refunds and emails. */
+export type JobKind = 'fulfil' | 'track' | 'refund' | 'email';
+
+export interface JobRow {
+  id: number;
+  orderId: string;
+  kind: JobKind;
+  /** Tells apart jobs of one kind for one order, e.g. which email. */
+  key: string;
+  state: 'queued' | 'done' | 'dead';
+  runAt: string;
+  attempts: number;
+  lastError: string | null;
+  /** Goes up when the job is queued again, so a run that finishes afterwards can't undo that. */
+  version: number;
+}
 
 export interface StripeEventRow {
   id: string;
@@ -227,7 +308,7 @@ export class OrderDb {
   }
 
   /** Updates fields other than the state (use `move` for that). */
-  update(id: string, patch: Partial<Pick<Order, 'stage' | 'pages' | 'coverApproximate' | 'bookCents' | 'lulu' | 'quote' | 'checkout' | 'payment' | 'error'>>, now = new Date()): void {
+  update(id: string, patch: Partial<Pick<Order, 'stage' | 'pages' | 'coverApproximate' | 'bookCents' | 'lulu' | 'quote' | 'checkout' | 'payment' | 'error' | 'printFiles' | 'luluJob' | 'refund'>>, now = new Date()): void {
     const cols: string[] = [];
     const vals: (string | number | null)[] = [];
     const set = (col: string, v: string | number | null) => {
@@ -243,6 +324,12 @@ export class OrderDb {
     if ('checkout' in patch) set('checkout', patch.checkout ? JSON.stringify(patch.checkout) : null);
     if ('payment' in patch) set('payment', patch.payment ? JSON.stringify(patch.payment) : null);
     if ('error' in patch) set('error', patch.error ?? null);
+    if ('printFiles' in patch) set('print_files', patch.printFiles ? JSON.stringify(patch.printFiles) : null);
+    if ('luluJob' in patch) {
+      set('lulu_job', patch.luluJob ? JSON.stringify(patch.luluJob) : null);
+      set('lulu_job_id', patch.luluJob?.id ?? null);
+    }
+    if ('refund' in patch) set('refund', patch.refund ? JSON.stringify(patch.refund) : null);
     set('updated_at', now.toISOString());
     this.db.prepare(`update orders set ${cols.join(', ')} where id = ?`).run(...vals, id);
   }
@@ -299,6 +386,64 @@ export class OrderDb {
     }));
   }
 
+  /** The order a Lulu print job belongs to. */
+  byLuluJob(luluJobId: number): Order | undefined {
+    const row = this.db.prepare('select * from orders where lulu_job_id = ?').get(luluJobId) as Row | undefined;
+    return row && toOrder(row);
+  }
+
+  /**
+   * Queues a job. `once`: a job that ever existed for (order, kind, key) is left alone, so an email
+   * goes out once. `restart`: it's queued again from scratch at `runAt` (a retry, a webhook asking
+   * for a fresh look).
+   */
+  enqueueJob(orderId: string, kind: JobKind, opts: { key?: string; runAt?: Date; mode?: 'once' | 'restart'; now?: Date } = {}): void {
+    const now = (opts.now ?? new Date()).toISOString();
+    const runAt = (opts.runAt ?? opts.now ?? new Date()).toISOString();
+    const conflict =
+      opts.mode === 'restart' ? "do update set state = 'queued', run_at = excluded.run_at, attempts = 0, last_error = null, version = version + 1, updated_at = excluded.updated_at" : 'do nothing';
+    this.db
+      .prepare(`insert into jobs (order_id, kind, key, state, run_at, created_at, updated_at) values (?, ?, ?, 'queued', ?, ?, ?) on conflict (order_id, kind, key) ${conflict}`)
+      .run(orderId, kind, opts.key ?? '', runAt, now, now);
+  }
+
+  /** Queued jobs due by `now`, oldest first. */
+  dueJobs(now: Date, limit = 10): JobRow[] {
+    return (this.db.prepare("select * from jobs where state = 'queued' and run_at <= ? order by run_at, id limit ?").all(now.toISOString(), limit) as Row[]).map(toJob);
+  }
+
+  /** When the next queued job is due, if any. */
+  nextJobAt(): Date | undefined {
+    const row = this.db.prepare("select min(run_at) as at from jobs where state = 'queued'").get() as { at: string | null };
+    return row.at ? new Date(row.at) : undefined;
+  }
+
+  job(id: number): JobRow | undefined {
+    const row = this.db.prepare('select * from jobs where id = ?').get(id) as Row | undefined;
+    return row && toJob(row);
+  }
+
+  jobs(orderId: string): JobRow[] {
+    return (this.db.prepare('select * from jobs where order_id = ? order by id').all(orderId) as Row[]).map(toJob);
+  }
+
+  /**
+   * Records a run of `job`: done or dead (no more tries), or queued again at `runAt` (`failed` counts
+   * an attempt). Does nothing if the job was queued again while it ran (its version moved on).
+   */
+  settleJob(job: Pick<JobRow, 'id' | 'version'>, result: { state: 'done' | 'dead'; error?: string } | { state: 'queued'; runAt: Date; error?: string; failed: boolean }, now = new Date()): boolean {
+    const error = result.error?.slice(0, 500) ?? null;
+    const res =
+      result.state === 'queued'
+        ? this.db
+            .prepare('update jobs set run_at = ?, attempts = case when ? then attempts + 1 else 0 end, last_error = ?, updated_at = ? where id = ? and version = ?')
+            .run(result.runAt.toISOString(), result.failed ? 1 : 0, error, now.toISOString(), job.id, job.version)
+        : this.db
+            .prepare('update jobs set state = ?, attempts = attempts + ?, last_error = ?, updated_at = ? where id = ? and version = ?')
+            .run(result.state, result.state === 'dead' ? 1 : 0, error, now.toISOString(), job.id, job.version);
+    return res.changes > 0;
+  }
+
   /** Drafts the server was working on, e.g. when it restarted mid-render. */
   unfinished(): Order[] {
     return (this.db.prepare("select * from orders where state = 'draft' and stage not in ('awaiting upload') order by created_at").all() as Row[]).map(toOrder);
@@ -327,7 +472,24 @@ function toOrder(r: Row): Order {
     checkout: r['checkout'] ? (JSON.parse(String(r['checkout'])) as CheckoutRef) : null,
     payment: r['payment'] ? (JSON.parse(String(r['payment'])) as Payment) : null,
     error: (r['error'] as string | null) ?? null,
+    printFiles: r['print_files'] ? (JSON.parse(String(r['print_files'])) as PrintFiles) : null,
+    luluJob: r['lulu_job'] ? (JSON.parse(String(r['lulu_job'])) as LuluJobRef) : null,
+    refund: r['refund'] ? (JSON.parse(String(r['refund'])) as Refund) : null,
     createdAt: String(r['created_at']),
     updatedAt: String(r['updated_at']),
+  };
+}
+
+function toJob(r: Row): JobRow {
+  return {
+    id: Number(r['id']),
+    orderId: String(r['order_id']),
+    kind: r['kind'] as JobKind,
+    key: String(r['key']),
+    state: r['state'] as JobRow['state'],
+    runAt: String(r['run_at']),
+    attempts: Number(r['attempts']),
+    lastError: (r['last_error'] as string | null) ?? null,
+    version: Number(r['version']),
   };
 }

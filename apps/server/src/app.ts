@@ -2,6 +2,10 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.ts';
+import { noMailer, ResendMailer, type Mailer } from './email/mailer.ts';
+import { registerLuluWebhook } from './fulfilment/routes.ts';
+import { Fulfilment } from './fulfilment/service.ts';
+import { JobRunner } from './jobs/runner.ts';
 import { loggerOptions } from './log.ts';
 import { LuluClient, LuluError } from './lulu/client.ts';
 import { CheckoutService } from './orders/checkout.ts';
@@ -23,7 +27,18 @@ export interface AppOptions {
   db?: OrderDb;
   render?: (src: BookSource) => Promise<BookRender>;
   stripe?: StripeGateway;
+  mailer?: Mailer;
+  /** Run due jobs on a timer once ready (default). Tests turn it off and call `app.jobs.runDue()`. */
+  startJobs?: boolean;
   now?: () => Date;
+}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Present when orders are: runs fulfilment, tracking, refunds and emails (M4). */
+    jobs?: JobRunner;
+    fulfilment?: Fulfilment;
+  }
 }
 
 function storeFor(config: Config): ObjectStore | undefined {
@@ -51,21 +66,45 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
       ? new OrderService({ db, store, lulu, quoter, render: opts.render ?? renderBook, workRoot: tmpdir(), log: app.log, now: opts.now })
       : undefined;
   const stripe = opts.stripe ?? (config.stripe ? new StripeGateway(config.stripe.secretKey, config.stripe.webhookSecret) : undefined);
+  const f = config.fulfilment;
+  const mailer = opts.mailer ?? (f.resend ? new ResendMailer(f.resend.apiKey, f.resend.from) : noMailer);
+  const fulfilment =
+    store && db
+      ? new Fulfilment({ db, store, lulu, stripe, mailer, contactEmail: f.contactEmail, ownerEmail: f.ownerEmail, faults: new Set(f.faults), trackEveryMs: f.trackEveryMs, kick: () => jobs?.kick(), log: app.log, now: opts.now })
+      : undefined;
+  // `kick` above runs after this line, so it finds the runner.
+  const jobs = fulfilment && db ? new JobRunner({ db, handle: fulfilment.handle, onDead: fulfilment.onDead, log: app.log, now: opts.now }) : undefined;
+  app.decorate('jobs', jobs);
+  app.decorate('fulfilment', fulfilment);
   const checkout =
     orders && db
-      ? new CheckoutService({ db, store, quoter, stripe, taxEnabled: config.stripe?.taxEnabled ?? false, webOrigins: config.webOrigins, allowLoopbackReturn: config.mode === 'test', log: app.log, now: opts.now })
+      ? new CheckoutService({
+          db,
+          store,
+          quoter,
+          stripe,
+          taxEnabled: config.stripe?.taxEnabled ?? false,
+          webOrigins: config.webOrigins,
+          allowLoopbackReturn: config.mode === 'test',
+          log: app.log,
+          now: opts.now,
+          onPaid: () => jobs?.kick(),
+        })
       : undefined;
   registerOrderRoutes(app, orders, store, config.webOrigins, undefined, checkout);
+  if (fulfilment && config.lulu) registerLuluWebhook(app, fulfilment, config.lulu.clientSecret);
   if (orders && db) {
     let sweep: NodeJS.Timeout | undefined;
     app.addHook('onReady', async () => {
       orders.resume();
+      if (opts.startJobs !== false) jobs?.start();
       // R2's lifecycle rule also deletes old files; the local store relies on this.
       sweep = setInterval(() => void orders.sweep().catch(() => undefined), 60 * 60 * 1000).unref();
     });
     app.addHook('onClose', async () => {
       clearInterval(sweep);
       await orders.idle();
+      await jobs?.stop();
       if (!opts.db) db.close();
     });
   }
@@ -76,6 +115,7 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
     lulu: Boolean(config.lulu),
     storage: store ? (store instanceof S3Store ? store.config.provider : store.kind) : null,
     payments: stripe ? { webhooks: stripe.canVerifyWebhooks, tax: config.stripe?.taxEnabled ?? false } : null,
+    fulfilment: fulfilment ? { emails: mailer.enabled, alerts: Boolean(f.ownerEmail), faults: f.faults } : null,
   }));
 
   /**

@@ -1,5 +1,11 @@
+import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { LuluClient, LuluError } from '../src/lulu/client.ts';
+import { LuluClient, LuluError, redactUrls, type PrintJobRequest } from '../src/lulu/client.ts';
+import { luluWebhookSchema, verifyLuluSignature } from '../src/lulu/webhook.ts';
+
+/** Print jobs as the Lulu sandbox returned them (M4 §1), with signed links shortened. */
+const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')) as Record<string, unknown>;
 
 const creds = { apiUrl: 'https://lulu.test', tokenUrl: 'https://lulu.test/auth/token', clientKey: 'key', clientSecret: 'secret' };
 
@@ -170,6 +176,136 @@ describe('Lulu client', () => {
       shipping_address: { country_code: 'US', state_code: 'OR', phone_number: '+1 503 555 0100' },
       shipping_option: 'MAIL',
     });
+  });
+});
+
+describe('Lulu print jobs', () => {
+  const request: PrintJobRequest = {
+    externalId: 'ord_abc',
+    title: 'Logbook journal',
+    podPackageId: '0600X0900.FC.PRE.PB.080CW444.MXX',
+    interior: { url: 'https://files.test/interior.pdf?sig=1', md5: 'a'.repeat(32) },
+    cover: { url: 'https://files.test/cover.pdf?sig=2', md5: 'b'.repeat(32) },
+    shippingLevel: 'MAIL',
+    contactEmail: 'owner@example.com',
+    address: { name: 'Sam Reader', street1: '1 King William St', city: 'Adelaide', stateCode: 'SA', countryCode: 'AU', postcode: '5000', phoneNumber: '+61 400 000 000', email: 'sam@example.com' },
+  };
+
+  it('creates a job with the package ID inside printable_normalization and each file’s source_md5sum', async () => {
+    const lulu = fakeLulu({ 'POST /print-jobs/': () => [201, fixture('lulu-job-unpaid.json')] });
+    const client = new LuluClient(creds, { fetch: lulu.fetch });
+    const job = await client.createPrintJob({ ...request, address: { ...request.address, street2: 'Level 2', recipientTaxId: '123' } });
+    expect(job.id).toBe(345111);
+    expect(job.status.name).toBe('UNPAID');
+    expect(lulu.calls.at(-1)!.body).toEqual({
+      external_id: 'ord_abc',
+      contact_email: 'owner@example.com',
+      shipping_level: 'MAIL',
+      line_items: [
+        {
+          external_id: 'ord_abc',
+          title: 'Logbook journal',
+          quantity: 1,
+          printable_normalization: {
+            pod_package_id: '0600X0900.FC.PRE.PB.080CW444.MXX',
+            interior: { source_url: 'https://files.test/interior.pdf?sig=1', source_md5sum: 'a'.repeat(32) },
+            cover: { source_url: 'https://files.test/cover.pdf?sig=2', source_md5sum: 'b'.repeat(32) },
+          },
+        },
+      ],
+      shipping_address: {
+        name: 'Sam Reader',
+        street1: '1 King William St',
+        street2: 'Level 2',
+        city: 'Adelaide',
+        state_code: 'SA',
+        country_code: 'AU',
+        postcode: '5000',
+        phone_number: '+61 400 000 000',
+        email: 'sam@example.com',
+        recipient_tax_id: '123',
+      },
+    });
+  });
+
+  it('parses the sandbox’s accepted and rejected jobs', async () => {
+    const lulu = fakeLulu({ 'GET /print-jobs/345111/': () => [200, fixture('lulu-job-unpaid.json')], 'GET /print-jobs/345114/': () => [200, fixture('lulu-job-rejected.json')] });
+    const client = new LuluClient(creds, { fetch: lulu.fetch });
+    const unpaid = await client.getPrintJob(345111);
+    expect(unpaid.line_items[0]!.status.name).toBe('ACCEPTED');
+    expect(unpaid.line_items[0]!.printable_normalization?.interior?.source_md5sum).toMatch(/^[0-9a-f]{32}$/);
+    const rejected = await client.getPrintJob(345114);
+    expect(rejected.status.name).toBe('REJECTED');
+    expect(JSON.stringify(rejected.line_items[0]!.status.messages)).toMatch(/md5sum doesn't match/);
+  });
+
+  it('finds jobs by exact external ID only, since Lulu’s search matches other fields too', async () => {
+    const job = fixture('lulu-job-unpaid.json');
+    const lulu = fakeLulu({
+      'GET /print-jobs/?search=ord_abc&page_size=100': () => [200, { count: 2, next: null, previous: null, results: [{ ...job, external_id: 'ord_abc' }, { ...job, id: 9, external_id: 'ord_abcdef' }] }],
+    });
+    const client = new LuluClient(creds, { fetch: lulu.fetch });
+    expect((await client.findPrintJobs('ord_abc')).map((j) => j.id)).toEqual([345111]);
+  });
+
+  it('cancels with PUT on the status endpoint', async () => {
+    const lulu = fakeLulu({ 'PUT /print-jobs/7/status/': () => [200, { name: 'CANCELED', message: 'Print-job was canceled', changed: '2026-10-08T14:52:15Z', line_item_statuses: [], print_job_id: 7 }] });
+    const client = new LuluClient(creds, { fetch: lulu.fetch });
+    expect((await client.cancelPrintJob(7)).name).toBe('CANCELED');
+    expect(lulu.calls.at(-1)!.body).toEqual({ name: 'CANCELED' });
+  });
+
+  it('manages webhook subscriptions', async () => {
+    const hook = { id: 'fc31b557-db3a-4d78-be0c-3047499b8073', is_active: true, topics: ['PRINT_JOB_STATUS_CHANGED'], url: 'https://api.example/api/lulu/webhook' };
+    const lulu = fakeLulu({
+      'GET /webhooks/': () => [200, { count: 1, next: null, previous: null, results: [hook] }],
+      'POST /webhooks/': () => [201, hook],
+      [`PATCH /webhooks/${hook.id}/`]: () => [200, { ...hook, is_active: true }],
+      [`POST /webhooks/${hook.id}/test-submission/PRINT_JOB_STATUS_CHANGED/`]: () => [200, 'Test webhook submission queued'],
+    });
+    const client = new LuluClient(creds, { fetch: lulu.fetch });
+    expect(await client.listWebhooks()).toEqual([hook]);
+    expect(await client.createWebhook(hook.url, hook.topics)).toEqual(hook);
+    expect(lulu.calls.at(-1)!.body).toEqual({ url: hook.url, topics: hook.topics });
+    expect((await client.updateWebhook(hook.id, { is_active: true })).is_active).toBe(true);
+    await client.testWebhook(hook.id);
+    expect(lulu.calls.at(-1)!.method).toBe('POST');
+  });
+
+  it('keeps signed-link signatures out of error messages', async () => {
+    const lulu = fakeLulu({ 'POST /print-jobs/': () => [400, { line_items: ["Could not fetch 'https://bucket.example/orders/x/interior.pdf?X-Amz-Signature=secret123'"] }] });
+    const client = new LuluClient(creds, { fetch: lulu.fetch });
+    const err = await client.createPrintJob(request).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LuluError);
+    expect(String(err)).toContain('https://bucket.example/orders/x/interior.pdf?…');
+    expect(String(err)).not.toContain('secret123');
+    expect(redactUrls('see https://a.test/b?c=d and http://e.test/f')).toBe('see https://a.test/b?… and http://e.test/f');
+  });
+});
+
+describe('Lulu webhook signatures', () => {
+  const secret = 'client-secret';
+  const body = Buffer.from(JSON.stringify({ topic: 'PRINT_JOB_STATUS_CHANGED', data: fixture('lulu-job-unpaid.json') }));
+  const mac = createHmac('sha256', secret).update(body).digest();
+
+  it('accepts the HMAC of the raw body in hex (either case) or base64, and says which', () => {
+    expect(verifyLuluSignature(body, mac.toString('hex'), secret)).toBe('hex');
+    expect(verifyLuluSignature(body, mac.toString('hex').toUpperCase(), secret)).toBe('hex');
+    expect(verifyLuluSignature(body, ` ${mac.toString('base64')} `, secret)).toBe('base64');
+  });
+
+  it('refuses a missing or wrong signature, a different body, and an empty secret', () => {
+    expect(verifyLuluSignature(body, undefined, secret)).toBeNull();
+    expect(verifyLuluSignature(body, '', secret)).toBeNull();
+    expect(verifyLuluSignature(body, createHmac('sha256', 'other').update(body).digest('hex'), secret)).toBeNull();
+    expect(verifyLuluSignature(Buffer.concat([body, Buffer.from(' ')]), mac.toString('hex'), secret)).toBeNull();
+    expect(verifyLuluSignature(body, mac.toString('hex'), '')).toBeNull();
+  });
+
+  it('reads the print job ID and external ID from a delivery', () => {
+    const delivery = luluWebhookSchema.parse(JSON.parse(body.toString()));
+    expect(delivery.topic).toBe('PRINT_JOB_STATUS_CHANGED');
+    expect(delivery.data).toMatchObject({ id: 345111, external_id: 'logbook-m4-probe-1' });
   });
 });
 

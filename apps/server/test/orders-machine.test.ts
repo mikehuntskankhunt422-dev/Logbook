@@ -64,8 +64,10 @@ describe('order state machine (PLAN §1.6)', () => {
 
   it('maps Lulu print-job statuses', () => {
     expect(['CREATED', 'UNPAID', 'PAYMENT_IN_PROGRESS', 'PRODUCTION_DELAYED', 'PRODUCTION_READY'].map(stateForLuluStatus)).toEqual([undefined, undefined, undefined, undefined, undefined]);
-    expect(['IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'CANCELED', 'REJECTED'].map(stateForLuluStatus)).toEqual(['in_production', 'shipped', 'delivered', 'needs_attention', 'needs_attention']);
-    // Each mapped status is reachable from submitted_to_lulu.
-    for (const s of ['IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'REJECTED']) expect(canTransition('submitted_to_lulu', stateForLuluStatus(s)!)).toBe(true);
+    expect(['IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'CANCELED', 'REJECTED', 'ERROR'].map(stateForLuluStatus)).toEqual(['in_production', 'shipped', 'delivered', 'needs_attention', 'needs_attention', 'needs_attention']);
+    expect(stateForLuluStatus('SOMETHING_NEW')).toBeUndefined();
+    // Each mapped status is reachable from submitted_to_lulu, and the later ones from in_production.
+    for (const s of ['IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'REJECTED', 'CANCELED', 'ERROR']) expect(canTransition('submitted_to_lulu', stateForLuluStatus(s)!)).toBe(true);
+    for (const s of ['SHIPPED', 'DELIVERED', 'ERROR']) expect(canTransition('in_production', stateForLuluStatus(s)!)).toBe(true);
   });
 });

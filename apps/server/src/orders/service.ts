@@ -8,12 +8,12 @@ import type { Quoter } from '../pricing/quote.ts';
 import type { BookRender, BookSource } from '../render/book.ts';
 import { TooManyPagesError } from '../render/interior.ts';
 import type { ObjectStore } from '../storage/store.ts';
-import type { ExpectedUpload, LuluCheck, Order, OrderDb } from './db.ts';
+import type { ExpectedUpload, LuluCheck, Order, OrderDb, PrintFileHash } from './db.ts';
 
-/** Signed upload URLs last an hour; proof links an hour; Lulu gets two hours to fetch. */
+/** Signed upload URLs last an hour; proof links an hour; Lulu gets two hours to fetch (it copies files within seconds, M4 §1). */
 export const UPLOAD_TTL_S = 60 * 60;
 export const PROOF_TTL_S = 60 * 60;
-const LULU_FETCH_TTL_S = 2 * 60 * 60;
+export const LULU_FETCH_TTL_S = 2 * 60 * 60;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
 /** Order files are deleted this long after the order was last touched (R2 lifecycle does the same, D16). */
@@ -58,6 +58,10 @@ export interface OrderView {
   checkoutUrl: string | null;
   /** What was charged, once paid. */
   paid: { amountTotalCents: number; amountShippingCents: number; amountTaxCents: number; currency: string; shippingLevel: string | null; paidAt: string } | null;
+  /** Once Lulu has the book: the carrier's tracking and Lulu's delivery estimate (PLAN §1.5 step 8). */
+  delivery: { carrier: string | null; trackingUrls: string[]; arrivalMin: string | null; arrivalMax: string | null } | null;
+  /** The refund, if the book couldn't be printed. */
+  refunded: { amountCents: number; currency: string; at: string } | null;
 }
 
 export interface OrderDeps {
@@ -75,7 +79,36 @@ export interface OrderDeps {
 const CONTENT_TYPES: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 const hash = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex');
 const uploadKey = (id: string, path: string) => `orders/${id}/upload/${path}`;
-const printKey = (id: string, file: 'interior' | 'cover') => `orders/${id}/print/${file}.pdf`;
+export const printKey = (id: string, file: 'interior' | 'cover') => `orders/${id}/print/${file}.pdf`;
+
+/** Size, SHA-256 and MD5 of a print file (the MD5 is what Lulu checks, D66). */
+export function hashPrintFile(bytes: Uint8Array): PrintFileHash {
+  return { bytes: bytes.byteLength, sha256: hash(bytes), md5: createHash('md5').update(bytes).digest('hex') };
+}
+
+/**
+ * Lulu's validators on the stored print files (PLAN §1.5 step 3, and again after payment, D10).
+ * Lulu fetches them through signed links, so the store must be reachable from the internet.
+ */
+export async function validateWithLulu(lulu: LuluClient, store: ObjectStore, id: string, pod: string, pages: number): Promise<LuluCheck & { checked: true }> {
+  const [i0, c0] = await Promise.all([
+    lulu.validateInterior(await store.signGet(printKey(id, 'interior'), LULU_FETCH_TTL_S), pod),
+    lulu.validateCover(await store.signGet(printKey(id, 'cover'), LULU_FETCH_TTL_S), pod, pages),
+  ]);
+  const [i, c] = await Promise.all([
+    lulu.waitForValidation(i0, (vid) => lulu.getInteriorValidation(vid), { timeoutMs: 20 * 60_000 }),
+    lulu.waitForValidation(c0, (vid) => lulu.getCoverValidation(vid), { timeoutMs: 20 * 60_000 }),
+  ]);
+  return { checked: true, interior: { id: i.id, status: i.status, pageCount: i.page_count, errors: i.errors }, cover: { id: c.id, status: c.status, errors: c.errors } };
+}
+
+/** Why Lulu can't use the files, or null when it accepted both with our page count. */
+export function validationProblem(check: LuluCheck & { checked: true }, pages: number): string | null {
+  const interiorOk = (check.interior.status === 'VALIDATED' || check.interior.status === 'NORMALIZED') && check.interior.pageCount === pages;
+  if (interiorOk && check.cover.status === 'NORMALIZED') return null;
+  const errors = [...(check.interior.errors ?? []), ...(check.cover.errors ?? [])].join('; ').slice(0, 400);
+  return `The printer could not use the print files${errors ? `: ${errors}` : '.'}`;
+}
 
 /**
  * Whether the order's print files are still in storage. They go 7 days after they were made (the
@@ -150,7 +183,8 @@ export class OrderService {
       currency: 'usd',
       bookCents: order.bookCents,
       lulu: order.lulu,
-      error: order.error,
+      // After payment the reason is for us (it can quote Lulu); the customer sees a plain notice.
+      error: order.state === 'failed' ? order.error : null,
       proof: hasPrint
         ? {
             interior: await this.deps.store.signGet(printKey(order.id, 'interior'), PROOF_TTL_S, { downloadName: 'logbook-interior.pdf' }),
@@ -171,6 +205,10 @@ export class OrderService {
             paidAt: order.payment.paidAt,
           }
         : null,
+      delivery: order.luluJob
+        ? { carrier: order.luluJob.tracking?.carrier ?? null, trackingUrls: order.luluJob.tracking?.urls ?? [], arrivalMin: order.luluJob.arrival?.min ?? null, arrivalMax: order.luluJob.arrival?.max ?? null }
+        : null,
+      refunded: order.refund ? { amountCents: order.refund.amount, currency: order.refund.currency, at: order.refund.at } : null,
     };
   }
 
@@ -246,18 +284,15 @@ export class OrderService {
       await this.deps.store.put(printKey(id, 'cover'), book.cover.pdf, 'application/pdf');
       // The sources have done their job: keep only the print files (PLAN §6).
       await this.deps.store.deletePrefix(`orders/${id}/upload/`);
-      this.deps.db.update(id, { pages, coverApproximate: book.coverApproximate }, this.now());
+      // The hashes of what the customer will approve: after payment, Lulu prints exactly these (D66).
+      const printFiles = { interior: hashPrintFile(book.interior.pdf), cover: hashPrintFile(book.cover.pdf), at: this.now().toISOString() };
+      this.deps.db.update(id, { pages, coverApproximate: book.coverApproximate, printFiles }, this.now());
 
       this.stage(id, 'validating');
       const check = await this.validate(id, order.podPackageId, pages);
       this.deps.db.update(id, { lulu: check }, this.now());
-      if (check.checked) {
-        const interiorOk = (check.interior.status === 'VALIDATED' || check.interior.status === 'NORMALIZED') && check.interior.pageCount === pages;
-        if (!interiorOk || check.cover.status !== 'NORMALIZED') {
-          const errors = [...(check.interior.errors ?? []), ...(check.cover.errors ?? [])].join('; ').slice(0, 400);
-          throw new OrderError(`The printer could not use the print files${errors ? `: ${errors}` : '.'}`);
-        }
-      }
+      const problem = check.checked ? validationProblem(check, pages) : null;
+      if (problem) throw new OrderError(problem);
 
       this.stage(id, 'pricing');
       const bookCents = this.deps.quoter ? (await this.deps.quoter.quote(order.podPackageId, pages)).bookCents : null;
@@ -286,15 +321,7 @@ export class OrderService {
     const lulu = this.deps.lulu;
     if (!lulu) return { checked: false, reason: 'no Lulu credentials' };
     if (!this.deps.store.reachableFromInternet) return { checked: false, reason: 'local storage: Lulu cannot fetch the files' };
-    const [i0, c0] = await Promise.all([
-      lulu.validateInterior(await this.deps.store.signGet(printKey(id, 'interior'), LULU_FETCH_TTL_S), pod),
-      lulu.validateCover(await this.deps.store.signGet(printKey(id, 'cover'), LULU_FETCH_TTL_S), pod, pages),
-    ]);
-    const [i, c] = await Promise.all([
-      lulu.waitForValidation(i0, (vid) => lulu.getInteriorValidation(vid), { timeoutMs: 20 * 60_000 }),
-      lulu.waitForValidation(c0, (vid) => lulu.getCoverValidation(vid), { timeoutMs: 20 * 60_000 }),
-    ]);
-    return { checked: true, interior: { id: i.id, status: i.status, pageCount: i.page_count, errors: i.errors }, cover: { id: c.id, status: c.status, errors: c.errors } };
+    return validateWithLulu(lulu, this.deps.store, id, pod, pages);
   }
 
   /** Deletes the files of orders idle for longer than the retention period. */

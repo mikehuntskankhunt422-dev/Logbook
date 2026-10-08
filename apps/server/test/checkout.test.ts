@@ -155,7 +155,8 @@ async function setup() {
   const stripe = fakeStripe();
   const clock = { now: new Date('2026-10-08T10:00:00Z') };
   const store = new LocalStore(mkdtempSync(join(tmpdir(), 'logbook-checkout-')));
-  const app = buildApp(loadConfig({}), { logger: false, store, db, lulu: fakeLulu(), stripe: stripe.gateway, now: () => clock.now });
+  // Fulfilment after payment has its own tests (fulfilment.test.ts); here the queued job just waits.
+  const app = buildApp(loadConfig({}), { logger: false, store, db, lulu: fakeLulu(), stripe: stripe.gateway, now: () => clock.now, startJobs: false });
   apps.push(app);
   await app.ready();
   // An order whose print files are made and checked: 200 pages, $49.99 (PLAN §7).
@@ -281,6 +282,18 @@ describe('Stripe Checkout (M3 slice E)', () => {
     expect(stripe.calls.filter((c) => c.method === 'POST')).toEqual([]);
   });
 
+  it('won’t take payment for print files more than 6 days old, so a paid book has a day before they go (D71)', async () => {
+    const { quote, pay, db, clock, stripe } = await setup();
+    db.update('ord_1', { printFiles: { interior: { bytes: 1, sha256: 'a', md5: 'b' }, cover: { bytes: 1, sha256: 'c', md5: 'd' }, at: '2026-10-02T09:00:00.000Z' } });
+    await quote('AU');
+    const res = await pay();
+    expect([res.statusCode, res.json().error]).toEqual([410, "The print files are about to be deleted (they're kept for 7 days). Prepare the book again to order it."]);
+    clock.now = new Date('2026-10-08T08:59:00Z');
+    db.update('ord_1', { printFiles: { ...db.get('ord_1')!.printFiles!, at: '2026-10-02T09:00:00.000Z' } });
+    expect((await pay()).statusCode).toBe(200);
+    expect(stripe.calls.filter((c) => c.path === '/v1/checkout/sessions' && c.method === 'POST')).toHaveLength(1);
+  });
+
   it('re-prices a quote older than a day before taking payment', async () => {
     const { quote, pay, view, clock } = await setup();
     await quote('AU');
@@ -362,6 +375,8 @@ describe('Stripe webhooks (M3 slice E)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ received: true, outcome: 'paid' });
     expect(await view()).toMatchObject({ state: 'paid', checkoutUrl: null, paid: { amountTotalCents: 6749, amountShippingCents: 1750, shippingLevel: 'EXPRESS', currency: 'usd' } });
+    // Fulfilment was queued with the payment (PLAN §1.5 step 7).
+    expect(db.jobs('ord_1')).toMatchObject([{ kind: 'fulfil', state: 'queued', attempts: 0 }]);
     expect(db.get('ord_1')!.payment).toMatchObject({
       sessionId: 'cs_test_1',
       paymentIntent: 'pi_cs_test_1',
