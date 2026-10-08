@@ -8,6 +8,7 @@ export type Route =
   | { name: 'memories' }
   | { name: 'search'; tag?: string }
   | { name: 'book' }
+  | { name: 'order'; id: string; cancelled?: boolean }
   | { name: 'settings' };
 
 export function parseHash(hash: string): Route {
@@ -27,6 +28,9 @@ export function parseHash(hash: string): Route {
       return { name: 'search', tag: q.get('tag') ?? undefined };
     case 'book':
       return { name: 'book' };
+    case 'order':
+      // Stripe sends the customer back here (?cancelled=1 when they left the payment page).
+      return seg[1] ? { name: 'order', id: decodeURIComponent(seg[1]), ...(q.get('cancelled') ? { cancelled: true } : {}) } : { name: 'book' };
     case 'settings':
       return { name: 'settings' };
     default:
@@ -50,6 +54,8 @@ export function href(route: Route): string {
       return route.tag ? `#/search?tag=${encodeURIComponent(route.tag)}` : '#/search';
     case 'book':
       return '#/book';
+    case 'order':
+      return `#/order/${encodeURIComponent(route.id)}${route.cancelled ? '?cancelled=1' : ''}`;
     case 'settings':
       return '#/settings';
   }

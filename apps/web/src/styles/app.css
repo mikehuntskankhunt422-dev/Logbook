@@ -1542,3 +1542,52 @@ mark {
     height: 62vh;
   }
 }
+
+/* Print order: proof, destination, price, pay (M3) */
+.order-page {
+  max-width: 720px;
+}
+.order-page section {
+  margin: 24px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.order-page h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+.order-page .field select {
+  max-width: 360px;
+}
+.order-price dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+.order-price dt {
+  font-weight: 650;
+}
+.order-price dd {
+  margin: 0;
+}
+.shipping-choices {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+}
+.shipping-choices li + li {
+  margin-top: 2px;
+}
+.order-total {
+  font-size: 1.1rem;
+}
+@media (max-width: 480px) {
+  .order-price dl {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .order-price dd {
+    margin-bottom: 8px;
+  }
+}

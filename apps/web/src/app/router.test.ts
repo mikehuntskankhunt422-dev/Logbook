@@ -12,6 +12,9 @@ describe('hash router', () => {
     ['#/memories', { name: 'memories' }],
     ['#/settings', { name: 'settings' }],
     ['#/book', { name: 'book' }],
+    ['#/order/ord_abc-1', { name: 'order', id: 'ord_abc-1' }],
+    ['#/order/ord_abc?cancelled=1', { name: 'order', id: 'ord_abc', cancelled: true }],
+    ['#/order/', { name: 'book' }],
     ['#/nonsense', { name: 'home' }],
     ['#/entry/', { name: 'home' }],
   ])('parses %s', (hash, route) => {
@@ -19,7 +22,7 @@ describe('hash router', () => {
   });
 
   it('round-trips href → parseHash', () => {
-    const routes: Route[] = [{ name: 'entry', id: 'a b/c' }, { name: 'new', date: '2026-01-02' }, { name: 'search', tag: 'x&y' }, { name: 'calendar', month: '2025-12' }];
+    const routes: Route[] = [{ name: 'entry', id: 'a b/c' }, { name: 'new', date: '2026-01-02' }, { name: 'search', tag: 'x&y' }, { name: 'calendar', month: '2025-12' }, { name: 'order', id: 'ord_x', cancelled: true }];
     for (const r of routes) expect(parseHash(href(r))).toMatchObject(r);
   });
 });

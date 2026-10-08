@@ -8,7 +8,8 @@ const chromiumLaunch = process.env.LOGBOOK_CHROMIUM_PATH ? { executablePath: pro
 /**
  * LOGBOOK_E2E_ONLINE=1 runs "Prepare my book" against the real bucket (S3_* or R2_*) and the Lulu
  * sandbox from this environment's variables, by hand only. Otherwise the API keeps orders in a temp
- * folder (D51) and has no Lulu, so the tests never reach either, even where those variables are set.
+ * folder (D51) and has no Lulu or Stripe, so the tests never reach them, even where those variables
+ * are set. Checkout in Stripe test mode has its own script: `npm run stripe:check -w @logbook/server`.
  */
 const online = Boolean(process.env.LOGBOOK_E2E_ONLINE);
 const offlineApi = {
@@ -16,7 +17,9 @@ const offlineApi = {
   LOCAL_STORAGE_DIR: join(tmpdir(), 'logbook-e2e', 'storage'),
   LULU_SANDBOX_CLIENT_KEY: '',
   LULU_SANDBOX_CLIENT_SECRET: '',
-  ...Object.fromEntries(['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'].map((v) => [v, ''])),
+  ...Object.fromEntries(
+    ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET'].map((v) => [v, '']),
+  ),
 };
 
 /** E2E runs against the production build (vite preview) so the service worker and offline mode are real. */

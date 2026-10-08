@@ -41,6 +41,8 @@ export class OrderError extends Error {
 export interface OrderView {
   id: string;
   state: Order['state'];
+  /** Size, paper, binding and finish: configuration, not content. */
+  product: Order['product'];
   stage: string | null;
   pages: number | null;
   coverApproximate: boolean | null;
@@ -131,6 +133,7 @@ export class OrderService {
     return {
       id: order.id,
       state: order.state,
+      product: order.product,
       stage: order.stage,
       pages: order.pages,
       coverApproximate: order.coverApproximate,

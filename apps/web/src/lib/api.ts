@@ -69,6 +69,7 @@ export interface OrderUpload {
 export interface OrderView {
   id: string;
   state: string;
+  product: Product;
   stage: string | null;
   pages: number | null;
   coverApproximate: boolean | null;
@@ -77,6 +78,27 @@ export interface OrderView {
   lulu: { checked: true; interior: { status: string | null }; cover: { status: string | null } } | { checked: false; reason: string } | null;
   error: string | null;
   proof: { interior: string; cover: string } | null;
+  /** The price for the chosen destination; Checkout charges exactly this. */
+  quote: OrderQuote | null;
+  /** Stripe's page while the order waits for payment. */
+  checkoutUrl: string | null;
+  paid: { amountTotalCents: number; amountShippingCents: number; amountTaxCents: number; currency: string; shippingLevel: string | null; paidAt: string } | null;
+}
+
+export interface ShippingChoice {
+  level: string;
+  name: string;
+  daysMin: number | null;
+  daysMax: number | null;
+  priceCents: number;
+}
+
+export interface OrderQuote {
+  version: number;
+  at: string;
+  country: string;
+  bookCents: number;
+  shipping: ShippingChoice[];
 }
 
 export function createOrder(manifest: { product: Product; bundle: { bytes: number; sha256: string }; files: { path: string; bytes: number; sha256: string }[] }) {
@@ -102,4 +124,17 @@ export function submitOrder(id: string, token: string) {
 
 export function getOrder(id: string, token: string) {
   return apiJson<OrderView>(`/api/orders/${encodeURIComponent(id)}`, { token });
+}
+
+/** Prices the order for a destination country (only the country is sent). */
+export function quoteOrder(id: string, token: string, country: string) {
+  return apiJson<OrderView>(`/api/orders/${encodeURIComponent(id)}/quote`, { method: 'POST', token, body: JSON.stringify({ country }) });
+}
+
+/**
+ * Stripe's payment page for the quote this page showed. The server charges its stored quote and
+ * answers 409 if that's no longer `quoteVersion`. Stripe returns the customer to `returnUrl`.
+ */
+export function checkoutOrder(id: string, token: string, input: { quoteVersion: number; returnUrl: string; checked: boolean }) {
+  return apiJson<{ url: string }>(`/api/orders/${encodeURIComponent(id)}/checkout`, { method: 'POST', token, body: JSON.stringify(input) });
 }

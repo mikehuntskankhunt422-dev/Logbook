@@ -26,6 +26,7 @@ import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { BookPreview, PreviewCancelled, PreviewImages, coverPreviewDocument, spreadStarts } from '../lib/book-preview.ts';
 import { fetchBookPrice, fetchCoverDimensions } from '../lib/api.ts';
+import { formatUsd } from '../lib/money.ts';
 import { PrepareBook } from './PrepareBook.tsx';
 import { formatLongDate } from './common.tsx';
 
@@ -515,7 +516,7 @@ function PreviewStep({
               About <strong>{formatUsd(priceCents)}</strong> plus shipping and any tax, from the printer's current cost. You see the final price with your proof.
             </p>
           )}
-          <p className="hint">The print file is laid out the same way, so the page count usually matches, but browsers and browser versions can differ by a page or two. You approve the exact print file before paying. Ordering is coming soon.</p>
+          <p className="hint">The print file is laid out the same way, so the page count usually matches, but browsers and browser versions can differ by a page or two. You approve the exact print file before paying.</p>
         </div>
       )}
 
@@ -548,7 +549,7 @@ function PreviewStep({
         </div>
       )}
 
-      {status === 'done' && plan && !plan.tooMany && !stale && <PrepareBook options={options} entries={selected} media={media} formatUsd={formatUsd} />}
+      {status === 'done' && plan && !plan.tooMany && !stale && <PrepareBook options={options} entries={selected} media={media} />}
 
       <div hidden={status !== 'done'}>
         <h3>Cover</h3>
@@ -562,10 +563,6 @@ function PreviewStep({
       <Warnings warnings={warnings} />
     </>
   );
-}
-
-function formatUsd(cents: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol' }).format(cents / 100) + (navigator.language.startsWith('en-US') ? '' : ' USD');
 }
 
 function Warnings({ warnings }: { warnings: ReturnType<typeof imageWarnings> }) {

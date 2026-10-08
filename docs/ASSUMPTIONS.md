@@ -90,6 +90,21 @@ Source **[LS]**: calls to `https://api.sandbox.lulu.com` on 2026-10-07, made by 
 | 40-page--8.5x11-cw-gloss | `0850X1100.FC.PRE.CW.080CW444.GXX` | 44 | NORMALIZED (job 1016546) | 44 | NORMALIZED (job 1016542) |
 <!-- lulu-validation:end -->
 
+### Stripe test mode, checked by calling it (2026-10-08)
+
+With the test keys in this environment and `npm run stripe:check -w @logbook/server` (M3 §3 E).
+
+| Fact | How it was checked |
+|---|---|
+| The test account is Australian (`country: AU`, default currency AUD); Checkout charges USD on it without any setup | `GET /v1/account`; sessions created in USD |
+| Tax codes `txcd_35010000` ("Books") and `txcd_92010001` ("Shipping") exist | `GET /v1/tax_codes/…` |
+| `stripe@22.6.2` pins API version `2026-08-26.dahlia`; in it the shipping address is at `collected_information.shipping_details`, not the older top-level `shipping_details` | SDK source; a real paid session's event, parsed by `paymentFromSession` |
+| A session with **one allowed country**, two `shipping_rate_data` options with business-day estimates, `tax_behavior: exclusive`, a `success_url` with a `#/order/<id>` fragment and `expires_at` one hour ahead is accepted. The hosted page shows the country fixed, the book as "Printed book · 6 × 9 in premium colour paperback, matte, 200 pages", and "Australia Post Mail (11-12 business days)" | Created through `CheckoutService`, screenshot (open question #9, first half) |
+| `4242 4242 4242 4242`: the page redirects to `success_url`; the session is `complete`/`paid`, total $59.99 (book $49.99 + Australia Post Mail $10.00); Stripe's real `checkout.session.completed` event moves the order to `paid` with the address, phone, email and the `MAIL` level; the same event again changes nothing | Headless Chromium on checkout.stripe.com; Events API |
+| `4000 0000 0000 0002`: the page says "Your credit card was declined. Try paying with a debit card instead."; the session stays `open` and the order `awaiting_payment`. Expiring the session sends `checkout.session.expired`, which returns the order to `quoted` | Same |
+| Automated browser runs against **test-mode** hosted Checkout work (open question #10): no bot challenge blocked the payment | Same |
+| Hosts hosted Checkout needs in a browser: `checkout.stripe.com`, `js.stripe.com`, `m.stripe.network`, `b.stripecdn.com`, `q.stripe.com`, `r.stripe.com`, `hooks.stripe.com`; the 3-D Secure test page is on `testmode-acs.stripe.com`. Not needed for paying: `merchant-ui-api.stripe.com`, `checkout-cookies.stripe.com`, `m.stripe.com`, `hcaptcha.com` (all refused here, payment still worked) | Proxy log during the runs |
+
 ## Not yet verified (blocking the code that depends on them)
 
 1. ~~The sandbox token URL path.~~ **Answered 2026-10-07:** same path on the sandbox host (LS above).
@@ -100,7 +115,7 @@ Source **[LS]**: calls to `https://api.sandbox.lulu.com` on 2026-10-07, made by 
 6. Sandbox auto-payment with a test card on file.
 7. ~~Case-wrap `/cover-dimensions/` output vs Lulu's template.~~ **Answered 2026-10-07:** the size includes the 0.75″ wrap and bleed; the hinge sits inside the board panels (LS above, D46).
 8. How long Lulu needs file URLs to stay valid after print-job creation.
-9. Stripe hosted Checkout UX with a single allowed country, and Stripe Tax Calculation API availability on your account.
-10. Whether Stripe permits automated browser tests against hosted Checkout.
+9. ~~Stripe hosted Checkout UX with a single allowed country~~ (**answered 2026-10-08:** the country shows fixed, Stripe test mode above). Still open: Stripe Tax Calculation API availability on your account.
+10. ~~Whether Stripe permits automated browser tests against hosted Checkout.~~ **Answered 2026-10-08:** in test mode, yes (Stripe test mode above). The 3-D Secure card still needs `testmode-acs.stripe.com` allowed in this environment.
 11. Azure Artifact Signing eligibility for an Australian individual.
 12. Which Lulu print sites serve which destinations (affects duties/VAT notices and AU GST treatment).

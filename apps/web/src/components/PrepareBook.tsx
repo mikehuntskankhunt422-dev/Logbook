@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDateRange, type BookOptions, type Entry, type MediaMeta } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
+import { href } from '../app/router.ts';
 import { ApiError, createOrder, getOrder, submitOrder, uploadFile, type OrderView } from '../lib/api.ts';
+import { formatUsd } from '../lib/money.ts';
 import { buildPrintBundle, uploadSummary } from '../lib/print-bundle.ts';
 import { Dialog } from './common.tsx';
 
@@ -24,7 +26,7 @@ type Phase = { kind: 'idle' } | { kind: 'working'; message: string } | { kind: '
  * "Prepare my book" (PLAN §1.5 step 2, M3 slice C): an explicit consent step that lists exactly
  * what leaves the device, then the upload straight to storage and the server's print files.
  */
-export function PrepareBook({ options, entries, media, formatUsd }: { options: BookOptions; entries: Entry[]; media: Map<string, MediaMeta>; formatUsd: (cents: number) => string }) {
+export function PrepareBook({ options, entries, media }: { options: BookOptions; entries: Entry[]; media: Map<string, MediaMeta> }) {
   const { journal } = useJournal();
   const [asking, setAsking] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
@@ -51,6 +53,8 @@ export function PrepareBook({ options, entries, media, formatUsd }: { options: B
         bundle: { bytes: built.bundle.bytes.length, sha256: built.bundle.sha256 },
         files: built.files.map((f) => ({ path: f.path, bytes: f.bytes.length, sha256: f.sha256 })),
       });
+      // Kept in the journal (sealed with a passcode), so the order can be opened again, e.g. after paying on Stripe.
+      await journal.saveBookOrder({ id: order.orderId, token: order.token, createdAt: new Date().toISOString() });
       const byPath = new Map(all.map((f) => [f.path, f]));
       const sent = new Map<string, number>();
       const report = () => say({ kind: 'working', message: `Uploading ${megabytes([...sent.values()].reduce((a, b) => a + b, 0))} of ${megabytes(total)}…` });
@@ -95,7 +99,7 @@ export function PrepareBook({ options, entries, media, formatUsd }: { options: B
           {phase.message}
         </p>
       )}
-      {phase.kind === 'done' && <PrintFiles order={phase.order} formatUsd={formatUsd} />}
+      {phase.kind === 'done' && <PrintFiles order={phase.order} />}
 
       <Dialog
         open={asking}
@@ -138,7 +142,7 @@ export function PrepareBook({ options, entries, media, formatUsd }: { options: B
   );
 }
 
-function PrintFiles({ order, formatUsd }: { order: OrderView; formatUsd: (cents: number) => string }) {
+function PrintFiles({ order }: { order: OrderView }) {
   const lulu = order.lulu;
   return (
     <div className="print-files">
@@ -162,7 +166,12 @@ function PrintFiles({ order, formatUsd }: { order: OrderView; formatUsd: (cents:
       )}
       <p className="hint">
         {lulu?.checked ? 'The printer has checked both files and accepted them.' : `Not checked by the printer yet (${lulu?.reason ?? 'unknown'}).`}
-        {order.coverApproximate && ' The cover uses an approximate spine width.'} The links work for an hour; prepare again for new ones. Ordering is coming soon.
+        {order.coverApproximate && ' The cover uses an approximate spine width.'} The links work for an hour; prepare again for new ones.
+      </p>
+      <p>
+        <a className="btn btn-primary" href={href({ name: 'order', id: order.id })}>
+          Check the proof and order →
+        </a>
       </p>
     </div>
   );
