@@ -137,6 +137,7 @@ With the Resend key, sender and alert address in this environment and `npm run e
 | `POST https://api.resend.com/emails` with `Authorization: Bearer <key>`, JSON `{from, to[], subject, text, tags[]}` and an `Idempotency-Key` header is accepted and answers `{id}` (D73) | The `alert` email for a test order, sent by the real job runner and `ResendMailer` to `OWNER_EMAIL`: email `01a11c32-c337-7c0a-a263-c72f0797aa96` |
 | The key in this environment can only send: `GET /emails/{id}` answers 401 `restricted_api_key` ("This API key is restricted to only send emails"), so whether an email was delivered can't be read back from here | Same run |
 | `EMAIL_FROM` is Resend's shared test sender, `onboarding@resend.dev`. Resend sends from it only to the address the Resend account belongs to, so customer emails (`problem`, `shipped`, `refunded`) need a domain of yours verified in Resend and `EMAIL_FROM` on that domain. Until then the server doesn't send them (D76) | Resend's documented rule, not tested: testing it would mean emailing someone else. The alert to `OWNER_EMAIL` was accepted, which fits |
+| An alert sent from `onboarding@resend.dev` to your Gmail **arrived in spam** | You found it there, 2026-10-09 (email `01a11c32-…`) |
 
 ## Not yet verified (blocking the code that depends on them)
 

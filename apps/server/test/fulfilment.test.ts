@@ -472,6 +472,7 @@ describe('emails', () => {
     }
     expect(renderEmail('shipped', o).text).toContain('handed to DHL');
     expect(renderEmail('shipped', o).text).toContain('arrive by 2026-10-24');
+    expect(renderEmail('alert', { ...o, state: 'needs_attention' }).text).toContain('Order ord_paid needs attention. Its state is now: needs attention.');
   });
 
   it("go only to you while EMAIL_FROM is Resend's test sender (D76)", async () => {

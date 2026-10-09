@@ -74,7 +74,7 @@ export function renderEmail(template: Template, o: Order): { subject: string; te
       return {
         subject: `Logbook: order ${o.id} needs attention`,
         text: [
-          `Order ${o.id} is ${o.state.replace(/_/g, ' ')}.`,
+          `Order ${o.id} needs attention. Its state is now: ${o.state.replace(/_/g, ' ')}.`,
           '',
           `Reason: ${o.error ?? '(none recorded)'}`,
           `Product: ${describe(o)}`,
