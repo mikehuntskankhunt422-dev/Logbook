@@ -65,11 +65,8 @@ jobs:
       - run: npm run build:desktop -w @logbook/web
       - run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
       - run: command -v tauri-driver || cargo install tauri-driver --version 2.0.6 --locked
-      - name: Environment for WebKitGTK
-        run: |
-          sysctl kernel.apparmor_restrict_unprivileged_userns || true
-          WebKitWebDriver --version || true
       # Drives the real app through WebDriver: the folder, sync, conflicts, restoring backups.
+      # Each launch takes about 30 s on this runner (2 s locally); the harness allows 90 s.
       - run: xvfb-run -a npm run test:e2e -w @logbook/desktop
 
   build:

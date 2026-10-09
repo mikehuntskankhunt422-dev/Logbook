@@ -206,6 +206,20 @@ Tauri 3 exists only as alphas (`3.0.0-alpha.*` on the `next` tag); not used.
 | macOS CI variables: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`; notarisation through an App Store Connect API key (`APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`) or an Apple ID (`APPLE_ID`, `APPLE_PASSWORD` = app-specific password, `APPLE_TEAM_ID`) | T-mac |
 | **Linux:** nothing has to be signed to run. AppImages can carry a gpg signature (`SIGN=1`, `SIGN_KEY`, `APPIMAGETOOL_SIGN_PASSPHRASE`, `APPIMAGETOOL_FORCE_SIGN`), but AppImage never checks it itself. RPMs are signed with `TAURI_SIGNING_RPM_KEY` and `TAURI_SIGNING_RPM_KEY_PASSPHRASE`. The docs say nothing about signing `.deb` files | T-lin, T-rpm |
 
+**Checked by building and running it** (2026-10-09, this container and GitHub Actions; M5 §3):
+
+| Fact | How it was checked |
+|---|---|
+| `tauri` 2.11.6 doesn't compile with `tauri-runtime` 2.12 (which Cargo picks, as 2.11.6 asks for `^2.11.3`): the internal crates must be held at the 2.11-era versions | `cargo build`: 19 errors in `tauri/src/app.rs`; builds after pinning `tauri-runtime` 2.11.3, `-wry` 2.11.4, `-utils` 2.9.3, `-macros` and `-codegen` 2.6.3 |
+| `tauri build` (CLI 2.11.5) writes the version into each update signature's trusted comment (`timestamp:… file:Logbook_0.1.1_amd64.AppImage version:0.1.1`); `tauri signer sign` alone does only with `--app-version` | Signatures read back from both |
+| The updater (2.12.0) installs a signed AppImage update over the running one, refuses a file that doesn't match its signature ("The signature verification failed") and, with `requireSignedVersion`, a signature for another version ("The update was signed for version 0.1.1 but the update endpoint announced version 0.1.2…") | `npm run updater:check` on the real app |
+| `APPLE_SIGNING_IDENTITY` in the environment overrides `bundle.macOS.signingIdentity`; the bundler imports `APPLE_CERTIFICATE` into a keychain itself | CLI 2.11.5 `src/interface/rust.rs`, bundler 2.9.4 `bundle/macos/sign.rs` |
+| A Linux build stamps each binary with its bundle type ("Patching … with bundle type information: deb / rpm / appimage"), which the updater reads to pick `{os}-{arch}-{installer}`. Building another version empties `bundle/appimage/` | Build output |
+| Bundle names: `Logbook_0.1.0_amd64.AppImage`, `Logbook_0.1.0_amd64.deb`, `Logbook-0.1.0-1.x86_64.rpm`, `Logbook_0.1.0_x64-setup.exe`, `Logbook_0.1.0_x64_en-US.msi`, `Logbook_0.1.0_universal.dmg`; the macOS update archive is `Logbook.app.tar.gz` without a version | Builds here and on GitHub's Windows and macOS runners |
+| Tauri maps the bundle category "Lifestyle" to `Categories=Education;` in the Linux desktop entry | The built `.deb` |
+| An AppImage built with `bundleMediaFramework` carries GStreamer's base and good plugins from the build machine (109 plugins: WebM/VP8/VP9, Opus, Vorbis, MP3, MP4 and Matroska containers), no H.264/HEVC/AAC decoders | `--appimage-extract` |
+| WebDriver works with the real app through `tauri-driver` 2.0.6 and WebKitWebDriver 2.52.6 under Xvfb, against a debug build, an installed deb and an AppImage (`APPIMAGE_EXTRACT_AND_RUN=1` without FUSE). The W3C element key is `element-6066-11e4-a52e-4f735466cecf` | The desktop e2e suite |
+
 **Couldn't verify from here** (sites refused by the build environment's proxy): prices and current terms of OV code-signing certificates for an Australian individual (Certum, SSL.com); Artifact Signing's exact price; whether Microsoft accepts an Australian sole trader with an ABN but no company as an "organization"; the Microsoft Store's registration fee; and how OneDrive, Dropbox and iCloud name conflict copies (the desktop app doesn't rely on names, M5 §2.3).
 
 ## Not yet verified (blocking the code that depends on them)
