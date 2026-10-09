@@ -7,6 +7,8 @@ export interface DesktopCtx {
   store: FsStore;
   /** Calls back (debounced) when anything in the folder changes; resolves to a function that stops. */
   watch(onChange: () => void): Promise<() => void>;
+  /** Shown once when the journal opens, e.g. what a restored backup brought. */
+  notice?: string;
 }
 
 /** Only provided in the desktop app; the website sees `null`. Holds no Tauri code itself. */

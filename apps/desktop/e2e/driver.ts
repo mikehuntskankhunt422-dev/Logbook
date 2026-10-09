@@ -14,7 +14,7 @@ const PORT = 4444;
 const W3C_ELEMENT = 'element-6066-11e4-a52e-4f735466cecf';
 
 export interface App {
-  folder: string;
+  folder: string | null;
   /** Waits for the first element matching the CSS selector. */
   $(css: string, timeoutMs?: number): Promise<string>;
   /** Waits for an element whose text contains `text` (XPath `contains`). */
@@ -27,15 +27,18 @@ export interface App {
   close(): Promise<void>;
 }
 
-/** Starts the app on `folder` (through LOGBOOK_JOURNAL_FOLDER) with its own config and data folders. */
-export async function launch(folder: string): Promise<App> {
+/**
+ * Starts the app on `folder` (through LOGBOOK_JOURNAL_FOLDER), or with no folder chosen yet (`null`,
+ * the first-run screen), with its own config and data folders.
+ */
+export async function launch(folder: string | null): Promise<App> {
   const base = `http://127.0.0.1:${PORT}`;
   // A driver left over from an earlier run would serve this test with the wrong folder.
   if (await fetch(`${base}/status`).then(() => true, () => false)) throw new Error(`Port ${PORT} is in use: stop the old tauri-driver first.`);
   const home = mkdtempSync(join(tmpdir(), 'logbook-e2e-home-'));
   // Its own process group, so closing stops tauri-driver, WebKitWebDriver and the app together.
   const driver = spawn('tauri-driver', ['--port', String(PORT)], {
-    env: { ...process.env, LOGBOOK_JOURNAL_FOLDER: folder, XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'), XDG_CACHE_HOME: join(home, 'cache') },
+    env: { ...process.env, LOGBOOK_JOURNAL_FOLDER: folder ?? '', XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'), XDG_CACHE_HOME: join(home, 'cache') },
     stdio: 'ignore',
     detached: true,
   });

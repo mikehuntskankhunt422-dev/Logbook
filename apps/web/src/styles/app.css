@@ -1708,3 +1708,8 @@ dialog.conflict-dialog {
 .conflict-version > .btn {
   margin-top: auto;
 }
+.welcome-form {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}

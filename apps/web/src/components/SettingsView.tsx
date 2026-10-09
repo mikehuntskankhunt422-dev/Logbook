@@ -1,9 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
-import { backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
+import { backupToFolder, downloadBackup, forgetFolder, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
 import { IS_DESKTOP } from '../platform.ts';
@@ -58,6 +58,8 @@ function BackupPanel() {
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
   const [passcode, setPasscode] = useState('');
   const [importError, setImportError] = useState('');
+  // In the page rather than made on demand, so desktop end-to-end tests can hand it a file.
+  const restoreInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void rememberedFolderName().then(setFolder);
@@ -76,9 +78,7 @@ function BackupPanel() {
 
   const encrypted = journal.isEncrypted && keepEncrypted;
 
-  const startImport = async () => {
-    const file = await pickFile('.zip,application/zip');
-    if (!file) return;
+  const startImport = async (file: File) => {
     try {
       const { encrypted } = await inspectBackup(file);
       setImportError('');
@@ -151,9 +151,21 @@ function BackupPanel() {
             📁 {folder ? `Back up to “${folder}”` : 'Back up to a folder…'}
           </button>
         )}
-        <button type="button" className="btn" disabled={busy} onClick={() => void startImport()}>
+        <button type="button" className="btn" disabled={busy} onClick={() => restoreInput.current?.click()}>
           ⬆️ Restore from backup…
         </button>
+        <input
+          ref={restoreInput}
+          type="file"
+          accept=".zip,application/zip"
+          hidden
+          data-testid="restore-input"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) void startImport(file);
+          }}
+        />
       </div>
       {folder && (
         <p className="hint">

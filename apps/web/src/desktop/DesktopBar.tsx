@@ -16,6 +16,14 @@ export function DesktopBar() {
   const [conflicts, setConflicts] = useState<EntryConflict[]>(() => desktop?.store.conflicts() ?? []);
   const [vaultChanged, setVaultChanged] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const toast = useToast();
+  const noticeShown = useRef(false);
+
+  useEffect(() => {
+    if (!desktop?.notice || noticeShown.current) return;
+    noticeShown.current = true;
+    toast(desktop.notice, undefined, 8000);
+  }, [desktop?.notice, toast]);
 
   const refresh = useCallback(async () => {
     if (!desktop) return;
