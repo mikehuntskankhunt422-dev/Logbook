@@ -9,7 +9,8 @@
     "build": "tauri build",
     "icons": "tauri icon ../web/public/logo.svg",
     "test:e2e": "tauri build --debug --no-bundle && node --experimental-transform-types --no-warnings --test --test-concurrency=1 --test-timeout=120000 'e2e/*.test.ts'",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "updater:check": "node --experimental-transform-types --no-warnings scripts/check-updater.ts"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.5"

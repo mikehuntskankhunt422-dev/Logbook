@@ -10,6 +10,7 @@ import { IS_DESKTOP } from '../platform.ts';
 
 /** On the desktop the journal is a folder, which takes the place of the browser-storage panel (M5). */
 const FolderPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/FolderPanel.tsx').then((m) => ({ default: m.FolderPanel }))) : null;
+const UpdatePanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/UpdatePanel.tsx').then((m) => ({ default: m.UpdatePanel }))) : null;
 
 export function SettingsView() {
   return (
@@ -24,6 +25,11 @@ export function SettingsView() {
         </Suspense>
       ) : (
         <StoragePanel />
+      )}
+      {UpdatePanel && (
+        <Suspense fallback={null}>
+          <UpdatePanel />
+        </Suspense>
       )}
       <TrashPanel />
       <DangerPanel />

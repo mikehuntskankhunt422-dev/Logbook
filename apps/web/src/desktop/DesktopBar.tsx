@@ -5,6 +5,7 @@ import { useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { formatLongDate } from '../components/common.tsx';
 import { useDesktop } from './context.ts';
+import { dailyCheckDue, describe, updatesEnabled, useUpdater } from './updates.ts';
 
 /**
  * Keeps the desktop app in step with its folder (D83) and asks about what needs a person: entries
@@ -66,6 +67,12 @@ export function DesktopBar() {
     return () => clearTimeout(t);
   }, [vaultChanged]);
 
+  const updater = useUpdater();
+  const { find } = updater;
+  useEffect(() => {
+    void updatesEnabled().then((on) => on && dailyCheckDue() && void find(), () => undefined);
+  }, [find]);
+
   if (!desktop) return null;
   if (vaultChanged) {
     return (
@@ -74,8 +81,31 @@ export function DesktopBar() {
       </div>
     );
   }
+  const u = updater.state;
   return (
     <>
+      {(u.kind === 'available' || u.kind === 'installing' || (u.kind === 'error' && u.during === 'install')) && (
+        <div className="banner" role="region" aria-label="Update">
+          <span className={u.kind === 'error' ? 'error' : undefined} role={u.kind === 'error' ? 'alert' : undefined}>
+            ⬆️ {describe(u)}
+          </span>
+          {u.kind === 'error' && (
+            <button type="button" className="btn btn-small btn-ghost" onClick={updater.dismiss}>
+              Dismiss
+            </button>
+          )}
+          {u.kind === 'available' && (
+            <span className="row">
+              <button type="button" className="btn btn-small btn-primary" onClick={() => void updater.install(u.update)}>
+                Install and restart
+              </button>
+              <button type="button" className="btn btn-small btn-ghost" onClick={updater.dismiss}>
+                Later
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       {conflicts.length > 0 && (
         <div className="banner" role="region" aria-label="Sync conflicts">
           <span>

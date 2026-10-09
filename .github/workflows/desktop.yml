@@ -65,6 +65,10 @@ jobs:
       - run: npm run build:desktop -w @logbook/web
       - run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
       - run: command -v tauri-driver || cargo install tauri-driver --version 2.0.6 --locked
+      - name: Environment for WebKitGTK
+        run: |
+          sysctl kernel.apparmor_restrict_unprivileged_userns || true
+          WebKitWebDriver --version || true
       # Drives the real app through WebDriver: the folder, sync, conflicts, restoring backups.
       - run: xvfb-run -a npm run test:e2e -w @logbook/desktop
 
@@ -132,7 +136,6 @@ jobs:
             echo "Updater key: set; update files will be signed."
           else
             echo "Updater key: not set (TAURI_SIGNING_PRIVATE_KEY); building without update files."
-            put LOGBOOK_NO_UPDATER 1
           fi
           if [ "$RUNNER_OS" = macOS ] && [ -n "$APPLE_CERTIFICATE" ]; then
             put APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
@@ -150,22 +153,43 @@ jobs:
           elif [ "$RUNNER_OS" = macOS ]; then
             echo "macOS: no certificate (APPLE_CERTIFICATE); ad-hoc signed (D88)."
           fi
+      # Windows signing through Azure Artifact Signing, when WINDOWS_SIGN_COMMAND uses it (docs/SIGNING.md).
+      - name: Artifact Signing tool
+        if: runner.os == 'Windows' && startsWith(vars.WINDOWS_SIGN_COMMAND, 'artifact-signing-cli')
+        run: cargo install artifact-signing-cli --version 0.11.0 --locked
       - name: Build
         shell: bash
         env:
+          # Read by the Windows sign command only (Azure Artifact Signing); empty when not set up.
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          # The updater's public key, if it isn't in tauri.conf.json yet (a repository variable).
+          UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
           # Windows signing: a repository variable with the sign command, e.g. for Azure Artifact
           # Signing (docs/SIGNING.md). Unset: unsigned (D88).
           WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
         run: |
           args=(--bundles "${{ matrix.bundles }}")
           if [ -n "${{ matrix.target }}" ]; then args+=(--target "${{ matrix.target }}"); fi
-          config='{}'
-          if [ -n "$LOGBOOK_NO_UPDATER" ]; then config='{"bundle":{"createUpdaterArtifacts":false}}'; fi
-          if [ "$RUNNER_OS" = Windows ] && [ -n "$WINDOWS_SIGN_COMMAND" ]; then
-            config=$(node -e 'const c=JSON.parse(process.argv[1]);c.bundle={...c.bundle,windows:{signCommand:process.argv[2]}};console.log(JSON.stringify(c))' "$config" "$WINDOWS_SIGN_COMMAND")
-            echo "Windows: signing with the WINDOWS_SIGN_COMMAND variable."
-          elif [ "$RUNNER_OS" = Windows ]; then
-            echo "Windows: unsigned (D88)."
+          config=$(node -e '
+            const conf = require("./apps/desktop/src-tauri/tauri.conf.json");
+            const env = process.env;
+            const out = {};
+            if (env.TAURI_SIGNING_PRIVATE_KEY) {
+              const pubkey = conf.plugins.updater.pubkey || env.UPDATER_PUBKEY;
+              if (!pubkey) {
+                console.error("::error::TAURI_SIGNING_PRIVATE_KEY is set but the app would have no public key to check updates with. Put it in apps/desktop/src-tauri/tauri.conf.json (plugins.updater.pubkey) or the TAURI_UPDATER_PUBKEY repository variable.");
+                process.exit(1);
+              }
+              out.bundle = { createUpdaterArtifacts: true };
+              if (!conf.plugins.updater.pubkey) out.plugins = { updater: { pubkey } };
+            }
+            if (env.RUNNER_OS === "Windows" && env.WINDOWS_SIGN_COMMAND) out.bundle = { ...out.bundle, windows: { signCommand: env.WINDOWS_SIGN_COMMAND } };
+            console.log(JSON.stringify(out));
+          ')
+          if [ "$RUNNER_OS" = Windows ]; then
+            if [ -n "$WINDOWS_SIGN_COMMAND" ]; then echo "Windows: signing with the WINDOWS_SIGN_COMMAND variable."; else echo "Windows: unsigned (D88)."; fi
           fi
           npm run tauri -w @logbook/desktop -- build "${args[@]}" --config "$config"
       - name: Collect the installers
@@ -211,6 +235,17 @@ jobs:
             exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
+      # The updater's manifest, from the signatures the builds made (M5 §2.6).
+      - name: latest.json
+        run: |
+          if ls release/*.sig > /dev/null 2>&1; then
+            node apps/desktop/scripts/latest-json.ts --dir release --version "$VERSION" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION" --out release/latest.json
+            cat release/latest.json
+          else
+            echo "::warning::No update signatures (TAURI_SIGNING_PRIVATE_KEY isn't set), so no latest.json: installed apps won't be offered this release."
+          fi
+      - name: Checksums
+        run: cd release && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -222,6 +257,8 @@ jobs:
           - **Windows**: \`Logbook_${VERSION}_x64-setup.exe\` (or the \`.msi\`).
           - **macOS** (Apple Silicon and Intel): \`Logbook_${VERSION}_universal.dmg\`.
           - **Linux**: the \`.AppImage\` runs anywhere; \`.deb\` for Debian and Ubuntu, \`.rpm\` for Fedora and openSUSE.
+
+          \`SHA256SUMS.txt\` lists every file's SHA-256, to check a download by hand.
 
           Installers that aren't signed yet make Windows say "Windows protected your PC" (choose **More info → Run anyway**) and macOS refuse to open the app the first time (right-click it and choose **Open**). See docs/SIGNING.md.
           NOTES

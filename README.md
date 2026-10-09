@@ -2,7 +2,7 @@
 
 A local-first multimedia journal (website, installable PWA, and, later, a Tauri desktop app) that can be printed as a real book through Lulu.
 
-> **Status:** milestones 1 (the journal), 2 (book builder and print PDFs) and 3 (pricing and Stripe) are done: the print layout and renderer, prices from Lulu's live costs, "Prepare my book", the order page and Stripe Checkout with webhooks all work in Stripe test mode. Milestone 4 (Lulu fulfilment) is under way: paid orders are sent to Lulu as print jobs, followed by webhooks and polling, retried, and refunded when they can't be printed; `npm run lulu:e2e -w @logbook/server` runs it against the Lulu sandbox and Stripe test mode. See [docs/M3.md](docs/M3.md) and [docs/M4.md](docs/M4.md). Emails, desktop packaging and the admin page come after; see [docs/PLAN.md](docs/PLAN.md). The full README (deployment, environment variables, Stripe CLI, signing, go-live checklist) arrives in milestone 6.
+> **Status:** milestones 1 (the journal), 2 (book builder and print PDFs) and 3 (pricing and Stripe) are done: the print layout and renderer, prices from Lulu's live costs, "Prepare my book", the order page and Stripe Checkout with webhooks all work in Stripe test mode. Milestone 4 (Lulu fulfilment) is under way: paid orders are sent to Lulu as print jobs, followed by webhooks and polling, retried, and refunded when they can't be printed; `npm run lulu:e2e -w @logbook/server` runs it against the Lulu sandbox and Stripe test mode. Milestone 5, the desktop app (Tauri 2: the journal as files in a folder you choose, sync conflicts, restoring backups, installers for Windows, macOS and Linux, signed self-updates), is built and waits on signing keys. See [docs/M3.md](docs/M3.md), [docs/M4.md](docs/M4.md) and [docs/M5.md](docs/M5.md). The admin page comes after; see [docs/PLAN.md](docs/PLAN.md). The full README (deployment, environment variables, Stripe CLI, signing, go-live checklist) arrives in milestone 6.
 
 ## Run it
 
@@ -81,8 +81,11 @@ The desktop app is Tauri 2 around the same web app ([docs/M5.md](docs/M5.md)). I
 npm run dev -w @logbook/desktop      # the app with live reload (web dev server on :5174)
 npm run build -w @logbook/desktop    # installers for this OS in apps/desktop/src-tauri/target/release/bundle/
 npm run test:e2e -w @logbook/desktop # drives the real app (Linux; needs a display or xvfb-run, tauri-driver and webkit2gtk-driver)
+npm run updater:check -w @logbook/desktop  # builds two AppImages with a throwaway key; the old one updates itself, a tampered update is refused
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```
+
+Releases: push a `v<version>` tag matching `apps/desktop/package.json`, or run the Desktop workflow with "release" ticked; it makes a draft release with every installer. Signing and the updater key: [docs/SIGNING.md](docs/SIGNING.md).
 
 The journal lives in a folder you choose on first start (`LOGBOOK_JOURNAL_FOLDER=<dir>` skips the dialog). For the end-to-end tests: `cargo install tauri-driver --version 2.0.6 --locked` and `sudo apt install webkit2gtk-driver`.
 

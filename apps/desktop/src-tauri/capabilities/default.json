@@ -1,8 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the Logbook window may do. File access has no static scope: Rust grants the journal folder the user chose at runtime (D79), and the save dialog grants the file it names.",
-  "windows": ["main"],
+  "description": "What the Logbook window may do. File access has no static scope: Rust grants the journal folder the user chose at runtime (D79), and the save dialog grants the file it names. Updates come only from signed releases (D87).",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "fs:allow-read-file",
@@ -15,6 +17,8 @@
     "fs:allow-watch",
     "fs:allow-unwatch",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

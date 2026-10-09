@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, openSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -32,39 +32,44 @@ export interface App {
  * Starts the app on `folder` (through LOGBOOK_JOURNAL_FOLDER), or with no folder chosen yet (`null`,
  * the first-run screen), with its own config and data folders.
  */
-export async function launch(folder: string | null): Promise<App> {
+export async function launch(folder: string | null, application = APP): Promise<App> {
   const base = `http://127.0.0.1:${PORT}`;
   // A driver left over from an earlier run would serve this test with the wrong folder.
   if (await fetch(`${base}/status`).then(() => true, () => false)) throw new Error(`Port ${PORT} is in use: stop the old tauri-driver first.`);
   const home = mkdtempSync(join(tmpdir(), 'logbook-e2e-home-'));
+  // What the driver and the app print, shown when a session can't start.
+  const logFile = join(home, 'driver.log');
+  const log = openSync(logFile, 'a');
+  const logTail = () => readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n');
   // Its own process group, so closing stops tauri-driver, WebKitWebDriver and the app together.
   const driver = spawn('tauri-driver', ['--port', String(PORT)], {
     env: { ...process.env, LOGBOOK_JOURNAL_FOLDER: folder ?? '', XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'), XDG_CACHE_HOME: join(home, 'cache') },
-    stdio: 'ignore',
+    stdio: ['ignore', log, log],
     detached: true,
   });
   for (let i = 0; ; i++) {
     if (await fetch(`${base}/status`).then(() => true, () => false)) break;
     if (i > 100 || driver.exitCode !== null) {
       stop(driver);
-      throw new Error('tauri-driver did not start (is it installed, with WebKitWebDriver and a display?)');
+      throw new Error(`tauri-driver did not start (is it installed, with WebKitWebDriver and a display?)\n${logTail()}`);
     }
     await sleep(100);
   }
-  const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+  const call = async <T>(method: string, path: string, body?: unknown, timeoutMs = 30_000): Promise<T> => {
     const res = await fetch(`${base}${path}`, {
       method,
       headers: { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const json = (await res.json()) as { value: T & { error?: string; message?: string } };
     if (!res.ok) throw new Error(`${method} ${path}: ${json.value?.error} ${json.value?.message}`);
     return json.value;
   };
-  const session = await call<{ sessionId: string }>('POST', '/session', { capabilities: { alwaysMatch: { 'tauri:options': { application: APP } } } }).catch((err: unknown) => {
+  // A first start on a cold machine (fonts, WebKit's caches) can take a while.
+  const session = await call<{ sessionId: string }>('POST', '/session', { capabilities: { alwaysMatch: { 'tauri:options': { application } } } }, 90_000).catch((err: unknown) => {
     stop(driver);
-    throw err;
+    throw new Error(`The app didn't start under WebDriver: ${String(err)}\n--- tauri-driver, WebKitWebDriver and app output ---\n${logTail()}`);
   });
   const s = `/session/${session.sessionId}`;
   const wait = async <T>(what: string, fn: () => Promise<T | undefined>, timeoutMs: number): Promise<T> => {
@@ -81,7 +86,13 @@ export async function launch(folder: string | null): Promise<App> {
     folder,
     $: (css, timeoutMs = 10_000) => wait(css, () => find('css selector', css), timeoutMs),
     text: (text, timeoutMs = 10_000) => wait(`text “${text}”`, () => find('xpath', `//*[contains(normalize-space(.), ${JSON.stringify(text)}) and not(.//*[contains(normalize-space(.), ${JSON.stringify(text)})])]`), timeoutMs),
-    click: (el) => call('POST', `${s}/element/${el}/click`, {}),
+    // A sticky header or a toast can sit over an element scrolled to the edge: centre it and retry.
+    click: (el) =>
+      call<void>('POST', `${s}/element/${el}/click`, {}).catch(async (err: unknown) => {
+        if (!/intercepted|not interactable/.test(String(err))) throw err;
+        await call('POST', `${s}/execute/sync`, { script: 'arguments[0].scrollIntoView({ block: "center" })', args: [{ [W3C_ELEMENT]: el }] });
+        await call<void>('POST', `${s}/element/${el}/click`, {});
+      }),
     type: (el, text) => call('POST', `${s}/element/${el}/value`, { text }),
     exec: (script, ...args) => call('POST', `${s}/execute/sync`, { script, args }),
     go: (hash) => call('POST', `${s}/execute/sync`, { script: `location.hash = ${JSON.stringify(hash)}`, args: [] }),

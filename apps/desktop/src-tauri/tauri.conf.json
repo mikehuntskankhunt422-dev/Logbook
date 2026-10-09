@@ -29,21 +29,46 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "category": "Productivity",
     "shortDescription": "A private journal that prints as a real book",
     "longDescription": "Logbook is a local-first multimedia journal. Entries, photos and voice notes are ordinary files in a folder you choose, which can sit in OneDrive, Dropbox or iCloud Drive. When you're ready, turn a year of entries into a printed book.",
     "copyright": "© 2026 Logbook",
     "linux": {
-      "appimage": { "bundleMediaFramework": true }
+      "appimage": {
+        "bundleMediaFramework": true
+      }
     },
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "10.15"
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "nsis": { "installMode": "currentUser" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/mikehuntskankhunt422-dev/Logbook/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      },
+      "requireSignedVersion": true
     }
   }
 }
