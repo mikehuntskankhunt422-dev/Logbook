@@ -61,7 +61,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwQTY0N0E5RkQ3RDM3MEQKUldRTk4zMzlxVWVtOEZkU1ZxbS9Ic3hEcjFNWFFEd0xQM2RoRUhXbkV3Q2xvQ09Ma1dUdWZlTi8K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY2NjM5QjQ2RUIyRUYwODMKUldTRDhDN3JScHRqWnJLZ1c5VnVualEvcWpyL2wyQ21mbnBCQ3Q4b2FJbWtnOUNBRGdSdW5sN0sK",
       "endpoints": [
         "https://github.com/mikehuntskankhunt422-dev/Logbook/releases/latest/download/latest.json"
       ],

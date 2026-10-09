@@ -4,7 +4,7 @@ How to sign the Windows, macOS and Linux builds, and the updates the app install
 
 **Today** (2026-10-09):
 
-- The updater key is set up (public key ID `F0A647A9FD7D370D`): builds sign their update files, and [run 4, attempt 3](https://github.com/mikehuntskankhunt422-dev/Logbook/actions/runs/37906936188) verified every one against the app's public key.
+- The updater key is set up (public key ID `66639B46EB2EF083`, made 2026-10-09 to give the key a password of its own; it replaced `F0A647A9FD7D370D` before any release). Builds sign their update files and verify every one against the app's public key.
 - Windows installers are unsigned.
 - The macOS app is ad-hoc signed and not notarised.
 - Linux packages are unsigned.

@@ -21,8 +21,8 @@ describe('update signatures checked as the updater checks them', () => {
 
   it('refuses a signature from another key, naming both', () => {
     const app = parsePublicKey(conf.plugins.updater.pubkey);
-    expect(app.id).toBe('f0a647a9fd7d370d');
-    expect(() => verifySignature(payload, signature, app)).toThrow('Signed with key 3A3A0DB561A1CAD7, but the app trusts key F0A647A9FD7D370D.');
+    expect(app.id).toBe('66639b46eb2ef083');
+    expect(() => verifySignature(payload, signature, app)).toThrow('Signed with key 3A3A0DB561A1CAD7, but the app trusts key 66639B46EB2EF083.');
   });
 
   it('refuses an altered trusted comment (a version changed after signing)', () => {
