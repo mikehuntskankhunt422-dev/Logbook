@@ -9,7 +9,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
  * (Linux). A small client on `fetch`, enough for the desktop end-to-end tests.
  */
 
-export const APP = resolve(import.meta.dirname, '../src-tauri/target/debug/logbook-desktop');
+/** The app under test: the debug build, or any other binary (an installed package, an AppImage) through LOGBOOK_DESKTOP_APP. */
+export const APP = process.env.LOGBOOK_DESKTOP_APP || resolve(import.meta.dirname, '../src-tauri/target/debug/logbook-desktop');
 const PORT = 4444;
 const W3C_ELEMENT = 'element-6066-11e4-a52e-4f735466cecf';
 

@@ -1,0 +1,233 @@
+name: Desktop
+
+# Builds the desktop app for Linux, Windows and macOS whenever desktop code changes, and runs the
+# real app on Linux. A `v*` tag, or a manual run with "release" ticked, attaches every installer to a
+# draft release for you to publish (M5 §2.5, D86). Signing switches on per platform once its
+# secrets exist (docs/SIGNING.md, D88); secret values never appear in this file or the logs.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'package-lock.json'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'package-lock.json'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Attach the installers to a draft release for the version in apps/desktop/package.json
+        type: boolean
+        default: false
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  # Tauri's Debian prerequisites, plus GStreamer's base and good plugins for the AppImage's media
+  # playback (no patent-encumbered decoders, D90).
+  LINUX_PACKAGES: libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+jobs:
+  test:
+    name: Rust tests and the real app (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y $LINUX_PACKAGES webkit2gtk-driver xvfb
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/tauri-driver
+            apps/desktop/src-tauri/target
+          key: desktop-test-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      - run: npm ci
+      - run: npm run build:desktop -w @logbook/web
+      - run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: command -v tauri-driver || cargo install tauri-driver --version 2.0.6 --locked
+      # Drives the real app through WebDriver: the folder, sync, conflicts, restoring backups.
+      - run: xvfb-run -a npm run test:e2e -w @logbook/desktop
+
+  build:
+    name: Installers (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Ubuntu with WebKitGTK 4.1, so the AppImage runs on older systems too (glibc).
+          - name: Linux
+            os: ubuntu-22.04
+            bundles: appimage,deb,rpm
+            target: ''
+          - name: Windows
+            os: windows-latest
+            bundles: msi,nsis
+            target: ''
+          # One universal build for Apple Silicon and Intel.
+          - name: macOS
+            os: macos-latest
+            bundles: app,dmg
+            target: universal-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_PACKAGES
+      - name: Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "${{ matrix.target }}" = universal-apple-darwin ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: desktop-build-${{ matrix.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      - run: npm ci
+      # Only secrets that exist are passed on: an empty variable would read as a broken key.
+      - name: Signing secrets (only those that are set)
+        shell: bash
+        env:
+          UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          UPDATER_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          put() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"; }
+          if [ -n "$UPDATER_KEY" ]; then
+            put TAURI_SIGNING_PRIVATE_KEY "$UPDATER_KEY"
+            put TAURI_SIGNING_PRIVATE_KEY_PASSWORD "$UPDATER_KEY_PASSWORD"
+            echo "Updater key: set; update files will be signed."
+          else
+            echo "Updater key: not set (TAURI_SIGNING_PRIVATE_KEY); building without update files."
+            put LOGBOOK_NO_UPDATER 1
+          fi
+          if [ "$RUNNER_OS" = macOS ] && [ -n "$APPLE_CERTIFICATE" ]; then
+            put APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+            put APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+            put APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
+            if [ -n "$APPLE_API_KEY_P8" ]; then
+              printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+              put APPLE_API_ISSUER "$APPLE_API_ISSUER"
+              put APPLE_API_KEY "$APPLE_API_KEY"
+              put APPLE_API_KEY_PATH "$RUNNER_TEMP/AuthKey.p8"
+              echo "macOS: Developer ID signing and notarisation."
+            else
+              echo "macOS: Developer ID signing, no notarisation (APPLE_API_KEY_P8 not set)."
+            fi
+          elif [ "$RUNNER_OS" = macOS ]; then
+            echo "macOS: no certificate (APPLE_CERTIFICATE); ad-hoc signed (D88)."
+          fi
+      - name: Build
+        shell: bash
+        env:
+          # Windows signing: a repository variable with the sign command, e.g. for Azure Artifact
+          # Signing (docs/SIGNING.md). Unset: unsigned (D88).
+          WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
+        run: |
+          args=(--bundles "${{ matrix.bundles }}")
+          if [ -n "${{ matrix.target }}" ]; then args+=(--target "${{ matrix.target }}"); fi
+          config='{}'
+          if [ -n "$LOGBOOK_NO_UPDATER" ]; then config='{"bundle":{"createUpdaterArtifacts":false}}'; fi
+          if [ "$RUNNER_OS" = Windows ] && [ -n "$WINDOWS_SIGN_COMMAND" ]; then
+            config=$(node -e 'const c=JSON.parse(process.argv[1]);c.bundle={...c.bundle,windows:{signCommand:process.argv[2]}};console.log(JSON.stringify(c))' "$config" "$WINDOWS_SIGN_COMMAND")
+            echo "Windows: signing with the WINDOWS_SIGN_COMMAND variable."
+          elif [ "$RUNNER_OS" = Windows ]; then
+            echo "Windows: unsigned (D88)."
+          fi
+          npm run tauri -w @logbook/desktop -- build "${args[@]}" --config "$config"
+      - name: Collect the installers
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          b="apps/desktop/src-tauri/target/${{ matrix.target && format('{0}/', matrix.target) || '' }}release/bundle"
+          mkdir dist
+          shopt -s nullglob
+          for f in "$b"/appimage/*.AppImage* "$b"/deb/*.deb* "$b"/rpm/*.rpm* "$b"/msi/*.msi* "$b"/nsis/*-setup.exe* "$b"/dmg/*.dmg; do cp "$f" dist/; done
+          # macOS names its update archive after the app only; give it the version like the rest.
+          for f in "$b"/macos/*.app.tar.gz*; do cp "$f" "dist/$(basename "$f" | sed "s/^Logbook\.app/Logbook_${version}_universal.app/")"; done
+          ls -l dist
+          test -n "$(ls dist)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logbook-desktop-${{ matrix.name }}
+          path: dist/*
+          retention-days: 14
+
+  release:
+    name: Draft release
+    needs: [test, build]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: logbook-desktop-*
+          path: release
+          merge-multiple: true
+      - name: Check the version
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::The tag $GITHUB_REF_NAME doesn't match apps/desktop/package.json ($version)."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$VERSION"
+          cat > notes.md <<NOTES
+          Logbook $VERSION for Windows, macOS and Linux.
+
+          - **Windows**: \`Logbook_${VERSION}_x64-setup.exe\` (or the \`.msi\`).
+          - **macOS** (Apple Silicon and Intel): \`Logbook_${VERSION}_universal.dmg\`.
+          - **Linux**: the \`.AppImage\` runs anywhere; \`.deb\` for Debian and Ubuntu, \`.rpm\` for Fedora and openSUSE.
+
+          Installers that aren't signed yet make Windows say "Windows protected your PC" (choose **More info → Run anyway**) and macOS refuse to open the app the first time (right-click it and choose **Open**). See docs/SIGNING.md.
+          NOTES
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" release/* --clobber
+          else
+            gh release create "$tag" release/* --draft --target "$GITHUB_SHA" --title "Logbook $VERSION" --notes-file notes.md
+          fi
+          echo "Draft release $tag: https://github.com/$GITHUB_REPOSITORY/releases" >> "$GITHUB_STEP_SUMMARY"
