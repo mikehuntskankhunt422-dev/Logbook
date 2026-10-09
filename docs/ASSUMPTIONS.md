@@ -139,6 +139,75 @@ With the Resend key, sender and alert address in this environment and `npm run e
 | `EMAIL_FROM` is Resend's shared test sender, `onboarding@resend.dev`. Resend sends from it only to the address the Resend account belongs to, so customer emails (`problem`, `shipped`, `refunded`) need a domain of yours verified in Resend and `EMAIL_FROM` on that domain. Until then the server doesn't send them (D76) | Resend's documented rule, not tested: testing it would mean emailing someone else. The alert to `OWNER_EMAIL` was accepted, which fits |
 | An alert sent from `onboarding@resend.dev` to your Gmail **arrived in spam** | You found it there, 2026-10-09 (email `01a11c32-…`) |
 
+### Desktop (Tauri 2), checked 2026-10-09 (M5)
+
+`v2.tauri.app`, `learn.microsoft.com`, `azure.microsoft.com` and the certificate sellers don't resolve or are refused from the build environment, so I read the **sources those sites are built from**, plus the plugin crates themselves:
+
+- **[T]** Tauri's documentation, from `tauri-apps/tauri-docs` (branch `v2`, `src/content/docs/…`), the repository `v2.tauri.app` is built from: `plugin/updater.mdx` [T-upd], `start/prerequisites.mdx` [T-pre], `distribute/Sign/{windows,macos,linux}.mdx` [T-win], [T-mac], [T-lin], `distribute/Pipelines/github.mdx` [T-gh], `distribute/{appimage,rpm,windows-installer,microsoft-store}.mdx` [T-app], [T-rpm], [T-wi], [T-ms].
+- **[C]** The crates as published on crates.io: `tauri-plugin-updater` 2.12.0 [C-upd], `tauri-plugin-fs` 2.5.2 [C-fs], `tauri-plugin-dialog` 2.7.3 [C-dlg].
+- **[MS]** Microsoft's documentation sources: `MicrosoftDocs/azure-docs` `articles/artifact-signing/{quickstart.md,faq.yml}` [MS-as], and `MicrosoftDocs/windows-dev-docs` `hub/apps/package-and-deploy/smartscreen-reputation.md` (dated 2026-05-04) [MS-ss].
+- **[A]** Apple, fetched directly: `developer.apple.com/programs/enroll/` and `/help/account/membership/program-enrollment/` [A-enr].
+
+**Versions** (npm registry and crates.io API, 2026-10-09). As with Stripe (D62) and pdf.js (D64), I pin the newest release that is at least two weeks old, i.e. published by 2026-09-25 (D77):
+
+| Package (npm / crate) | Newest | Pinned | Published |
+|---|---|---|---|
+| `@tauri-apps/cli` | 2.12.1 (2026-09-30) | **2.11.5** | 2026-09-20 |
+| `tauri` crate / `@tauri-apps/api` | 2.12.2 (today) / 2.12.2 | **2.11.6** / **2.11.1** | 2026-09-19 / 2026-06-17 |
+| `tauri-build` | 2.7.1 (2026-09-30) | **2.6.3** | 2026-06-17 |
+| `tauri-plugin-dialog`, `@tauri-apps/plugin-dialog` | 2.8.1 (2026-10-01) | **2.7.3** | 2026-08-31 |
+| `tauri-plugin-fs`, `@tauri-apps/plugin-fs` | 2.6.0 (2026-09-26) | **2.5.2** | 2026-08-31 |
+| `tauri-plugin-updater`, `@tauri-apps/plugin-updater` | 2.13.2 (2026-10-07) | **2.12.0** | 2026-09-20 |
+| `tauri-plugin-process`, `@tauri-apps/plugin-process` | 2.4.0 (2026-09-26) | **2.3.1** | 2025-10-27 |
+
+Tauri 3 exists only as alphas (`3.0.0-alpha.*` on the `next` tag); not used.
+
+**Updater**
+
+| Fact | Source |
+|---|---|
+| Update signatures can't be turned off. Keys come from `tauri signer generate`; the public key goes in `tauri.conf.json` (`plugins.updater.pubkey`, the key's content, never a path); the private key must never be shared, and **losing it means installed apps can never be updated again** | T-upd |
+| At build time the private key comes from `TAURI_SIGNING_PRIVATE_KEY` (a path or the key's content) and its password from `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; `.env` files don't work | T-upd |
+| With `bundle.createUpdaterArtifacts: true`: Linux signs the AppImage itself (`.AppImage` + `.AppImage.sig`); macOS adds `.app.tar.gz` + `.sig`; Windows signs the NSIS `-setup.exe` and the `.msi` (each + `.sig`). (`"v1Compatible"` makes zip/tar.gz wrappers instead) | T-upd |
+| Static `latest.json`: `version` (SemVer, `v` prefix allowed), optional `notes` and `pub_date` (RFC 3339), and `platforms` keyed `OS-ARCH` (`linux`/`darwin`/`windows` × `x86_64`/`aarch64`/`i686`/`armv7`), each with `url` and `signature` = **the content of the `.sig` file** (not a URL). The whole file is validated before the version is compared, so every platform entry must be complete | T-upd |
+| Not in the docs: the plugin first looks for **`{os}-{arch}-{installer}`** (`appimage`, `deb`, `rpm`, `app`, `msi`, `nsis`, from the bundle type compiled into the app), then `{os}-{arch}`. So one `latest.json` can send NSIS installs the `.exe` and MSI installs the `.msi` | C-upd `get_urls` |
+| A downloaded update is verified (minisign) against the public key **before** it's installed. `.deb`/`.rpm` installs self-update through `pkexec dpkg -i` / `pkexec rpm -U` (a password prompt); AppImages replace themselves | C-upd `verify_signature`, `install_deb` |
+| `requireSignedVersion` (plugin config) rejects an update whose signature doesn't carry the same version `latest.json` announces, so an old signed release can't be replayed as a new one. CLI 2.11.5's `signer sign` writes the version into the signature only with `--app-version` (checked with a throwaway key: without it the trusted comment is `timestamp:…	file:…`) | C-upd `verify_signed_version`; `tauri signer sign --help` |
+| Endpoints must be HTTPS in production; the next endpoint is tried only on a non-2xx answer. GitHub works as a static host: `https://github.com/<owner>/<repo>/releases/latest/download/latest.json` | T-upd |
+| Windows `installMode`: `passive` (default, progress bar, no clicks), `basicUi`, `quiet`. Relaunching after an update uses the process plugin | T-upd |
+
+**File access**
+
+| Fact | Source |
+|---|---|
+| The fs plugin allows a path if the plugin's **runtime scope** (`FsExt::fs_scope()`, which Rust code can extend with `allow_directory`) or the capability's scope allows it; denies win. So the app can grant exactly the folder the user picked, with no folder in the static configuration | C-fs `resolve_path` |
+| On Unix, `requireLiteralLeadingDot` defaults to true: a recursive grant (`folder/**`) does **not** cover dot-folders such as `.logbook/` unless they're granted by name | C-fs `resolve_path` (`unwrap_or(cfg!(unix))`) |
+| Watching is behind the crate feature `watch` (notify with the full debouncer) and the permissions `fs:allow-watch` / `fs:allow-unwatch` | C-fs `Cargo.toml`, `permissions/` |
+| The dialog plugin adds a path chosen in its open or save dialog to the fs scope at runtime (directories recursively only when asked) | C-dlg `commands.rs` |
+
+**Building**
+
+| Fact | Source |
+|---|---|
+| Debian/Ubuntu build packages: `libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`. Installed in this container, plus `patchelf` and `xdg-utils` (Tauri's own workflow example installs both) and `xvfb` for headless runs | T-pre, T-gh |
+| AppImages must be built on the **oldest** system they should run on that has WebKitGTK 4.1; Ubuntu 22.04 is the suggested baseline (glibc) | T-app |
+| `.msi` can only be built on Windows (WiX); NSIS can be cross-built. WebView2 install modes: `downloadBootstrapper` (default, 0 MB), `embedBootstrapper` (~1.8 MB), `offlineInstaller` (~127 MB), `fixedRuntime`, `skip` | T-wi |
+| Tauri's GitHub example builds on `ubuntu-22.04`, `windows-latest` and `macos-latest` (both Apple targets); unsigned macOS builds should use an **ad-hoc identity (`signingIdentity: "-"`)** so Apple Silicon doesn't call a downloaded app "damaged" | T-gh, T-mac |
+
+**Signing**
+
+| Fact | Source |
+|---|---|
+| **Windows, unsigned:** SmartScreen shows "Windows protected your PC" and the user must choose "Run anyway"; reputation starts from zero for every version. **OV and EV certificates:** still an "unrecognised app" warning until the certificate or file builds reputation (weeks, hundreds of installs); EV no longer skips it. **Microsoft Store:** no warning | MS-ss |
+| Tauri signs Windows builds with a certificate thumbprint (OV certificates bought before June 2023), Azure Key Vault, **Azure Artifact Signing** (`artifact-signing-cli` in `bundle.windows.signCommand`, with `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`), or any tool through `signCommand` with `%1` for the file. Newer OV/EV certificates: follow the issuer's tooling (keys live on hardware or a cloud HSM) | T-win |
+| **Artifact Signing, open question #11:** "Public Trust certificates are available to organizations in the United States, Canada, the European Union, the United Kingdom, **Australia**, New Zealand, Japan, South Korea, Singapore, Switzerland, Norway, and Israel. **Individual developers must be located in the United States or Canada.**" Organisation validation asks for the legal business entity's name, a **website** belonging to it, a primary **email on a domain the entity owns**, a business identifier and address. A paid Azure subscription is required (no free or trial). Cost "approximately $10/month" | MS-as quickstart and FAQ; MS-ss |
+| Tauri's Microsoft Store route lists a normal installer that must be offline (WebView2 `offlineInstaller`), update itself and be **code signed**, so the Store doesn't avoid buying a certificate | T-ms |
+| **macOS:** Apple Developer Program, **US$99 a year** in local currency. An individual or sole trader enrols under their legal name; an organisation needs a legal entity and a D-U-N-S number. Outside the App Store: a **Developer ID Application** certificate (only the Account Holder can create one), and notarisation is required with it; a free account can't notarise | A-enr, T-mac |
+| macOS CI variables: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`; notarisation through an App Store Connect API key (`APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`) or an Apple ID (`APPLE_ID`, `APPLE_PASSWORD` = app-specific password, `APPLE_TEAM_ID`) | T-mac |
+| **Linux:** nothing has to be signed to run. AppImages can carry a gpg signature (`SIGN=1`, `SIGN_KEY`, `APPIMAGETOOL_SIGN_PASSPHRASE`, `APPIMAGETOOL_FORCE_SIGN`), but AppImage never checks it itself. RPMs are signed with `TAURI_SIGNING_RPM_KEY` and `TAURI_SIGNING_RPM_KEY_PASSPHRASE`. The docs say nothing about signing `.deb` files | T-lin, T-rpm |
+
+**Couldn't verify from here** (sites refused by the build environment's proxy): prices and current terms of OV code-signing certificates for an Australian individual (Certum, SSL.com); Artifact Signing's exact price; whether Microsoft accepts an Australian sole trader with an ABN but no company as an "organization"; the Microsoft Store's registration fee; and how OneDrive, Dropbox and iCloud name conflict copies (the desktop app doesn't rely on names, M5 §2.3).
+
 ## Not yet verified (blocking the code that depends on them)
 
 1. ~~The sandbox token URL path.~~ **Answered 2026-10-07:** same path on the sandbox host (LS above).
@@ -151,5 +220,5 @@ With the Resend key, sender and alert address in this environment and `npm run e
 8. ~~How long Lulu needs file URLs to stay valid after print-job creation.~~ **Answered 2026-10-08:** seconds; Lulu copies the files when it accepts the job (above, D71).
 9. ~~Stripe hosted Checkout UX with a single allowed country~~ (**answered 2026-10-08:** the country shows fixed, Stripe test mode above). Still open: Stripe Tax Calculation API availability on your account.
 10. ~~Whether Stripe permits automated browser tests against hosted Checkout.~~ **Answered 2026-10-08:** in test mode, yes, all three cards (Stripe test mode above).
-11. Azure Artifact Signing eligibility for an Australian individual.
+11. ~~Azure Artifact Signing eligibility for an Australian individual.~~ **Answered 2026-10-09:** not eligible as an individual (individuals must be in the US or Canada); an Australian organisation is, with a website and an email on its own domain (Desktop above, M5 §6).
 12. Which Lulu print sites serve which destinations (affects duties/VAT notices and AU GST treatment).

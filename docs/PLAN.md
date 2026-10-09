@@ -8,6 +8,7 @@ This plan covers the architecture, the shared-core layout for web and desktop, m
 - [M2.md](M2.md): the detailed plan for milestone 2 (book builder and print PDFs), with spike results.
 - [M3.md](M3.md): milestone 3 (pricing and Stripe): prices from sandbox costs, Checkout and webhooks in Stripe test mode.
 - [M4.md](M4.md): milestone 4 (Lulu fulfilment): sandbox findings, the fulfilment design, end-to-end results, and what it still needs.
+- [M5.md](M5.md): milestone 5 (desktop): Tauri and signing facts, the folder layout, sync conflicts, installers, the updater, and what I need from you.
 - [ASSUMPTIONS.md](ASSUMPTIONS.md): Stripe and Lulu facts I verified against official sources today, with links, and the ones I could not verify yet.
 - [reference/](reference/): dated snapshots of Lulu's OpenAPI spec, product spec sheet and Book Creation Guide, so later work can be checked against the exact text I read.
 
@@ -400,6 +401,6 @@ All verified facts and their sources are in [ASSUMPTIONS.md](ASSUMPTIONS.md). St
 - A Cloudflare account (R2 bucket + Pages) and a Resend API key with a verified sending domain
 - Your business name, contact email and domain, used in legal drafts, emails and Lulu `contact_email`
 
-**Before M5:** an Apple Developer account (for macOS signing), a decision on a Windows signing route, and a GitHub repository for Actions and Releases.
+**Before M5:** an Apple Developer account (for macOS signing), a decision on a Windows signing route, and a GitHub repository for Actions and Releases. Updated in [M5.md](M5.md) §6: the updater key is needed first; the signing accounts only before the first public release.
 
 **Also:** git has no name or email configured on this PC, so I haven't made any commits. Tell me the name and email to use for this repo's commits (set locally, not globally).
