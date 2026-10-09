@@ -4,7 +4,7 @@ How to sign the Windows, macOS and Linux builds, and the updates the app install
 
 **Today** (2026-10-09):
 
-- The updater key is set up (public key ID `F0A647A9FD7D370D`), so builds make signed update files.
+- The app has the updater's public key (key ID `F0A647A9FD7D370D`). Builds make signed update files once the secret `TAURI_SIGNING_PRIVATE_KEY` reaches them; [run 4](https://github.com/mikehuntskankhunt422-dev/Logbook/actions/runs/37906936188) didn't have it ("Updater key: not set").
 - Windows installers are unsigned.
 - The macOS app is ad-hoc signed and not notarised.
 - Linux packages are unsigned.
@@ -31,9 +31,11 @@ Every update the app installs must be signed with this key; the app checks the s
    ```
 
    Choose a password when it asks. It writes `logbook-updater.key` (private) and `logbook-updater.key.pub` (public).
-2. Add two repository **secrets**:
-   - `TAURI_SIGNING_PRIVATE_KEY`: the whole content of `logbook-updater.key` (one line);
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password from step 1.
+2. Add two repository **secrets**: on GitHub, the repository → Settings → Secrets and variables → Actions → the **Secrets** tab → **New repository secret**. Not *Environment secrets*, *Codespaces* or *Dependabot*: the workflow can't see those.
+   - Name `TAURI_SIGNING_PRIVATE_KEY`, value the whole content of `logbook-updater.key` (one line). On Windows, `type %USERPROFILE%\.tauri\logbook-updater.key | clip` in CMD copies it; on macOS or Linux, `cat ~/.tauri/logbook-updater.key`.
+   - Name `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, value the password from step 1.
+
+   The names must match exactly. A secret added while a build is running reaches only the builds that start after it.
 3. Give the app the **public** key, either way:
    - send me the content of `logbook-updater.key.pub` and I'll put it in `apps/desktop/src-tauri/tauri.conf.json` (`plugins.updater.pubkey`), or
    - add it yourself as the repository **variable** `TAURI_UPDATER_PUBKEY`.
@@ -51,7 +53,10 @@ If the key secret is set but there's no public key anywhere, the build stops wit
 
 Every build then verifies its update signatures against the public key the app is built with (`apps/desktop/scripts/verify-signatures.ts`). If the secret holds a different private key, the build fails with "Signed with key …, but the app trusts key …".
 
-**Check:** after the next release, `latest.json` is among its files, and Settings → Updates → "Check for updates" in an older copy offers the new version.
+**Check:**
+
+- In the next Desktop workflow run, each "Installers" job's step "Signing secrets (only those that are set)" says `Updater key: set`, and "Check update signatures" lists every update file with ✔. `Updater key: not set` means the build couldn't see `TAURI_SIGNING_PRIVATE_KEY`: check its name and that it's a repository secret.
+- After the next release, `latest.json` is among its files, and Settings → Updates → "Check for updates" in an older copy offers the new version.
 
 ## 2. macOS
 
@@ -141,7 +146,9 @@ Instead, every release carries `SHA256SUMS.txt`, so a download can be checked by
 
 ## 5. Checklist
 
-- [x] Updater key pair made (2026-10-09), two copies kept; `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added; public key sent to me or put in `TAURI_UPDATER_PUBKEY`
+- [x] Updater key pair made (2026-10-09); public key in `tauri.conf.json`
+- [ ] `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added as repository secrets, and a build's log says `Updater key: set` with every update signature ✔
+- [ ] Two offline copies of the private key and its password
 - [ ] Apple Developer Program; Developer ID Application certificate; App Store Connect API key; six `APPLE_*` secrets
 - [ ] Windows route chosen; its secrets and `WINDOWS_SIGN_COMMAND` added
 - [ ] A release built after all of the above, and checked on each OS (the "Check" steps above)
