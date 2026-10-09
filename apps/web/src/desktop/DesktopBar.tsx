@@ -152,6 +152,7 @@ function ConflictDialog({ conflicts, onClose, onChanged }: { conflicts: EntryCon
 
   useEffect(() => {
     let alive = true;
+    setShown([]); // the previous entry's buttons mustn't act on this one while it loads
     void Promise.all(conflict.versions.map(async (v) => ({ path: v.path, entry: await journal.readEntryRecord(v.record).catch(() => null) }))).then((s) => alive && setShown(s));
     return () => {
       alive = false;
