@@ -18,9 +18,11 @@ export async function bootDesktop(root: Root): Promise<void> {
 
 async function openFolder(root: Root, folder: string): Promise<void> {
   try {
-    const store = await FsStore.open(new TauriJournalFs(folder), folderLocalKeys(folder));
+    const fs = new TauriJournalFs(folder);
+    const store = await FsStore.open(fs, folderLocalKeys(folder));
     const journal = await Journal.open(store, { mediaGraceDays: MEDIA_GRACE_DAYS });
-    renderJournal(root, journal, (app) => <DesktopContext.Provider value={{ folder, store }}>{app}</DesktopContext.Provider>);
+    const desktop = { folder, store, watch: (onChange: () => void) => fs.watch(onChange) };
+    renderJournal(root, journal, (app) => <DesktopContext.Provider value={desktop}>{app}</DesktopContext.Provider>);
   } catch (err) {
     root.render(<FolderProblem folder={folder} error={err} onRetry={() => void openFolder(root, folder)} onChosen={(f) => void openFolder(root, f)} />);
   }

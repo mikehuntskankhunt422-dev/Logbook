@@ -5,6 +5,8 @@ export interface DesktopCtx {
   /** The journal folder, as the system shows it. */
   folder: string;
   store: FsStore;
+  /** Calls back (debounced) when anything in the folder changes; resolves to a function that stops. */
+  watch(onChange: () => void): Promise<() => void>;
 }
 
 /** Only provided in the desktop app; the website sees `null`. Holds no Tauri code itself. */

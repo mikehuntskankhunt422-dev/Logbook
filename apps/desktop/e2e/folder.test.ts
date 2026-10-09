@@ -1,16 +1,10 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './driver.ts';
-
-/** Every file in the folder, relative, sorted. */
-function tree(dir: string, prefix = ''): string[] {
-  return readdirSync(dir, { withFileTypes: true })
-    .flatMap((d) => (d.isDirectory() ? tree(join(dir, d.name), `${prefix}${d.name}/`) : [`${prefix}${d.name}`]))
-    .sort();
-}
+import { tree } from './files.ts';
 
 const folder = mkdtempSync(join(tmpdir(), 'logbook-desktop-'));
 after(() => rmSync(folder, { recursive: true, force: true }));

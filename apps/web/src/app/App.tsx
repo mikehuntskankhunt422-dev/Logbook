@@ -14,6 +14,8 @@ import { IS_DESKTOP } from '../platform.ts';
 /** Print layout and Paged.js load only when someone opens the book builder. */
 const BookBuilder = lazy(() => import('../components/BookBuilder.tsx').then((m) => ({ default: m.BookBuilder })));
 const OrderPage = lazy(() => import('../components/OrderPage.tsx').then((m) => ({ default: m.OrderPage })));
+/** Desktop only: keeps the app in step with its folder and shows sync conflicts (M5 §2.3). */
+const DesktopBar = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/DesktopBar.tsx').then((m) => ({ default: m.DesktopBar }))) : null;
 
 const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'home' }, label: 'Journal', icon: '📓' },
@@ -79,6 +81,11 @@ export function App() {
         </nav>
       </header>
       <main id="main" tabIndex={-1}>
+        {DesktopBar && (
+          <Suspense fallback={null}>
+            <DesktopBar />
+          </Suspense>
+        )}
         <BackupBanner />
         {route.name === 'home' && <Timeline />}
         {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}

@@ -1671,3 +1671,40 @@ mark {
   background: var(--bg);
   font-size: 0.9em;
 }
+.banner-urgent {
+  border: 2px solid var(--accent);
+}
+dialog.conflict-dialog {
+  max-width: min(880px, calc(100vw - 32px));
+  width: 100%;
+}
+.conflict-versions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.conflict-version {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.conflict-version h3,
+.conflict-version p {
+  margin: 0;
+}
+.conflict-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 12em;
+  overflow: auto;
+}
+.conflict-file {
+  overflow-wrap: anywhere;
+}
+.conflict-version > .btn {
+  margin-top: auto;
+}

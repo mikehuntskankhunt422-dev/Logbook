@@ -29,30 +29,39 @@ export interface App {
 
 /** Starts the app on `folder` (through LOGBOOK_JOURNAL_FOLDER) with its own config and data folders. */
 export async function launch(folder: string): Promise<App> {
+  const base = `http://127.0.0.1:${PORT}`;
+  // A driver left over from an earlier run would serve this test with the wrong folder.
+  if (await fetch(`${base}/status`).then(() => true, () => false)) throw new Error(`Port ${PORT} is in use: stop the old tauri-driver first.`);
   const home = mkdtempSync(join(tmpdir(), 'logbook-e2e-home-'));
+  // Its own process group, so closing stops tauri-driver, WebKitWebDriver and the app together.
   const driver = spawn('tauri-driver', ['--port', String(PORT)], {
     env: { ...process.env, LOGBOOK_JOURNAL_FOLDER: folder, XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'), XDG_CACHE_HOME: join(home, 'cache') },
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: 'ignore',
+    detached: true,
   });
-  let log = '';
-  driver.stderr!.on('data', (d: Buffer) => (log += d.toString()));
-  const base = `http://127.0.0.1:${PORT}`;
   for (let i = 0; ; i++) {
-    try {
-      await fetch(`${base}/status`);
-      break;
-    } catch {
-      if (i > 100) throw new Error(`tauri-driver didn't start: ${log}`);
-      await sleep(100);
+    if (await fetch(`${base}/status`).then(() => true, () => false)) break;
+    if (i > 100 || driver.exitCode !== null) {
+      stop(driver);
+      throw new Error('tauri-driver did not start (is it installed, with WebKitWebDriver and a display?)');
     }
+    await sleep(100);
   }
   const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-    const res = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const res = await fetch(`${base}${path}`, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
     const json = (await res.json()) as { value: T & { error?: string; message?: string } };
     if (!res.ok) throw new Error(`${method} ${path}: ${json.value?.error} ${json.value?.message}`);
     return json.value;
   };
-  const session = await call<{ sessionId: string }>('POST', '/session', { capabilities: { alwaysMatch: { 'tauri:options': { application: APP } } } });
+  const session = await call<{ sessionId: string }>('POST', '/session', { capabilities: { alwaysMatch: { 'tauri:options': { application: APP } } } }).catch((err: unknown) => {
+    stop(driver);
+    throw err;
+  });
   const s = `/session/${session.sessionId}`;
   const wait = async <T>(what: string, fn: () => Promise<T | undefined>, timeoutMs: number): Promise<T> => {
     const until = Date.now() + timeoutMs;
@@ -83,5 +92,10 @@ export async function launch(folder: string): Promise<App> {
 }
 
 function stop(p: ChildProcess): void {
-  if (p.exitCode === null) p.kill('SIGTERM');
+  if (p.exitCode !== null || p.pid === undefined) return;
+  try {
+    process.kill(-p.pid, 'SIGTERM');
+  } catch {
+    p.kill('SIGTERM');
+  }
 }
