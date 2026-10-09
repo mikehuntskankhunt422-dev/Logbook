@@ -1649,3 +1649,25 @@ mark {
   background: #fff;
   max-width: 100%;
 }
+
+/* Desktop app (M5) */
+.welcome-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
+}
+.welcome-card h1 {
+  margin: 0;
+}
+.welcome-card p {
+  margin: 0;
+}
+.folder-path {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 0.9em;
+}

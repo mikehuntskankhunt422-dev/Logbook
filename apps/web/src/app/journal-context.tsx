@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SearchIndex, type Entry, type Journal, type Settings } from '@logbook/core';
 import { requestPersistentStorage } from '@logbook/storage-idb';
+import { IS_DESKTOP } from '../platform.ts';
 
 interface JournalCtx {
   journal: Journal;
@@ -42,7 +43,7 @@ export function JournalProvider({ journal, children }: { journal: Journal; child
       if (event === 'settings') setSettings(journal.getSettings());
       if (event === 'entries' || event === 'lock') {
         void reload();
-        if (event === 'entries' && !askedPersist.current) {
+        if (event === 'entries' && !askedPersist.current && !IS_DESKTOP) {
           // Browsers grant persistence more readily once the site holds real user data.
           askedPersist.current = true;
           void requestPersistentStorage();

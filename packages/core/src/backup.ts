@@ -47,6 +47,12 @@ const EXT_BY_MIME: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 
+/** The MIME type a media file extension stands for, e.g. for files read back from a folder. */
+export function mimeForExtension(ext: string): string | undefined {
+  const e = ext.toLowerCase();
+  return Object.entries(EXT_BY_MIME).find(([, x]) => x === e)?.[0];
+}
+
 export function extensionFor(meta: Pick<MediaMeta, 'mime' | 'name'>): string {
   const fromName = /\.([a-z0-9]{1,8})$/i.exec(meta.name)?.[1]?.toLowerCase();
   return EXT_BY_MIME[meta.mime] ?? fromName ?? 'bin';

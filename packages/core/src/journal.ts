@@ -17,7 +17,7 @@ import {
 } from './model.ts';
 import { bookOptionsSchema, type BookOptions } from './print/options.ts';
 import { emptyDoc } from './richtext.ts';
-import { isSealed, type RecordStore } from './storage.ts';
+import { isSealed, type EntryRecord, type RecordStore } from './storage.ts';
 
 /** A print order placed from this device: enough to find it again, e.g. on the page Stripe returns to. */
 export const bookOrderRefSchema = z.object({
@@ -45,6 +45,14 @@ export interface LoadIssue {
   problem: string;
 }
 
+export interface JournalOptions {
+  /**
+   * Media nothing refers to is deleted only once it's this many days old (default 0: at once).
+   * The desktop app uses 7 (D84): a sync service can deliver a new photo before the entry that uses it.
+   */
+  mediaGraceDays?: number;
+}
+
 /**
  * The one place that reads and writes journal data. UI code talks to this, never to a RecordStore.
  * Handles schema validation, revisions, soft delete, media garbage collection and passcode encryption.
@@ -57,10 +65,13 @@ export class Journal {
   /** Records that failed validation on the last load; surfaced in Settings rather than silently dropped. */
   issues: LoadIssue[] = [];
 
-  private constructor(readonly store: RecordStore) {}
+  private constructor(
+    readonly store: RecordStore,
+    private readonly mediaGraceDays: number,
+  ) {}
 
-  static async open(store: RecordStore): Promise<Journal> {
-    const j = new Journal(store);
+  static async open(store: RecordStore, opts: JournalOptions = {}): Promise<Journal> {
+    const j = new Journal(store, opts.mediaGraceDays ?? 0);
     j.vault = await store.getKey('vault');
     const raw = await store.getKey('settings');
     const parsed = settingsSchema.safeParse(raw ?? {});
@@ -307,6 +318,12 @@ export class Journal {
     this.assertUnlocked();
     const rec = await this.store.get('entries', id);
     if (!rec) return undefined;
+    return this.readEntryRecord(rec);
+  }
+
+  /** Decrypts (when sealed) and validates a stored entry record, e.g. one version of a sync conflict. */
+  async readEntryRecord(rec: EntryRecord): Promise<Entry> {
+    this.assertUnlocked();
     const raw = isSealed(rec) ? await this.cipher!.openJson<unknown>('entry', rec) : rec;
     return entrySchema.parse(raw);
   }
@@ -472,16 +489,21 @@ export class Journal {
     this.emit('media');
   }
 
-  /** Deletes media that no entry (including trashed ones) references, plus their derived files. */
-  async collectGarbage(): Promise<number> {
+  /**
+   * Deletes media that no entry (including trashed ones) references, plus their derived files.
+   * Media younger than `mediaGraceDays` is kept (D84).
+   */
+  async collectGarbage(now = new Date()): Promise<number> {
     const used = new Set<string>();
     for (const e of await this.readAllEntries(true)) for (const id of referencedMediaIds(e)) used.add(id);
     const all = await this.listMediaMeta();
     for (const m of all) if (used.has(m.id) && m.posterId) used.add(m.posterId);
+    const graceMs = this.mediaGraceDays * 86_400_000;
+    const young = (m: MediaMeta) => graceMs > 0 && now.getTime() - Date.parse(m.createdAt) < graceMs;
     let removed = 0;
     for (const m of all) {
       const parentUsed = m.derivedFrom !== undefined && used.has(m.derivedFrom);
-      if (!used.has(m.id) && !parentUsed) {
+      if (!used.has(m.id) && !parentUsed && !young(m)) {
         await this.deleteMedia(m.id);
         removed++;
       }
@@ -516,6 +538,11 @@ export class Journal {
 
   /** Call after a batch of importEntry/importMedia so views refresh once. */
   notifyImported(): void {
+    this.notifyExternalChange();
+  }
+
+  /** Records changed without going through this Journal (e.g. files synced from another computer). */
+  notifyExternalChange(): void {
     this.emit('entries');
     this.emit('media');
   }

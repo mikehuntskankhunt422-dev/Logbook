@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
@@ -6,6 +6,10 @@ import { useToast } from '../app/toasts.tsx';
 import { backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
+import { IS_DESKTOP } from '../platform.ts';
+
+/** On the desktop the journal is a folder, which takes the place of the browser-storage panel (M5). */
+const FolderPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/FolderPanel.tsx').then((m) => ({ default: m.FolderPanel }))) : null;
 
 export function SettingsView() {
   return (
@@ -14,7 +18,13 @@ export function SettingsView() {
       <AppearancePanel />
       <BackupPanel />
       <PasscodePanel />
-      <StoragePanel />
+      {FolderPanel ? (
+        <Suspense fallback={null}>
+          <FolderPanel />
+        </Suspense>
+      ) : (
+        <StoragePanel />
+      )}
       <TrashPanel />
       <DangerPanel />
     </>
@@ -99,7 +109,9 @@ function BackupPanel() {
     <section className="panel" aria-labelledby="backup-h">
       <h2 id="backup-h">Backups</h2>
       <p>
-        Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.
+        {IS_DESKTOP
+          ? 'A backup zip holds the whole journal in one file, to keep somewhere other than the journal folder. The website can restore it too.'
+          : 'Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.'}
         {settings.lastBackupAt ? ` Last backup: ${new Date(settings.lastBackupAt).toLocaleString()}.` : ' You have not made a backup yet.'}
       </p>
       {journal.isEncrypted && (
@@ -108,8 +120,19 @@ function BackupPanel() {
         </label>
       )}
       <div className="row">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => (await downloadBackup(journal, encrypted), celebrate('backup'), toast('Backup downloaded.')))}>
-          ⬇️ Download backup (.zip)
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              if (!(await downloadBackup(journal, encrypted))) return;
+              celebrate('backup');
+              toast(IS_DESKTOP ? 'Backup saved.' : 'Backup downloaded.');
+            })
+          }
+        >
+          ⬇️ {IS_DESKTOP ? 'Save a backup (.zip)…' : 'Download backup (.zip)'}
         </button>
         {supportsFolderBackup() && (
           <button
@@ -268,7 +291,11 @@ function PasscodePanel() {
         </>
       ) : (
         <>
-          <p>Encrypt your journal on this device so nobody can read it without your passcode, not even someone with access to your browser's files.</p>
+          <p>
+            {IS_DESKTOP
+              ? 'Encrypt your journal so nobody can read it without your passcode, not even someone who can open the journal folder. Entry and photo files then become unreadable on their own.'
+              : "Encrypt your journal on this device so nobody can read it without your passcode, not even someone with access to your browser's files."}
+          </p>
           <button type="button" className="btn btn-primary" onClick={() => setMode('enable')}>
             Set a passcode
           </button>

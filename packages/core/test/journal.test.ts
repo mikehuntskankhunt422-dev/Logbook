@@ -76,6 +76,15 @@ describe('Journal media', () => {
     expect(blob?.type).toBe('image/png');
     expect(new Uint8Array(await blob!.arrayBuffer())).toEqual(pngBytes());
   });
+
+  it('keeps unreferenced media younger than the grace period (D84)', async () => {
+    const journal = await Journal.open(new MemoryStore(), { mediaGraceDays: 7 });
+    const photo = await journal.addMedia(new Blob([pngBytes()], { type: 'image/png' }), { name: 'synced-before-its-entry.png' });
+    expect(await journal.collectGarbage()).toBe(0);
+    expect(await journal.collectGarbage(new Date(Date.now() + 6 * 86_400_000))).toBe(0);
+    expect(await journal.collectGarbage(new Date(Date.now() + 8 * 86_400_000))).toBe(1);
+    expect(await journal.getMediaMeta(photo.id)).toBeUndefined();
+  });
 });
 
 describe('Journal encryption', () => {

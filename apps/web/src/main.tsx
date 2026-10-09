@@ -1,4 +1,3 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/newsreader';
@@ -6,23 +5,18 @@ import '@fontsource-variable/newsreader/wght-italic.css';
 import './styles/app.css';
 import { Journal } from '@logbook/core';
 import { IndexedDbStore } from '@logbook/storage-idb';
-import { JournalProvider } from './app/journal-context.tsx';
-import { ToastProvider } from './app/toasts.tsx';
-import { App } from './app/App.tsx';
+import { renderJournal } from './app/render.tsx';
 
 async function boot() {
   const root = createRoot(document.getElementById('root')!);
+  // Written out rather than IS_DESKTOP so the bundler drops the import from the website's build.
+  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+    // The journal is a folder of files on the desktop (M5).
+    const { bootDesktop } = await import('./desktop/boot.tsx');
+    return bootDesktop(root);
+  }
   try {
-    const journal = await Journal.open(await IndexedDbStore.open());
-    root.render(
-      <StrictMode>
-        <ToastProvider>
-          <JournalProvider journal={journal}>
-            <App />
-          </JournalProvider>
-        </ToastProvider>
-      </StrictMode>,
-    );
+    renderJournal(root, await Journal.open(await IndexedDbStore.open()));
   } catch (err) {
     // Private browsing in some browsers, or storage disabled by policy.
     root.render(

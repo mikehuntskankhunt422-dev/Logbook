@@ -80,7 +80,11 @@ The desktop app is Tauri 2 around the same web app ([docs/M5.md](docs/M5.md)). I
 ```bash
 npm run dev -w @logbook/desktop      # the app with live reload (web dev server on :5174)
 npm run build -w @logbook/desktop    # installers for this OS in apps/desktop/src-tauri/target/release/bundle/
+npm run test:e2e -w @logbook/desktop # drives the real app (Linux; needs a display or xvfb-run, tauri-driver and webkit2gtk-driver)
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```
+
+The journal lives in a folder you choose on first start (`LOGBOOK_JOURNAL_FOLDER=<dir>` skips the dialog). For the end-to-end tests: `cargo install tauri-driver --version 2.0.6 --locked` and `sudo apt install webkit2gtk-driver`.
 
 ## Layout
 
@@ -88,6 +92,8 @@ npm run build -w @logbook/desktop    # installers for this OS in apps/desktop/sr
 |---|---|
 | `packages/core` | Data model, Journal service, encryption (Argon2id + AES-GCM), zip backup format, search, dates and streaks. No DOM. |
 | `packages/storage-idb` | IndexedDB storage for the website and PWA |
+| `packages/storage-fs` | Folder storage for the desktop app: entries and media as files (M5) |
+| `apps/desktop` | Tauri 2 shell, Rust commands for the journal folder, desktop end-to-end tests (M5) |
 | `apps/web` | React UI, PWA (manifest, service worker, icons), Playwright tests |
 | `apps/server` | API (Fastify) and the print renderer: Paged.js in Chromium, image pipeline (sharp), PDF checks, sample books |
 | `docs/` | Plan, decisions, verified API facts, dated reference snapshots |

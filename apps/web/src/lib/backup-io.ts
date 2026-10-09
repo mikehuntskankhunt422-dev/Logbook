@@ -1,4 +1,5 @@
 import { backupFileName, exportBackup, type Journal } from '@logbook/core';
+import { IS_DESKTOP } from '../platform.ts';
 
 /**
  * Getting backups out of the browser: a plain download everywhere, or "back up to a folder" through
@@ -11,8 +12,9 @@ type DirHandle = FileSystemDirectoryHandle & {
   requestPermission?: (d: { mode: 'readwrite' }) => Promise<PermissionState>;
 };
 
+/** Not on the desktop, where the journal already is a folder and backups use the save dialog. */
 export function supportsFolderBackup(): boolean {
-  return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  return !IS_DESKTOP && typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
 export function downloadBlob(blob: Blob, name: string): void {
@@ -27,13 +29,23 @@ export function downloadBlob(blob: Blob, name: string): void {
 }
 
 export async function makeBackup(journal: Journal, keepEncrypted: boolean): Promise<Blob> {
-  return exportBackup(journal, { keepEncrypted, app: `logbook-web ${import.meta.env.VITE_APP_VERSION ?? 'dev'}` });
+  return exportBackup(journal, { keepEncrypted, app: `logbook-${IS_DESKTOP ? 'desktop' : 'web'} ${import.meta.env.VITE_APP_VERSION ?? 'dev'}` });
 }
 
-export async function downloadBackup(journal: Journal, keepEncrypted: boolean): Promise<void> {
+/**
+ * Downloads a backup zip; on the desktop, saves it where the user chooses (M5 §2.4). Returns false
+ * if they cancelled.
+ */
+export async function downloadBackup(journal: Journal, keepEncrypted: boolean): Promise<boolean> {
   const blob = await makeBackup(journal, keepEncrypted);
-  downloadBlob(blob, backupFileName());
+  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+    const { saveFile } = await import('../desktop/save.ts');
+    if (!(await saveFile(blob, backupFileName(), { name: 'Logbook backup', extensions: ['zip'] }))) return false;
+  } else {
+    downloadBlob(blob, backupFileName());
+  }
   await journal.markBackedUp();
+  return true;
 }
 
 // ── remembered folder ───────────────────────────────────────────────────────────────────────────

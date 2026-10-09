@@ -162,10 +162,10 @@ function BackupBanner() {
         {settings.lastBackupAt
           ? `Your last backup was ${Math.floor((Date.now() - new Date(settings.lastBackupAt).getTime()) / 86_400_000)} days ago.`
           : `You haven't made a backup yet.`}{' '}
-        Your journal only lives on this device, so a copy somewhere else keeps it safe.
+        {IS_DESKTOP ? 'A copy outside the journal folder keeps it safe.' : 'Your journal only lives on this device, so a copy somewhere else keeps it safe.'}
       </span>
       <span className="row">
-        <button type="button" className="btn btn-small btn-primary" onClick={() => void downloadBackup(journal, journal.isEncrypted).then(() => toast('Backup downloaded.'))}>
+        <button type="button" className="btn btn-small btn-primary" onClick={() => void downloadBackup(journal, journal.isEncrypted).then((saved) => saved && toast(IS_DESKTOP ? 'Backup saved.' : 'Backup downloaded.'))}>
           Back up now
         </button>
         <button

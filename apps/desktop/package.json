@@ -7,7 +7,9 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
-    "icons": "tauri icon ../web/public/logo.svg"
+    "icons": "tauri icon ../web/public/logo.svg",
+    "test:e2e": "tauri build --debug --no-bundle && node --test --test-concurrency=1 'e2e/*.test.ts'",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.5"
