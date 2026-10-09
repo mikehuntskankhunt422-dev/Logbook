@@ -2,12 +2,12 @@
 
 How to sign the Windows, macOS and Linux builds, and the updates the app installs itself. Written for M5 ([M5.md](M5.md)); the facts behind it, with sources, are in [ASSUMPTIONS.md](ASSUMPTIONS.md) under "Desktop".
 
-**Today** (2026-10-09), nothing is set up:
+**Today** (2026-10-09):
 
+- The updater key is set up (public key ID `F0A647A9FD7D370D`), so builds make signed update files.
 - Windows installers are unsigned.
 - The macOS app is ad-hoc signed and not notarised.
 - Linux packages are unsigned.
-- Releases carry no update files.
 
 The workflow (`.github/workflows/desktop.yml`) switches each one on by itself as soon as its secrets or variables exist; nothing else has to change. Its log says what it found ("Updater key: set", "macOS: no certificate…", "Windows: unsigned"). It never prints a secret's value, and GitHub masks them anyway.
 
@@ -48,6 +48,8 @@ What then happens:
 - Installed apps find the newest *published* release at `https://github.com/mikehuntskankhunt422-dev/Logbook/releases/latest/download/latest.json`.
 
 If the key secret is set but there's no public key anywhere, the build stops with an error rather than ship an app that could never check its updates.
+
+Every build then verifies its update signatures against the public key the app is built with (`apps/desktop/scripts/verify-signatures.ts`). If the secret holds a different private key, the build fails with "Signed with key …, but the app trusts key …".
 
 **Check:** after the next release, `latest.json` is among its files, and Settings → Updates → "Check for updates" in an older copy offers the new version.
 
@@ -139,7 +141,7 @@ Instead, every release carries `SHA256SUMS.txt`, so a download can be checked by
 
 ## 5. Checklist
 
-- [ ] Updater key pair made, two copies kept; `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added; public key sent to me or put in `TAURI_UPDATER_PUBKEY`
+- [x] Updater key pair made (2026-10-09), two copies kept; `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added; public key sent to me or put in `TAURI_UPDATER_PUBKEY`
 - [ ] Apple Developer Program; Developer ID Application certificate; App Store Connect API key; six `APPLE_*` secrets
 - [ ] Windows route chosen; its secrets and `WINDOWS_SIGN_COMMAND` added
 - [ ] A release built after all of the above, and checked on each OS (the "Check" steps above)

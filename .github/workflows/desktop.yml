@@ -201,6 +201,15 @@ jobs:
           for f in "$b"/macos/*.app.tar.gz*; do cp "$f" "dist/$(basename "$f" | sed "s/^Logbook\.app/Logbook_${version}_universal.app/")"; done
           ls -l dist
           test -n "$(ls dist)"
+      # Each update signature must verify against the public key the app was built with, so a
+      # secret holding a different private key fails here rather than shipping updates no one can install.
+      - name: Check update signatures
+        shell: bash
+        env:
+          UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+        run: |
+          pubkey=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').plugins.updater.pubkey")
+          node apps/desktop/scripts/verify-signatures.ts --dir dist --pubkey "${pubkey:-$UPDATER_PUBKEY}"
       - uses: actions/upload-artifact@v4
         with:
           name: logbook-desktop-${{ matrix.name }}
