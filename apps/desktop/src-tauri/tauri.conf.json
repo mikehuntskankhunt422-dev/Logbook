@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Logbook",
+  "version": "../package.json",
+  "identifier": "app.logbookjournal.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev:desktop -w @logbook/web",
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "npm run build:desktop -w @logbook/web",
+    "frontendDist": "../../web/dist-desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Logbook",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 380,
+        "minHeight": 560,
+        "center": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "category": "Lifestyle",
+    "shortDescription": "A private journal that prints as a real book",
+    "longDescription": "Logbook is a local-first multimedia journal. Entries, photos and voice notes are ordinary files in a folder you choose, which can sit in OneDrive, Dropbox or iCloud Drive. When you're ready, turn a year of entries into a printed book.",
+    "copyright": "© 2026 Logbook",
+    "linux": {
+      "appimage": { "bundleMediaFramework": true }
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

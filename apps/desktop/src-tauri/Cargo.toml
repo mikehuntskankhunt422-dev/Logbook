@@ -1,0 +1,33 @@
+[package]
+name = "logbook-desktop"
+version = "0.1.0"
+description = "Logbook, a local-first journal that prints as a real book"
+edition = "2021"
+publish = false
+
+[lib]
+name = "logbook_desktop"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "~2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "~2.11.6", features = [] }
+# Tauri's own crates must move together: tauri 2.11.6 accepts tauri-runtime ^2.11.3, but
+# tauri-runtime 2.12 changed its API and doesn't compile with it. Hold them at the versions
+# 2.11.6 was released with (D77); remove these lines when moving to the next Tauri minor.
+tauri-runtime = "~2.11.3"
+tauri-runtime-wry = "~2.11.4"
+tauri-utils = "~2.9.3"
+tauri-macros = "~2.6.3"
+tauri-codegen = "~2.6.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

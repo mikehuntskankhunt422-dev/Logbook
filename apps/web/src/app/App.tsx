@@ -9,6 +9,7 @@ import { CalendarView, Memories, SearchView, Timeline } from '../components/view
 import { SettingsView } from '../components/SettingsView.tsx';
 import { StreakBadge } from '../components/common.tsx';
 import { downloadBackup } from '../lib/backup-io.ts';
+import { IS_DESKTOP } from '../platform.ts';
 
 /** Print layout and Paged.js load only when someone opens the book builder. */
 const BookBuilder = lazy(() => import('../components/BookBuilder.tsx').then((m) => ({ default: m.BookBuilder })));
@@ -28,7 +29,7 @@ export function App() {
   const route = useRoute();
   useTheme(settings.theme);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
-  usePwaUpdates();
+  useAppUpdates();
 
   useEffect(() => {
     // Tidy up once per launch: purge 30-day-old trash and media nothing references.
@@ -130,6 +131,9 @@ function useAutoLock(minutes: number, lock: () => void) {
     };
   }, [minutes, lock]);
 }
+
+/** The desktop app has no service worker; it updates through Tauri's updater instead. */
+const useAppUpdates = IS_DESKTOP ? () => {} : usePwaUpdates;
 
 function usePwaUpdates() {
   const toast = useToast();

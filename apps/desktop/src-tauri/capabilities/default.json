@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the Logbook window may do. File access has no static scope: Rust grants the journal folder at runtime (D79).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -73,6 +73,15 @@ npm run lulu:webhook -w @logbook/server -- https://<api>    # subscribe the API 
 
 First-time Playwright setup: `npx playwright install chromium` in `apps/web`.
 
+### Desktop (M5, in progress)
+
+The desktop app is Tauri 2 around the same web app ([docs/M5.md](docs/M5.md)). It needs Rust (stable) and, on Linux, the packages in Tauri's prerequisites (`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`).
+
+```bash
+npm run dev -w @logbook/desktop      # the app with live reload (web dev server on :5174)
+npm run build -w @logbook/desktop    # installers for this OS in apps/desktop/src-tauri/target/release/bundle/
+```
+
 ## Layout
 
 | Path | What |
