@@ -10,6 +10,11 @@ import { OrderError, printFilesExist } from './service.ts';
 export const CHECKOUT_TTL_MIN = 60;
 /** A stored quote older than this is re-priced before payment, and the customer sees the new numbers (M3 §5). */
 export const QUOTE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Print files older than this aren't sold: the bucket deletes them at 7 days, and a paid order
+ * needs a day of retries before Lulu has its own copy (D71).
+ */
+export const PRINT_FILES_MAX_AGE_MS = 6 * 24 * 60 * 60 * 1000;
 /** An open session this close to expiring is replaced rather than handed out again. */
 const REUSE_MARGIN_MS = 5 * 60 * 1000;
 /** How often reading an order may ask Stripe about its open session (the return page polls). */
@@ -43,6 +48,8 @@ export interface CheckoutDeps {
   allowLoopbackReturn: boolean;
   log: { info(obj: object, msg: string): void; warn(obj: object, msg: string): void; error(obj: object, msg: string): void };
   now?: () => Date;
+  /** Called after an order is paid (its fulfilment job is queued in the same transaction). */
+  onPaid?: (orderId: string) => void;
 }
 
 /** Where Stripe sends the customer back to: the website's address without query or fragment, if it's one of ours. */
@@ -68,6 +75,8 @@ export function checkoutParams(order: Order, quote: StoredQuote, opts: { base: s
   const taxId = TAX_ID_COUNTRIES[quote.country];
   return {
     mode: 'payment',
+    // A Stripe customer with the buyer's email, so Stripe emails them about a refund (D76).
+    customer_creation: 'always',
     client_reference_id: order.id,
     metadata: { order_id: order.id, quote_version: String(quote.version) },
     payment_intent_data: { metadata: { order_id: order.id } },
@@ -240,6 +249,9 @@ export class CheckoutService {
       if (this.deps.store && !(await printFilesExist(this.deps.store, o.id))) {
         throw new OrderError("The print files have been deleted (they're kept for 7 days). Prepare the book again to order it.", 410);
       }
+      if (now.getTime() - Date.parse(o.printFiles?.at ?? o.createdAt) > PRINT_FILES_MAX_AGE_MS) {
+        throw new OrderError("The print files are about to be deleted (they're kept for 7 days). Prepare the book again to order it.", 410);
+      }
       if (now.getTime() - Date.parse(o.quote.at) > QUOTE_MAX_AGE_MS) {
         await this.priceFor(o, { country: o.quote.country, state: o.quote.state }, 'job:requote');
         throw new PriceChangedError('The price was more than a day old, so it has been checked again. Please look it over before paying.');
@@ -352,8 +364,11 @@ export class CheckoutService {
         this.deps.db.transaction(() => {
           this.deps.db.update(o.id, { payment }, now);
           this.deps.db.move(o.id, 'paid', cause, { detail: session.id, now });
+          // Fulfilment is queued with the payment, so no crash can separate them (PLAN §1.5 step 7).
+          this.deps.db.enqueueJob(o.id, 'fulfil', { mode: 'once', now });
         });
         this.deps.log.info({ orderId: o.id, session: session.id, amountTotal: payment.amountTotal, shippingLevel: payment.shippingLevel }, 'order paid');
+        this.deps.onPaid?.(o.id);
         return 'paid';
       }
       // Money taken for a session the order no longer expects. A human must refund it (admin, M6).

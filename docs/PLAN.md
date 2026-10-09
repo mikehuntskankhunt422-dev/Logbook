@@ -6,7 +6,8 @@ This plan covers the architecture, the shared-core layout for web and desktop, m
 
 - [DECISIONS.md](DECISIONS.md): every decision I made instead of asking, with the reasoning.
 - [M2.md](M2.md): the detailed plan for milestone 2 (book builder and print PDFs), with spike results.
-- [M3.md](M3.md): milestone 3 (pricing and Stripe): progress, prices from sandbox costs, and what it still needs.
+- [M3.md](M3.md): milestone 3 (pricing and Stripe): prices from sandbox costs, Checkout and webhooks in Stripe test mode.
+- [M4.md](M4.md): milestone 4 (Lulu fulfilment): sandbox findings, the fulfilment design, end-to-end results, and what it still needs.
 - [ASSUMPTIONS.md](ASSUMPTIONS.md): Stripe and Lulu facts I verified against official sources today, with links, and the ones I could not verify yet.
 - [reference/](reference/): dated snapshots of Lulu's OpenAPI spec, product spec sheet and Book Creation Guide, so later work can be checked against the exact text I read.
 
@@ -353,7 +354,7 @@ Verified: an **Australia-based** Stripe account can use Stripe Tax for physical 
 
 | # | Risk | Impact | Mitigation |
 |---|---|---|---|
-| 1 | Lulu sandbox jobs may never progress to SHIPPED or DELIVERED | "Tracked to completion" can't be shown end-to-end | Verify early in M4. If stuck, use the webhook `test-submission` endpoint plus a test-only status simulator, and say so plainly |
+| 1 | Lulu sandbox jobs may never progress to SHIPPED or DELIVERED | "Tracked to completion" can't be shown end-to-end | Verify early in M4. If stuck, use the webhook `test-submission` endpoint plus a test-only status simulator, and say so plainly. **Mostly cleared (M4 §3):** with a test card on the sandbox account, jobs reach `SHIPPED` with tracking; `DELIVERED` is covered only by unit tests |
 | 2 | Chromium PDFs rejected by Lulu (transparency, fonts, sizes) | Orders blocked | Transparency-free print CSS, embedded fonts, validate every PDF with Lulu before charging, golden tests. Fallback: Ghostscript flattening pass in the renderer |
 | 3 | Paged.js maintenance pace / fragmentation bugs | Bad page breaks | **Happened:** no stable release since 0.4.3 (July 2023). It still works in Chromium 141 (M2 spike), so it's pinned and owned (D34). Golden tests, own block-level packer as fallback. Customer always approves the real server PDF |
 | 4 | Tax obligations (UK VAT, IOSS, GST) | Legal/financial | Accountant review before live. Option to launch in fewer countries first |
@@ -372,12 +373,12 @@ All verified facts and their sources are in [ASSUMPTIONS.md](ASSUMPTIONS.md). St
 
 1. ~~Lulu token URL for the **sandbox**.~~ Verified 2026-10-07: the production path works on the sandbox host.
 2. Encoding of `Lulu-HMAC-SHA256` (hex or base64) and the exact signing key (the docs say "API secret"). To be tested with `/webhooks/{id}/test-submission/{topic}/`.
-3. Whether the sandbox advances print jobs to `SHIPPED` and `DELIVERED`, and how fast.
+3. ~~Whether the sandbox advances print jobs to `SHIPPED`~~ (verified 2026-10-09: about an hour after creation, with a card on file, M4 §3). Still open: `DELIVERED`, which didn't appear within 20–25 minutes of shipping.
 4. ~~Real sandbox costs for each mapped package ID~~ (verified 2026-10-07: equal to list prices for all 16). Still open: `HANDLING_FEE` vs `FULFILLMENT_FEE` behaviour beyond one copy to the US, and whether sandbox prices equal production prices.
-5. The full list of countries Lulu ships to. Built by `scripts/refresh-lulu-countries` from `/shipping-options/` per country, intersected with Stripe's allowed list.
-6. Whether print jobs auto-pay with a card on file in the **sandbox** account; otherwise they sit `UNPAID`.
+5. ~~The full list of countries Lulu ships to.~~ Built 2026-10-08 by `npm run lulu:countries`: 206 of Stripe's 237 Checkout countries (D75).
+6. ~~Whether print jobs auto-pay with a card on file in the **sandbox** account.~~ Verified 2026-10-09: new jobs pay themselves; jobs already `UNPAID` don't (M4 §3).
 7. ~~`/cover-dimensions/` output for case-wrap hardcovers.~~ Verified 2026-10-07: it includes the 0.75″ wrap and bleed; the hinge sits inside the boards (D46).
-8. Maximum lifetime Lulu needs from file URLs after print-job creation (presigned R2 URLs allow at most 7 days).
+8. ~~Maximum lifetime Lulu needs from file URLs after print-job creation.~~ Verified 2026-10-08: seconds; Lulu copies both files before the job is `UNPAID` (M4 §1).
 9. Stripe Checkout behaviour when `allowed_countries` has a single entry (UX), and Stripe Tax Calculation API availability on your account.
 10. Azure Artifact Signing eligibility for Australian individuals or sole traders.
 

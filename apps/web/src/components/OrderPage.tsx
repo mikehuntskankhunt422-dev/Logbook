@@ -16,6 +16,14 @@ const PREPARING: Record<string, string> = {
   pricing: 'Pricing your book…',
 };
 const PAID_STATES = ['paid', 'files_generated', 'files_validated', 'submitted_to_lulu', 'in_production', 'shipped', 'delivered'];
+/** Where a paid book is (PLAN §1.5 steps 7–8), in the customer's words. */
+const PROGRESS: { label: string; states: string[] }[] = [
+  { label: 'Sending it to the printer', states: ['paid', 'files_generated', 'files_validated'] },
+  { label: 'With the printer', states: ['submitted_to_lulu'] },
+  { label: 'Being printed', states: ['in_production'] },
+  { label: 'On its way', states: ['shipped'] },
+  { label: 'Delivered', states: ['delivered'] },
+];
 /** After coming back from Stripe, how long to keep asking whether the payment has been confirmed. */
 const CONFIRM_POLLS = 40;
 /** Proof links last an hour (PROOF_TTL_S); the page fetches fresh ones before they run out. */
@@ -157,7 +165,14 @@ function OrderBody({ order, orderRef, cancelled, announcePaid, onChange }: { ord
   }
   if (PAID_STATES.includes(order.state)) return <Paid order={order} announce={announcePaid} />;
   if (order.state === 'needs_attention') return <p className="notice notice-warn">Something went wrong after your payment. We've been told and will sort it out with you by email.</p>;
-  if (order.state === 'refunded') return <p className="notice">This order was cancelled and your payment refunded.</p>;
+  if (order.state === 'refunded') {
+    return (
+      <p className="notice">
+        We couldn't print this book, so your payment{order.refunded ? ` of ${formatUsd(order.refunded.amountCents)}` : ''} was refunded in full. Your bank usually shows it within 5–10 working
+        days. Your journal is still on this device: you can prepare the book again whenever you like.
+      </p>
+    );
+  }
   return <ProofAndPay order={order} orderRef={orderRef} cancelled={cancelled} onChange={onChange} />;
 }
 
@@ -381,7 +396,42 @@ function Paid({ order, announce }: { order: OrderView; announce: boolean }) {
       <p>
         {order.pages} pages, {productLabel(order.product)}.
       </p>
-      <p className="notice">Sending orders to the printer isn't switched on yet, so this book won't be printed. That comes next.</p>
+      <Progress order={order} />
     </section>
+  );
+}
+
+/** A date from the printer (`2026-10-20` or a full timestamp), in the reader's language. */
+function day(iso: string): string {
+  return new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+}
+
+function Progress({ order }: { order: OrderView }) {
+  const at = PROGRESS.findIndex((p) => p.states.includes(order.state));
+  const d = order.delivery;
+  const arrival = d?.arrivalMax ? (d.arrivalMin && d.arrivalMin.slice(0, 10) !== d.arrivalMax.slice(0, 10) ? `${day(d.arrivalMin)} to ${day(d.arrivalMax)}` : day(d.arrivalMax)) : null;
+  return (
+    <>
+      <ol className="progress" aria-label="Where your book is">
+        {PROGRESS.map((p, i) => (
+          <li key={p.label} className={i < at ? 'done' : i === at ? 'now' : undefined} aria-current={i === at ? 'step' : undefined}>
+            {p.label}
+          </li>
+        ))}
+      </ol>
+      {arrival && order.state !== 'delivered' && <p>The printer expects it to arrive {arrival.includes(' to ') ? `between ${arrival.replace(' to ', ' and ')}` : `by ${arrival}`}.</p>}
+      {d && d.trackingUrls.length > 0 && (
+        <p>
+          {d.carrier ? `${d.carrier} tracking: ` : 'Tracking: '}
+          {d.trackingUrls.map((u, i) => (
+            <a key={u} href={u} target="_blank" rel="noopener noreferrer">
+              {d.trackingUrls.length > 1 ? `parcel ${i + 1}` : 'follow your parcel'}
+              {i < d.trackingUrls.length - 1 ? ', ' : ''}
+            </a>
+          ))}
+        </p>
+      )}
+      {at < 3 && <p className="hint">The tracking link will appear here when it ships.</p>}
+    </>
   );
 }

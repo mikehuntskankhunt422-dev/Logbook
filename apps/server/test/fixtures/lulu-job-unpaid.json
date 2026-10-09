@@ -1,0 +1,137 @@
+{
+ "_source": "Lulu sandbox GET /print-jobs/345111/ on 2026-10-08 (M4 \u00a71): accepted, waiting for payment",
+ "id": 345111,
+ "line_items": [
+  {
+   "id": 447617,
+   "title": "Logbook sample (40 pages)",
+   "printable_normalization": {
+    "interior": {
+     "source_file": {
+      "file_id": 5417579,
+      "filename": "40-page--6x9-pb-matte--interior.pdf"
+     },
+     "normalized_file": {
+      "file_id": 5417582,
+      "filename": "normalized.pdf"
+     },
+     "source_url": "https://github.com/mikehuntskankhunt422-dev/Logbook/releases/download/lulu-samples-5/40-page--6x9-pb-matte--interior.pdf",
+     "source_md5sum": "9005400f63fb9c97c08543529c86b33a",
+     "job_id": 617632,
+     "page_count": 48
+    },
+    "cover": {
+     "source_file": {
+      "file_id": 5417580,
+      "filename": "40-page--6x9-pb-matte--cover.pdf"
+     },
+     "normalized_file": {
+      "file_id": 5417584,
+      "filename": "normalized.pdf"
+     },
+     "source_url": "https://github.com/mikehuntskankhunt422-dev/Logbook/releases/download/lulu-samples-5/40-page--6x9-pb-matte--cover.pdf",
+     "source_md5sum": "2e96de7b29ade88cab160472e29e65b9",
+     "job_id": 677241,
+     "page_count": 1
+    },
+    "pod_package_id": "0600X0900.FC.PRE.PB.080CW444.MXX"
+   },
+   "status": {
+    "name": "ACCEPTED",
+    "messages": {
+     "info": "Line Item was successfully validated."
+    }
+   },
+   "is_reprint": false,
+   "thumbnail_url": "https://assets.sandbox.lulu.com/cover_thumbs/8/c/8cb8ec8e-aec9-4473-ab3e-76997a2e64e2-5e4c38bf-fa7a-44a2-a958-eeadecdd0fac-front-shortedge-384.jpg",
+   "external_id": "logbook-m4-probe-1",
+   "quantity": 1,
+   "printable_id": "32eab2e5-8201-4301-b325-fa7dca013880",
+   "order_line_item_id": "445851",
+   "tracking_id": "",
+   "tracking_urls": null,
+   "carrier_name": null,
+   "pod_package_id": "0600X0900.FC.PRE.PB.080CW444.MXX"
+  }
+ ],
+ "shipping_level": "MAIL",
+ "shipping_option_id": "1313",
+ "status": {
+  "name": "UNPAID",
+  "message": "Print-job was accepted and needs to be paid",
+  "changed": "2026-10-08T14:50:36.157480Z"
+ },
+ "costs": {
+  "shipping_cost": {
+   "total_cost_excl_tax": "5.69",
+   "total_cost_incl_tax": "5.69",
+   "total_tax": "0.00",
+   "tax_rate": "0.00"
+  },
+  "line_item_costs": [
+   {
+    "line_item_id": 447617,
+    "line_item_external_id": "logbook-m4-probe-1",
+    "cost_excl_discounts": "8.66",
+    "total_tax": "0.00",
+    "tax_rate": "0.000000",
+    "quantity": 1,
+    "total_cost_excl_tax": "8.66",
+    "total_cost_excl_discounts": "8.66",
+    "total_cost_incl_tax": "8.66",
+    "discounts": [],
+    "unit_tier_cost": "8.66"
+   }
+  ],
+  "total_cost_excl_tax": "15.10",
+  "total_tax": "0.00",
+  "total_cost_incl_tax": "15.10",
+  "currency": "USD",
+  "fulfillment_cost": {
+   "total_cost_excl_tax": "0.75",
+   "total_cost_incl_tax": "0.75",
+   "total_tax": "0.00",
+   "tax_rate": "0.00"
+  }
+ },
+ "parent_job_id": null,
+ "child_job_ids": [],
+ "estimated_shipping_dates": null,
+ "reprints": [],
+ "is_cancellable": true,
+ "order_id": "326149",
+ "date_created": "2026-10-08T14:50:29.111794Z",
+ "date_modified": "2026-10-08T14:50:36.180596Z",
+ "external_id": "logbook-m4-probe-1",
+ "contact_email": "sandbox@example.com",
+ "production_delay": 60,
+ "production_due_time": null,
+ "aggregated_payment_print_job": false,
+ "tax_country": "US",
+ "order_marked_as_paid": null,
+ "payments": [],
+ "shipping_address": {
+  "organization": null,
+  "street1": "1 SE Main St",
+  "street2": null,
+  "city": "Portland",
+  "postcode": "97201",
+  "phone_number": "+1 503 555 0100",
+  "email": "sandbox@example.com",
+  "is_business": false,
+  "recipient_tax_id": null,
+  "name": "Sandbox Tester",
+  "state_code": "OR",
+  "country_code": "US",
+  "warnings": [],
+  "suggested_address": {
+   "city": "Portland",
+   "street1": "1 SE Main St",
+   "street2": null,
+   "postcode": "97201",
+   "state_code": "OR",
+   "country_code": "US"
+  }
+ },
+ "shipping_option_level": "MAIL"
+}

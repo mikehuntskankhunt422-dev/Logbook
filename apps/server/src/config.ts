@@ -1,3 +1,4 @@
+import { FAULTS, type Fault } from './fulfilment/faults.ts';
 import { regionFromEndpoint, type S3Config } from './storage/s3.ts';
 
 /**
@@ -22,6 +23,17 @@ export interface Config {
   webOrigins: string[];
   /** Chromium to use instead of Playwright's bundled build (dev containers whose browser build differs). */
   chromiumPath?: string;
+  /** After payment (M4): who Lulu and alerts reach, emails, and test-only fault injection. */
+  fulfilment: {
+    /** Your address: Lulu's `contact_email` and where alerts go. Required in live mode. */
+    ownerEmail?: string;
+    /** Lulu's `contact_email`: `ownerEmail`, or a placeholder in test mode. */
+    contactEmail: string;
+    resend?: { apiKey: string; from: string };
+    faults: Fault[];
+    /** Longest wait between two looks at a Lulu job. */
+    trackEveryMs: number;
+  };
 }
 
 export class ConfigError extends Error {
@@ -90,6 +102,31 @@ function loadStorage(mode: 'test' | 'live', host: string, env: Record<string, st
   return { kind: 'local', dir: env['LOCAL_STORAGE_DIR'] || '.data/storage' };
 }
 
+const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+function loadFulfilment(mode: 'test' | 'live', lulu: boolean, env: Record<string, string | undefined>): Config['fulfilment'] {
+  const ownerEmail = env['OWNER_EMAIL']?.trim() || undefined;
+  if (ownerEmail && !EMAIL.test(ownerEmail)) throw new ConfigError('OWNER_EMAIL must be an email address.');
+  if (mode === 'live' && lulu && !ownerEmail) throw new ConfigError('Set OWNER_EMAIL: Lulu needs a contact address for print jobs, and alerts go there.');
+  const apiKey = env['RESEND_API_KEY']?.trim();
+  const from = env['EMAIL_FROM']?.trim();
+  if (Boolean(apiKey) !== Boolean(from)) throw new ConfigError('Set both RESEND_API_KEY and EMAIL_FROM (e.g. "Logbook <orders@your-domain>"), or neither.');
+  const faults = (env['LOGBOOK_FAULTS'] ?? '').split(',').map((f) => f.trim()).filter(Boolean);
+  if (faults.length && mode !== 'test') throw new ConfigError('LOGBOOK_FAULTS works only with APP_MODE=test.');
+  const unknown = faults.filter((f) => !(FAULTS as readonly string[]).includes(f));
+  if (unknown.length) throw new ConfigError(`Unknown LOGBOOK_FAULTS: ${unknown.join(', ')} (known: ${FAULTS.join(', ')}).`);
+  const hours = Number(env['LULU_TRACK_HOURS'] ?? 6);
+  if (!(hours > 0 && hours <= 24)) throw new ConfigError('LULU_TRACK_HOURS must be a number of hours from 0 to 24.');
+  return {
+    ownerEmail,
+    // Lulu requires a contact address; in test mode nobody at the sandbox writes to it.
+    contactEmail: ownerEmail ?? 'sandbox@example.com',
+    resend: apiKey && from ? { apiKey, from } : undefined,
+    faults: faults as Fault[],
+    trackEveryMs: hours * 60 * 60 * 1000,
+  };
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const mode = env['APP_MODE'] ?? 'test';
   if (mode !== 'test' && mode !== 'live') throw new ConfigError(`APP_MODE must be "test" or "live", not "${mode}".`);
@@ -128,5 +165,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     databasePath: env['DATABASE_PATH'] || '.data/logbook.sqlite',
     webOrigins: (env['WEB_ORIGIN'] ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
     chromiumPath: env['LOGBOOK_CHROMIUM_PATH'] || undefined,
+    fulfilment: loadFulfilment(mode, Boolean(clientKey && clientSecret), env),
   };
 }

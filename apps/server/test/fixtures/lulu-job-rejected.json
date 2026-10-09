@@ -1,0 +1,105 @@
+{
+ "_source": "Lulu sandbox GET /print-jobs/345114/ on 2026-10-08 (M4 \u00a71): rejected for a wrong source_md5sum; signed link shortened",
+ "id": 345114,
+ "line_items": [
+  {
+   "id": 447620,
+   "title": "Logbook sample (40 pages, B&W)",
+   "printable_normalization": {
+    "interior": {
+     "source_file": null,
+     "normalized_file": null,
+     "source_url": "https://bucket.example/orders/ord_x/print/interior.pdf?X-Amz-Expires=600&X-Amz-Signature=0123abcd",
+     "source_md5sum": "00000000000000000000000000000000",
+     "job_id": null,
+     "page_count": null
+    },
+    "cover": {
+     "source_file": null,
+     "normalized_file": null,
+     "source_url": "https://bucket.example/orders/ord_x/print/interior.pdf?X-Amz-Expires=600&X-Amz-Signature=0123abcd",
+     "source_md5sum": "540bd506145bd3de6844f2b0e3b470a9",
+     "job_id": null,
+     "page_count": null
+    },
+    "pod_package_id": "0600X0900.BW.STD.PB.060UW444.MXX"
+   },
+   "status": {
+    "name": "REJECTED",
+    "messages": {
+     "printable_normalization": {
+      "interior": [
+       "Given md5sum doesn't match actual md5sum (57386f257326e6b74b6568b969389f3a) of file from 'https://bucket.example/orders/ord_x/print/interior.pdf?X-Amz-Expires=600&X-Amz-Signature=0123abcd'"
+      ]
+     }
+    }
+   },
+   "is_reprint": false,
+   "thumbnail_url": "",
+   "external_id": "logbook-m4-probe-4",
+   "quantity": 1,
+   "printable_id": null,
+   "order_line_item_id": null,
+   "tracking_id": "",
+   "tracking_urls": null,
+   "carrier_name": null,
+   "pod_package_id": "0600X0900.BW.STD.PB.060UW444.MXX"
+  }
+ ],
+ "shipping_level": "MAIL",
+ "shipping_option_id": "",
+ "status": {
+  "name": "REJECTED",
+  "message": "One or more line-items were rejected.",
+  "changed": "2026-10-08T14:52:09.833998Z"
+ },
+ "costs": {
+  "shipping_cost": null,
+  "line_item_costs": null,
+  "total_cost_excl_tax": null,
+  "total_tax": null,
+  "total_cost_incl_tax": null,
+  "currency": null,
+  "fulfillment_cost": null
+ },
+ "parent_job_id": null,
+ "child_job_ids": [],
+ "estimated_shipping_dates": null,
+ "reprints": [],
+ "is_cancellable": false,
+ "order_id": null,
+ "date_created": "2026-10-08T14:52:09.251376Z",
+ "date_modified": "2026-10-08T14:52:09.879026Z",
+ "external_id": "logbook-m4-probe-4",
+ "contact_email": "sandbox@example.com",
+ "production_delay": 60,
+ "production_due_time": null,
+ "aggregated_payment_print_job": false,
+ "tax_country": null,
+ "order_marked_as_paid": null,
+ "payments": [],
+ "shipping_address": {
+  "organization": null,
+  "street1": "1 SE Main St",
+  "street2": null,
+  "city": "Portland",
+  "postcode": "97201",
+  "phone_number": "+1 503 555 0100",
+  "email": "sandbox@example.com",
+  "is_business": false,
+  "recipient_tax_id": null,
+  "name": "Sandbox Tester",
+  "state_code": "OR",
+  "country_code": "US",
+  "warnings": [],
+  "suggested_address": {
+   "city": "Portland",
+   "street1": "1 SE Main St",
+   "street2": null,
+   "postcode": "97201",
+   "state_code": "OR",
+   "country_code": "US"
+  }
+ },
+ "shipping_option_level": "MAIL"
+}

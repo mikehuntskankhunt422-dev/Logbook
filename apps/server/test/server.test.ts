@@ -26,7 +26,23 @@ describe('config (D18)', () => {
     expect(() => loadConfig({ APP_MODE: 'live' })).toThrow(ConfigError);
     expect(() => loadConfig({ LULU_CLIENT_KEY: 'live' })).toThrow(/never mix/);
     expect(() => loadConfig({ APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_SANDBOX_CLIENT_KEY: 'k' })).toThrow(/never mix/);
-    expect(loadConfig({ APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_CLIENT_KEY: 'k', LULU_CLIENT_SECRET: 's' }).lulu?.apiUrl).toBe('https://api.lulu.com');
+    expect(loadConfig({ APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_CLIENT_KEY: 'k', LULU_CLIENT_SECRET: 's', OWNER_EMAIL: 'me@example.com' }).lulu?.apiUrl).toBe('https://api.lulu.com');
+  });
+
+  it('needs your address for Lulu in live mode, both Resend settings or neither, and faults only in test mode (M4)', () => {
+    const live = { APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_CLIENT_KEY: 'k', LULU_CLIENT_SECRET: 's' };
+    expect(() => loadConfig(live)).toThrow(/OWNER_EMAIL/);
+    expect(loadConfig({ ...live, OWNER_EMAIL: 'me@example.com' }).fulfilment).toMatchObject({ ownerEmail: 'me@example.com', contactEmail: 'me@example.com', faults: [] });
+    expect(() => loadConfig({ OWNER_EMAIL: 'not an address' })).toThrow(/OWNER_EMAIL/);
+    // Test mode gives Lulu a placeholder contact; nobody at the sandbox writes to it.
+    expect(loadConfig({}).fulfilment).toEqual({ ownerEmail: undefined, contactEmail: 'sandbox@example.com', resend: undefined, faults: [], trackEveryMs: 6 * 3600_000 });
+    expect(() => loadConfig({ RESEND_API_KEY: 're_x' })).toThrow(/EMAIL_FROM/);
+    expect(loadConfig({ RESEND_API_KEY: 're_x', EMAIL_FROM: 'Logbook <orders@example.com>' }).fulfilment.resend).toEqual({ apiKey: 're_x', from: 'Logbook <orders@example.com>' });
+    expect(loadConfig({ LOGBOOK_FAULTS: 'lulu-reject, files-missing' }).fulfilment.faults).toEqual(['lulu-reject', 'files-missing']);
+    expect(() => loadConfig({ LOGBOOK_FAULTS: 'gremlins' })).toThrow(/Unknown LOGBOOK_FAULTS/);
+    expect(() => loadConfig({ ...live, OWNER_EMAIL: 'me@example.com', LOGBOOK_FAULTS: 'lulu-reject' })).toThrow(/only with APP_MODE=test/);
+    expect(loadConfig({ LULU_TRACK_HOURS: '1' }).fulfilment.trackEveryMs).toBe(3600_000);
+    expect(() => loadConfig({ LULU_TRACK_HOURS: '0' })).toThrow(/LULU_TRACK_HOURS/);
   });
 
   it('takes Stripe keys only for the current mode, and only keys of that mode (D18)', () => {
@@ -98,7 +114,7 @@ describe('API', () => {
   it('answers the health check', async () => {
     const app = buildApp(loadConfig({}), { logger: false });
     const res = await app.inject({ method: 'GET', url: '/api/health' });
-    expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false, storage: null, payments: null });
+    expect(res.json()).toEqual({ ok: true, mode: 'test', lulu: false, storage: null, payments: null, fulfilment: null });
     await app.close();
     // Says whether webhooks can be verified, never the keys.
     const paid = buildApp(loadConfig({ STRIPE_TEST_SECRET_KEY: 'sk_test_abc', STRIPE_TEST_WEBHOOK_SECRET: 'whsec_abc' }), { logger: false });

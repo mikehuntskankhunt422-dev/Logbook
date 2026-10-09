@@ -25,6 +25,14 @@ export class LuluError extends Error {
   }
 }
 
+/**
+ * Drops the query string from every URL in `text`. Lulu quotes file URLs in its messages, and ours
+ * are signed links whose signature belongs in no log (PLAN §6).
+ */
+export function redactUrls(text: string): string {
+  return text.replace(/(https?:\/\/[^\s'"?]+)\?[^\s'"]*/g, '$1?…');
+}
+
 const num = z.union([z.string(), z.number()]).transform((v) => Number(v));
 
 const tokenSchema = z.object({ access_token: z.string(), expires_in: z.number() });
@@ -91,6 +99,88 @@ export const shippingOptionSchema = z.object({
   is_active: z.boolean().optional(),
 });
 export type ShippingOption = z.infer<typeof shippingOptionSchema>;
+
+/**
+ * A print job as Lulu returns it (M4 §1, checked against the sandbox 2026-10-08). Only the fields
+ * Logbook reads are typed; the rest pass through. Status names are kept as strings so a new one
+ * from Lulu can't break parsing.
+ */
+const lineItemSchema = z
+  .object({
+    id: z.number(),
+    external_id: z.string().nullable().optional(),
+    status: z.object({ name: z.string(), messages: z.record(z.string(), z.unknown()).nullable().optional() }).loose(),
+    tracking_id: z.string().nullable().optional(),
+    tracking_urls: z.array(z.string()).nullable().optional(),
+    carrier_name: z.string().nullable().optional(),
+    printable_normalization: z
+      .object({
+        pod_package_id: z.string().optional(),
+        interior: z.object({ source_md5sum: z.string().nullable().optional(), page_count: z.number().nullable().optional() }).loose().optional(),
+        cover: z.object({ source_md5sum: z.string().nullable().optional(), page_count: z.number().nullable().optional() }).loose().optional(),
+      })
+      .loose()
+      .nullable()
+      .optional(),
+  })
+  .loose();
+
+export const printJobSchema = z
+  .object({
+    id: z.number(),
+    external_id: z.string().nullable().optional(),
+    status: z.object({ name: z.string(), message: z.string().nullable().optional(), changed: z.string().nullable().optional() }).loose(),
+    line_items: z.array(lineItemSchema),
+    estimated_shipping_dates: z
+      .object({ arrival_min: z.string().nullable().optional(), arrival_max: z.string().nullable().optional(), dispatch_min: z.string().nullable().optional(), dispatch_max: z.string().nullable().optional() })
+      .loose()
+      .nullable()
+      .optional(),
+    is_cancellable: z.boolean().optional(),
+  })
+  .loose();
+export type PrintJob = z.infer<typeof printJobSchema>;
+
+const printJobStatusSchema = z.object({ name: z.string(), message: z.string().nullable().optional(), changed: z.string().nullable().optional() }).loose();
+
+export const webhookSchema = z.object({ id: z.string(), is_active: z.boolean(), topics: z.array(z.string()), url: z.string() });
+export type LuluWebhook = z.infer<typeof webhookSchema>;
+
+const page = <T extends z.ZodType>(item: T) => z.object({ count: z.number(), next: z.string().nullable().optional(), results: z.array(item) });
+
+/** A file Lulu should print, with the MD5 Lulu must find (it rejects the job otherwise, D66). */
+export interface PrintFileRef {
+  url: string;
+  md5: string;
+}
+
+/** Lulu's address limits (ASSUMPTIONS L1). */
+export interface LuluAddress {
+  name: string;
+  street1: string;
+  street2?: string;
+  city: string;
+  stateCode?: string;
+  countryCode: string;
+  postcode: string;
+  phoneNumber: string;
+  email: string;
+  recipientTaxId?: string;
+}
+
+export interface PrintJobRequest {
+  /** Our order ID: lets a lost answer be found again (D67). */
+  externalId: string;
+  title: string;
+  podPackageId: string;
+  interior: PrintFileRef;
+  cover: PrintFileRef;
+  shippingLevel: string;
+  address: LuluAddress;
+  contactEmail: string;
+  /** Minutes before production starts, 60–2880; Lulu's default is 60. */
+  productionDelay?: number;
+}
 
 export interface CostRequest {
   lineItems: { podPackageId: string; pageCount: number; quantity: number }[];
@@ -201,6 +291,80 @@ export class LuluClient {
     return z.array(shippingOptionSchema).parse(body);
   }
 
+  /**
+   * Creates a print job (PLAN §1.5 step 7). `pod_package_id` goes inside `printable_normalization`
+   * (the sandbox refuses it at the line-item level), and each file carries `source_md5sum`, which
+   * Lulu checks against what it downloads (D66). Not idempotent by itself: look first (`findPrintJobs`).
+   */
+  async createPrintJob(req: PrintJobRequest): Promise<PrintJob> {
+    const a = req.address;
+    const body = await this.request('POST', '/print-jobs/', {
+      external_id: req.externalId,
+      contact_email: req.contactEmail,
+      shipping_level: req.shippingLevel,
+      ...(req.productionDelay ? { production_delay: req.productionDelay } : {}),
+      line_items: [
+        {
+          external_id: req.externalId,
+          title: req.title,
+          quantity: 1,
+          printable_normalization: {
+            pod_package_id: req.podPackageId,
+            interior: { source_url: req.interior.url, source_md5sum: req.interior.md5 },
+            cover: { source_url: req.cover.url, source_md5sum: req.cover.md5 },
+          },
+        },
+      ],
+      shipping_address: {
+        name: a.name,
+        street1: a.street1,
+        ...(a.street2 ? { street2: a.street2 } : {}),
+        city: a.city,
+        ...(a.stateCode ? { state_code: a.stateCode } : {}),
+        country_code: a.countryCode,
+        // Some countries have no postcodes (Lulu: "required for most countries").
+        ...(a.postcode ? { postcode: a.postcode } : {}),
+        phone_number: a.phoneNumber,
+        email: a.email,
+        ...(a.recipientTaxId ? { recipient_tax_id: a.recipientTaxId } : {}),
+      },
+    });
+    return printJobSchema.parse(body);
+  }
+
+  async getPrintJob(id: number): Promise<PrintJob> {
+    return printJobSchema.parse(await this.request('GET', `/print-jobs/${id}/`));
+  }
+
+  /** Print jobs whose `external_id` is exactly `externalId` (Lulu's search also matches other fields). */
+  async findPrintJobs(externalId: string): Promise<PrintJob[]> {
+    const body = await this.request('GET', `/print-jobs/?search=${encodeURIComponent(externalId)}&page_size=100`);
+    return page(printJobSchema).parse(body).results.filter((j) => j.external_id === externalId);
+  }
+
+  /** Cancels a job that hasn't gone into production (`UNPAID`, `PRODUCTION_DELAYED`). */
+  async cancelPrintJob(id: number): Promise<{ name: string }> {
+    return printJobStatusSchema.parse(await this.request('PUT', `/print-jobs/${id}/status/`, { name: 'CANCELED' }));
+  }
+
+  async listWebhooks(): Promise<LuluWebhook[]> {
+    return page(webhookSchema).parse(await this.request('GET', '/webhooks/')).results;
+  }
+
+  async createWebhook(url: string, topics: string[]): Promise<LuluWebhook> {
+    return webhookSchema.parse(await this.request('POST', '/webhooks/', { url, topics }));
+  }
+
+  /** Changes a subscription; also re-activates one Lulu switched off after 5 failed deliveries. */
+  async updateWebhook(id: string, patch: { url?: string; topics?: string[]; is_active?: boolean }): Promise<LuluWebhook> {
+    return webhookSchema.parse(await this.request('PATCH', `/webhooks/${encodeURIComponent(id)}/`, patch));
+  }
+
+  /** Has Lulu send dummy data for `topic` to the subscription's URL. */
+  async testWebhook(id: string, topic = 'PRINT_JOB_STATUS_CHANGED'): Promise<void> {
+    await this.request('POST', `/webhooks/${encodeURIComponent(id)}/test-submission/${encodeURIComponent(topic)}/`);
+  }
+
   private async accessToken(force = false): Promise<string> {
     if (!force && this.token && this.now() < this.token.expiresAt) return this.token.value;
     // One token request at a time, however many calls are waiting.
@@ -225,7 +389,7 @@ export class LuluClient {
     return t.access_token;
   }
 
-  private async request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<unknown> {
+  private async request(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<unknown> {
     let res = await this.send(method, path, body, await this.accessToken());
     if (res.status === 401) {
       // Revoked or expired early: one retry with a fresh token.
@@ -240,7 +404,7 @@ export class LuluClient {
       // Lulu answers some failures with an HTML error page.
       parsed = text.includes('<html') ? `HTML error page (${text.length} bytes)` : text.slice(0, 500);
     }
-    if (!res.ok) throw new LuluError(`Lulu ${method} ${path} failed (HTTP ${res.status}): ${JSON.stringify(parsed).slice(0, 300)}`, res.status, parsed);
+    if (!res.ok) throw new LuluError(`Lulu ${method} ${redactUrls(path)} failed (HTTP ${res.status}): ${redactUrls(JSON.stringify(parsed)).slice(0, 300)}`, res.status, parsed);
     return parsed;
   }
 

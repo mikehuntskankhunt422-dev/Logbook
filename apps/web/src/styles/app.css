@@ -1331,6 +1331,46 @@ mark {
   }
 }
 
+/* ── order progress ─────────────────────────────────────────────────────────────────────────── */
+
+.progress {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+  display: grid;
+  gap: 6px;
+}
+.progress li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-soft);
+}
+.progress li::before {
+  content: '';
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--bg-elev);
+}
+.progress li.done {
+  color: var(--ink);
+}
+.progress li.done::before {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+.progress li.now {
+  color: var(--ink);
+  font-weight: 650;
+}
+.progress li.now::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
 /* ── book builder ───────────────────────────────────────────────────────────────────────────── */
 
 .steps ol {

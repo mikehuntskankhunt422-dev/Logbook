@@ -37,7 +37,7 @@ export const TRANSITIONS: Record<OrderState, readonly OrderState[]> = {
   paid: ['files_generated', 'needs_attention'],
   files_generated: ['files_validated', 'needs_attention'],
   files_validated: ['submitted_to_lulu', 'needs_attention'],
-  // Lulu webhooks can be missed, so later statuses may arrive first; CANCELED or REJECTED → needs_attention.
+  // Lulu webhooks can be missed, so later statuses may arrive first; CANCELED, REJECTED or ERROR → needs_attention.
   submitted_to_lulu: ['in_production', 'shipped', 'delivered', 'needs_attention'],
   in_production: ['shipped', 'delivered', 'needs_attention'],
   shipped: ['delivered'],
@@ -78,7 +78,10 @@ export function transition(from: OrderState, to: OrderState, cause: string, opts
   return { from, to, cause, at: (opts.now ?? new Date()).toISOString(), ...(opts.detail ? { detail: opts.detail } : {}) };
 }
 
-/** Lulu print-job statuses (ASSUMPTIONS L1) mapped to ours; `undefined` means no change. */
+/**
+ * Lulu print-job statuses (ASSUMPTIONS L1; `ERROR`, which follows `IN_PRODUCTION`, from the spec's
+ * transition list, M4 §1) mapped to ours; `undefined` means no change.
+ */
 export function stateForLuluStatus(status: string): OrderState | undefined {
   switch (status) {
     case 'IN_PRODUCTION':
@@ -89,6 +92,7 @@ export function stateForLuluStatus(status: string): OrderState | undefined {
       return 'delivered';
     case 'CANCELED':
     case 'REJECTED':
+    case 'ERROR':
       return 'needs_attention';
     // CREATED, UNPAID, PAYMENT_IN_PROGRESS, PRODUCTION_DELAYED, PRODUCTION_READY: still submitted.
     default:

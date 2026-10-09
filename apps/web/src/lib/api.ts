@@ -83,6 +83,10 @@ export interface OrderView {
   /** Stripe's page while the order waits for payment. */
   checkoutUrl: string | null;
   paid: { amountTotalCents: number; amountShippingCents: number; amountTaxCents: number; currency: string; shippingLevel: string | null; paidAt: string } | null;
+  /** Once the printer has the book: the carrier's tracking and the printer's delivery estimate. */
+  delivery: { carrier: string | null; trackingUrls: string[]; arrivalMin: string | null; arrivalMax: string | null } | null;
+  /** The refund, if the book couldn't be printed. */
+  refunded: { amountCents: number; currency: string; at: string } | null;
 }
 
 export interface ShippingChoice {
