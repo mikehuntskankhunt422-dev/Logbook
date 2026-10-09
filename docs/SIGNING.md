@@ -4,7 +4,7 @@ How to sign the Windows, macOS and Linux builds, and the updates the app install
 
 **Today** (2026-10-09):
 
-- The app has the updater's public key (key ID `F0A647A9FD7D370D`). Builds make signed update files once the secret `TAURI_SIGNING_PRIVATE_KEY` reaches them; [run 4](https://github.com/mikehuntskankhunt422-dev/Logbook/actions/runs/37906936188) didn't have it ("Updater key: not set").
+- The updater key is set up (public key ID `F0A647A9FD7D370D`): builds sign their update files, and [run 4, attempt 3](https://github.com/mikehuntskankhunt422-dev/Logbook/actions/runs/37906936188) verified every one against the app's public key.
 - Windows installers are unsigned.
 - The macOS app is ad-hoc signed and not notarised.
 - Linux packages are unsigned.
@@ -147,8 +147,8 @@ Instead, every release carries `SHA256SUMS.txt`, so a download can be checked by
 ## 5. Checklist
 
 - [x] Updater key pair made (2026-10-09); public key in `tauri.conf.json`
-- [ ] `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added as repository secrets, and a build's log says `Updater key: set` with every update signature ✔
-- [ ] Two offline copies of the private key and its password
+- [x] `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added as repository secrets; every update signature ✔ (2026-10-09)
+- [ ] An offline copy of the private key, and its password written down somewhere safe
 - [ ] Apple Developer Program; Developer ID Application certificate; App Store Connect API key; six `APPLE_*` secrets
 - [ ] Windows route chosen; its secrets and `WINDOWS_SIGN_COMMAND` added
 - [ ] A release built after all of the above, and checked on each OS (the "Check" steps above)
