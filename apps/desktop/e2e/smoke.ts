@@ -3,7 +3,7 @@
 // that appear on disk, the journal after a restart, and an entry typed just before the window closes.
 //
 //   npx tauri build --debug --no-bundle            (in apps/desktop)
-//   xvfb-run npm run test:e2e [-- path to the app]  (needs tauri-driver and WebKitWebDriver on PATH)
+//   xvfb-run npm run test:e2e [-- path to the app]  (needs tauri-driver and WebKitWebDriver on PATH, and python3-xlib)
 //
 // No test framework: plain WebDriver calls over fetch, so nothing else needs installing.
 
@@ -144,6 +144,7 @@ try {
   // window manager's close message, as from the close button (WebDriver's close skips it).
   const closed = spawnSync('python3', [new URL('close-window.py', import.meta.url).pathname], { env });
   check(closed.status === 0, 'the window got a close request');
+  if (closed.status !== 0) console.log(`  close-window.py: ${String(closed.stderr).trim() || 'no Logbook window found'} (needs python3-xlib)`);
   await until('the window to close', async () => !(await wd('GET', `/session/${s}/window`).then(() => true, () => false)), 10_000).catch(() => undefined);
   await wd('DELETE', `/session/${s}`).catch(() => undefined);
   s = await startApp();

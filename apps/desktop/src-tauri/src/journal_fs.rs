@@ -16,10 +16,11 @@ use std::time::{Duration, Instant};
 
 /// How long a read waits for iCloud to bring an offloaded file back.
 const ICLOUD_WAIT: Duration = Duration::from_secs(30);
-/// After a download timed out (offline, most likely), later reads within this long don't wait:
-/// a journal with many offloaded files would otherwise stall for 30 s per file.
+/// After downloads of two different files timed out (offline, most likely; one slow video alone
+/// isn't a sign), later reads within this long don't wait: a journal with many offloaded files
+/// would otherwise stall for 30 s per file.
 const ICLOUD_QUIET: Duration = Duration::from_secs(120);
-static LAST_ICLOUD_TIMEOUT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+static ICLOUD_TIMEOUTS: std::sync::Mutex<Vec<(PathBuf, Instant)>> = std::sync::Mutex::new(Vec::new());
 
 /// Joins a checked relative path (`/`-separated) onto the journal folder.
 pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -48,10 +49,12 @@ pub fn read(root: &Path, rel: &str) -> Result<Option<Vec<u8>>, String> {
 
 /// The full wait, unless a download timed out a moment ago.
 fn icloud_wait() -> Duration {
-    let last = *LAST_ICLOUD_TIMEOUT.lock().unwrap_or_else(|e| e.into_inner());
-    match last {
-        Some(at) if at.elapsed() < ICLOUD_QUIET => Duration::ZERO,
-        _ => ICLOUD_WAIT,
+    let mut recent = ICLOUD_TIMEOUTS.lock().unwrap_or_else(|e| e.into_inner());
+    recent.retain(|(_, at)| at.elapsed() < ICLOUD_QUIET);
+    if recent.len() >= 2 {
+        Duration::ZERO
+    } else {
+        ICLOUD_WAIT
     }
 }
 
@@ -102,7 +105,10 @@ fn materialize(path: &Path, download: &dyn Fn(&Path) -> bool, wait: Duration) ->
         thread::sleep(Duration::from_millis(100));
     }
     if !wait.is_zero() {
-        *LAST_ICLOUD_TIMEOUT.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+        let mut recent = ICLOUD_TIMEOUTS.lock().unwrap_or_else(|e| e.into_inner());
+        if !recent.iter().any(|(p, _)| p == path) {
+            recent.push((path.to_path_buf(), Instant::now()));
+        }
     }
     Err(io::Error::new(io::ErrorKind::TimedOut, "still downloading from iCloud Drive; try again in a moment"))
 }

@@ -153,6 +153,7 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     const unregister = onFlush(async () => {
       clearTimeout(timer.current);
       await save();
+      return !dirty.current; // still dirty: the save failed
     });
     return () => {
       document.removeEventListener('visibilitychange', onHide);

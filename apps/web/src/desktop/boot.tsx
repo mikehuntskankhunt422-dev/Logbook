@@ -7,9 +7,12 @@ import { TauriFsBackend } from '@logbook/storage-fs/tauri';
 import { journalFolder, routeLinks } from './bridge.ts';
 import { FolderSetup } from './FolderSetup.tsx';
 import { flushPendingSaves } from '../lib/pending-saves.ts';
+import { announce } from '../app/toasts.tsx';
 
 /** Longest the page spends saving when the window closes (Rust gives up after 4 s regardless). */
 const CLOSE_WAIT_MS = 3000;
+/** After a close was stopped by a failed save, closing again within this long closes anyway. */
+const CLOSE_ANYWAY_MS = 15_000;
 
 /** The desktop app's start: the journal folder, chosen on first run, instead of browser storage. */
 export async function bootDesktop(root: Root, render: (journal: Journal) => void): Promise<void> {
@@ -39,10 +42,17 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
  * src-tauri/src/lib.rs); before a journal is open there's nothing to save, so it answers at once.
  */
 function saveBeforeClosing(journal: () => Journal | null): void {
+  let closeAnywayUntil = 0;
   void listen('logbook://save-before-close', async () => {
-    const saved = flushPendingSaves().then(() => journal()?.store.whenIdle?.());
-    await Promise.race([saved, new Promise((r) => setTimeout(r, CLOSE_WAIT_MS))]);
-    await invoke('close_ready');
+    if (Date.now() < closeAnywayUntil) return invoke('close_ready');
+    const saved = flushPendingSaves().then(async (ok) => (await journal()?.store.whenIdle?.(), ok));
+    const ok = await Promise.race([saved, new Promise<boolean>((r) => setTimeout(() => r(false), CLOSE_WAIT_MS))]);
+    if (ok) return invoke('close_ready');
+    // The last writing couldn't be saved (the folder went away, a damaged file): stay open, so it
+    // isn't lost without a word, and let a second close within a few seconds go ahead.
+    closeAnywayUntil = Date.now() + CLOSE_ANYWAY_MS;
+    await invoke('close_cancel');
+    announce("Your latest writing couldn't be saved, so Logbook stayed open. Copy it somewhere safe, or close again to quit without it.");
   });
 }
 

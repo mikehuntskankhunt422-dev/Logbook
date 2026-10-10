@@ -6,7 +6,7 @@ mod folder;
 mod journal_fs;
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -172,6 +172,8 @@ static CLOSING: AtomicBool = AtomicBool::new(false);
 static QUITTING: AtomicBool = AtomicBool::new(false);
 /// The close has been carried out; any later request goes straight through.
 static CLOSED: AtomicBool = AtomicBool::new(false);
+/// Bumped when a close is called off, so that close's timer no longer fires.
+static CLOSE_ROUND: AtomicU64 = AtomicU64::new(0);
 
 fn begin_close<R: Runtime>(window: &WebviewWindow<R>, quit: bool) {
     if quit {
@@ -180,12 +182,22 @@ fn begin_close<R: Runtime>(window: &WebviewWindow<R>, quit: bool) {
     if CLOSING.swap(true, Ordering::SeqCst) {
         return; // already asked; the timer is running
     }
+    let round = CLOSE_ROUND.load(Ordering::SeqCst);
     let _ = window.emit("logbook://save-before-close", ());
     let window = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(CLOSE_TIMEOUT);
-        finish_close(&window);
+        if CLOSE_ROUND.load(Ordering::SeqCst) == round {
+            finish_close(&window);
+        }
     });
+}
+
+/// Calls off a close under way: the window stays open.
+fn cancel_close() {
+    CLOSE_ROUND.fetch_add(1, Ordering::SeqCst);
+    QUITTING.store(false, Ordering::SeqCst);
+    CLOSING.store(false, Ordering::SeqCst);
 }
 
 fn finish_close<R: Runtime>(window: &WebviewWindow<R>) {
@@ -203,6 +215,14 @@ fn finish_close<R: Runtime>(window: &WebviewWindow<R>) {
 #[tauri::command]
 fn close_ready(window: WebviewWindow) {
     finish_close(&window);
+}
+
+/// The page couldn't save its last writing: stay open, so it isn't lost without a word.
+#[tauri::command]
+fn close_cancel() {
+    if !CLOSED.load(Ordering::SeqCst) {
+        cancel_close();
+    }
 }
 
 /// The macOS menu bar: Tauri's usual one, except that Quit goes through `begin_close`. The stock
@@ -274,6 +294,10 @@ pub fn run() {
     {
         // One window per computer: two copies writing the same folder could undo each other's saves.
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Opened again while closing (not quitting): the person wants it, so keep the window.
+            if CLOSING.load(Ordering::SeqCst) && !QUITTING.load(Ordering::SeqCst) && !CLOSED.load(Ordering::SeqCst) {
+                cancel_close();
+            }
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.set_focus();
@@ -329,6 +353,7 @@ pub fn run() {
             save_file,
             open_url,
             close_ready,
+            close_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("Logbook couldn't start");
