@@ -101,8 +101,12 @@ export class FolderStore implements RecordStore {
     await store.rescan();
     const mirror = await store.readJson<StoreKeys['vault']>(VAULT_MIRROR);
     if (lb?.vault) {
-      // Journals from before the mirror, or a key changed on another computer: bring the copy in step.
-      if (JSON.stringify(mirror) !== JSON.stringify(lb.vault)) await fs.write(VAULT_MIRROR, jsonBytes(lb.vault));
+      // Journals from before the mirror, or a key changed on another computer: bring the copy in
+      // step. Not when that key was just set aside: then the passcode is being turned off, and
+      // this logbook.json is an older copy still arriving.
+      const previous = await store.readJson<StoreKeys['vault']>(PREVIOUS_VAULT);
+      const same = (v: unknown) => JSON.stringify(v) === JSON.stringify(lb.vault);
+      if (!same(mirror) && !same(previous)) await fs.write(VAULT_MIRROR, jsonBytes(lb.vault));
     } else if (!lb && !mirror && store.hasSealedFiles()) {
       throw new Error(
         `This journal is locked with a passcode, but its key file (${LOGBOOK_FILE}) is missing from the folder. If the folder is still syncing, wait for it to finish and open Logbook again.`,
@@ -220,9 +224,12 @@ export class FolderStore implements RecordStore {
       for (const old of table.get(record.id) ?? []) {
         if (old === path) continue;
         if (this.held.has(old)) {
-          // The other computer's edit of the same version: left in place for a person to compare.
+          // The other computer's edit of the same version: kept for a person to compare, under a
+          // name outside the scheme, so no later scan takes it for an older copy and deletes it.
           this.held.delete(old);
-          this.strays.push(old);
+          const kept = conflictName(old);
+          await this.fs.rename(old, kept);
+          this.strays.push(kept);
         } else await this.fs.remove(old);
       }
       table.set(record.id, [path]);
@@ -270,8 +277,12 @@ export class FolderStore implements RecordStore {
 
   async getKey<K extends keyof StoreKeys>(key: K): Promise<StoreKeys[K] | undefined> {
     if (key === 'settings') return (await this.readLogbook())?.settings as StoreKeys[K] | undefined;
-    // logbook.json missing (not synced yet, offloaded) falls back to the mirror; damaged throws.
-    if (key === 'vault') return ((await this.readLogbook())?.vault ?? (await this.readJson<StoreKeys['vault']>(VAULT_MIRROR))) as StoreKeys[K] | undefined;
+    if (key === 'vault') {
+      // Only a missing logbook.json (not synced yet, offloaded) falls back to the mirror: one
+      // without a vault means the passcode is off. A damaged one throws.
+      const lb = await this.readLogbook();
+      return (lb ? lb.vault : await this.readJson<StoreKeys['vault']>(VAULT_MIRROR)) as StoreKeys[K] | undefined;
+    }
     return (await this.readJson(KEY_FILES[key as 'bookDraft' | 'bookOrders'])) as StoreKeys[K] | undefined;
   }
 
@@ -282,15 +293,18 @@ export class FolderStore implements RecordStore {
         const existing = await this.readLogbook();
         const mirror = await this.readJson<StoreKeys['vault']>(VAULT_MIRROR);
         const lb: LogbookFile = existing ?? { format: FOLDER_FORMAT, version: FOLDER_VERSION, ...(mirror ? { vault: mirror } : {}) };
+        if (key === 'vault') {
+          const old = lb.vault ?? mirror;
+          // Never write over a key without keeping it: files sealed with it may still turn up.
+          // Set aside first, so a failure here leaves logbook.json and the passcode as they were.
+          if (old && JSON.stringify(old) !== JSON.stringify(value)) await this.fs.write(PREVIOUS_VAULT, jsonBytes(old));
+          if (value === undefined) await this.fs.remove(VAULT_MIRROR);
+        }
         const field = key as 'settings' | 'vault';
         if (value === undefined) delete lb[field];
         else (lb as unknown as Record<string, unknown>)[field] = value;
         await this.fs.write(LOGBOOK_FILE, jsonBytes(lb));
-        if (key === 'vault') {
-          if (value !== undefined) await this.fs.write(VAULT_MIRROR, jsonBytes(value));
-          // The passcode is off: keep the old key, in case a file sealed with it turns up later.
-          else if (mirror) await this.fs.rename(VAULT_MIRROR, PREVIOUS_VAULT);
-        }
+        if (key === 'vault' && value !== undefined) await this.fs.write(VAULT_MIRROR, jsonBytes(value));
         return;
       }
       const path = KEY_FILES[key as 'bookDraft' | 'bookOrders'];
@@ -371,6 +385,11 @@ export class FolderStore implements RecordStore {
       return undefined;
     }
   }
+}
+
+/** `…--k3f9x2m4n5p6.json` → `…--k3f9x2m4n5p6 (conflict lq2x9a).json`: outside the naming scheme. */
+function conflictName(path: string): string {
+  return path.replace(/(\.json)?$/, ` (conflict ${Date.now().toString(36)})$1`);
 }
 
 function rev(r: unknown): number {

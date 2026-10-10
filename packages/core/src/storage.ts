@@ -51,6 +51,8 @@ export interface RecordStore {
   refresh?(): Promise<void>;
   /** Resolves once every change asked for so far is stored (the desktop app waits on it before closing). */
   whenIdle?(): Promise<void>;
+  /** Files that exist but couldn't be read when last tried (a sync still in progress, damage). */
+  unreadableFiles?(): string[];
 }
 
 export function isSealed(r: unknown): r is SealedRecord {
