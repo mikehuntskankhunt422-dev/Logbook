@@ -2,7 +2,7 @@
 
 A local-first multimedia journal (website, installable PWA, and, later, a Tauri desktop app) that can be printed as a real book through Lulu.
 
-> **Status:** milestones 1 (the journal), 2 (book builder and print PDFs) and 3 (pricing and Stripe) are done: the print layout and renderer, prices from Lulu's live costs, "Prepare my book", the order page and Stripe Checkout with webhooks all work in Stripe test mode. Milestone 4 (Lulu fulfilment) is nearly done: paid orders are sent to Lulu as print jobs, followed by webhooks and polling, retried, and refunded when they can't be printed, and alerts go out through Resend. In the Lulu sandbox and Stripe test mode both sample books were followed to `SHIPPED` with tracking (`npm run lulu:e2e -w @logbook/server`); a real webhook delivery from Lulu waits on a public URL. See [docs/M3.md](docs/M3.md) and [docs/M4.md](docs/M4.md). Next is the desktop app, the only way Logbook ships: free, downloaded from GitHub Releases, with no website and no mobile app (D77, D78). The admin page comes after; see [docs/PLAN.md](docs/PLAN.md). The full README (deployment, environment variables, Stripe CLI, signing, go-live checklist) arrives in milestone 6.
+> **Status:** milestones 1 (the journal), 2 (book builder and print PDFs) and 3 (pricing and Stripe) are done: the print layout and renderer, prices from Lulu's live costs, "Prepare my book", the order page and Stripe Checkout with webhooks all work in Stripe test mode. Milestone 4 (Lulu fulfilment) is nearly done: paid orders are sent to Lulu as print jobs, followed by webhooks and polling, retried, and refunded when they can't be printed, and alerts go out through Resend. In the Lulu sandbox and Stripe test mode both sample books were followed to `SHIPPED` with tracking (`npm run lulu:e2e -w @logbook/server`); a real webhook delivery from Lulu waits on a public URL. See [docs/M3.md](docs/M3.md) and [docs/M4.md](docs/M4.md). Milestone 5, the desktop app, is under way: the only way Logbook ships, free from GitHub Releases, with no website and no mobile app (D77, D78). It runs, keeps the journal as files in a folder and pays through Stripe in the browser; installers and updates are next ([docs/M5.md](docs/M5.md)). The admin page comes after; see [docs/PLAN.md](docs/PLAN.md). The full README (deployment, environment variables, Stripe CLI, signing, go-live checklist) arrives in milestone 6.
 
 ## Run it
 
@@ -19,6 +19,17 @@ Production build with the service worker (offline mode works here, not in `dev`)
 npm run build
 npm run preview        # http://localhost:4173
 ```
+
+### The desktop app (M5)
+
+Needs Rust (stable) as well, and on Linux Tauri's libraries: `libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
+
+```bash
+npm run desktop         # the app in a dev window, with hot reload; `npm run dev -w @logbook/server` serves /api
+npm run desktop:build   # installers for this computer's OS, in apps/desktop/src-tauri/target/release/bundle/
+```
+
+The first run asks where to keep the journal (`Documents/Logbook` by default). Choosing a folder that already holds a journal, from another computer or an unzipped backup, opens it. To pay, the app opens Stripe in the browser and follows the order itself; Stripe's return page is `/api/checkout/done` on the API, accepted only at `PUBLIC_URL` (the API's public address). A release build needs the API's address at build time: `VITE_API_URL=https://… npm run desktop:build`. See [docs/M5.md](docs/M5.md).
 
 ## Check it
 
@@ -79,6 +90,8 @@ First-time Playwright setup: `npx playwright install chromium` in `apps/web`.
 |---|---|
 | `packages/core` | Data model, Journal service, encryption (Argon2id + AES-GCM), zip backup format, search, dates and streaks. No DOM. |
 | `packages/storage-idb` | IndexedDB storage for the website and PWA |
-| `apps/web` | React UI, PWA (manifest, service worker, icons), Playwright tests |
+| `packages/storage-fs` | The desktop journal: a folder of plain files in the backup layout (D80) |
+| `apps/web` | React UI, PWA (manifest, service worker, icons), Playwright tests. `--mode desktop` builds the bundle the desktop app loads |
+| `apps/desktop` | Tauri 2 shell: the journal folder, save dialogs, links, WebDriver smoke test (`e2e/smoke.ts`) |
 | `apps/server` | API (Fastify) and the print renderer: Paged.js in Chromium, image pipeline (sharp), PDF checks, sample books |
 | `docs/` | Plan, decisions, verified API facts, dated reference snapshots |
