@@ -2,7 +2,8 @@ name: Desktop installers
 
 # Logbook's installers on Windows, macOS and Linux (M5 slice E, D84). A push to a work branch that
 # touches the app builds them as workflow artifacts to try; a v* tag also publishes them as a
-# GitHub release. Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
+# GitHub release. So does running it by hand on main ("Run workflow", D87), which creates the tag.
+# Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
 
 on:
   push:
@@ -14,6 +15,11 @@ on:
       - 'packages/**'
       - 'package-lock.json'
       - '.github/workflows/desktop-release.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish, as in apps/desktop/package.json (e.g. 0.1.0). Run it on main.
+        required: true
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -45,13 +51,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: The tag matches the app's version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: The version asked for matches the app's version
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         shell: bash
+        env:
+          WANTED: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: |
           version=$(node -p "require('./apps/desktop/package.json').version")
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app's version $version (apps/desktop/package.json)."
+          if [ "$WANTED" != "v$version" ]; then
+            echo "::error::$WANTED doesn't match the app's version $version (apps/desktop/package.json)."
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Publish from main."
             exit 1
           fi
       - uses: actions/setup-node@v4
@@ -93,7 +105,7 @@ jobs:
 
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -111,9 +123,11 @@ jobs:
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           # 0.x versions are previews.
           case "$version" in 0.*) pre=--prerelease; title="Logbook $version (preview)" ;; *) pre=; title="Logbook $version" ;; esac
-          gh release create "$GITHUB_REF_NAME" installers/* --repo "$GITHUB_REPOSITORY" --verify-tag $pre \
+          # Run by hand, the tag is made here, on the commit that was built.
+          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" $pre \
             --title "$title" --notes-file apps/desktop/RELEASE-NOTES.md
