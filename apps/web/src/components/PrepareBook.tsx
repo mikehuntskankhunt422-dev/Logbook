@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDateRange, type BookOptions, type Entry, type MediaMeta } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
-import { ApiError, createOrder, getOrder, submitOrder, uploadFile, type OrderView } from '../lib/api.ts';
+import { ApiError, createOrder, getOrder, orderingAvailable, submitOrder, uploadFile, type OrderView } from '../lib/api.ts';
 import { formatUsd } from '../lib/money.ts';
 import { buildPrintBundle, uploadSummary } from '../lib/print-bundle.ts';
 import { Dialog } from './common.tsx';
@@ -40,6 +40,15 @@ export function PrepareBook({ options, entries, media }: { options: BookOptions;
   const summary = useMemo(() => uploadSummary(entries, options, (id) => media.get(id)), [entries, options, media]);
   const range = entries.length ? formatDateRange(entries[0]!.date, entries.at(-1)!.date) : '';
   const say = (p: Phase) => alive.current && setPhase(p);
+
+  if (!orderingAvailable) {
+    return (
+      <section className="prepare" aria-labelledby="prepare-h">
+        <h3 id="prepare-h">Print files</h3>
+        <p className="notice">Ordering printed books isn't open in this version of Logbook yet. You can build your book and page through the preview now; ordering arrives in an update.</p>
+      </section>
+    );
+  }
 
   const start = async () => {
     setAsking(false);
