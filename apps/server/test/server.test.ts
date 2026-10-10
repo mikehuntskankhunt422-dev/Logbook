@@ -29,6 +29,14 @@ describe('config (D18)', () => {
     expect(loadConfig({ APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_CLIENT_KEY: 'k', LULU_CLIENT_SECRET: 's', OWNER_EMAIL: 'me@example.com' }).lulu?.apiUrl).toBe('https://api.lulu.com');
   });
 
+  it('reads the API’s public address for the desktop app’s return page (D79)', () => {
+    expect(loadConfig({}).publicOrigin).toBeUndefined();
+    expect(loadConfig({ PUBLIC_URL: 'https://api.logbook.example/' }).publicOrigin).toBe('https://api.logbook.example');
+    expect(() => loadConfig({ PUBLIC_URL: 'api.logbook.example' })).toThrow(/PUBLIC_URL/);
+    const live = { APP_MODE: 'live', ALLOW_LIVE: 'true', OWNER_EMAIL: 'me@example.com' };
+    expect(() => loadConfig({ ...live, PUBLIC_URL: 'http://api.logbook.example' })).toThrow(/https/);
+  });
+
   it('needs your address for Lulu in live mode, both Resend settings or neither, and faults only in test mode (M4)', () => {
     const live = { APP_MODE: 'live', ALLOW_LIVE: 'true', LULU_CLIENT_KEY: 'k', LULU_CLIENT_SECRET: 's' };
     expect(() => loadConfig(live)).toThrow(/OWNER_EMAIL/);

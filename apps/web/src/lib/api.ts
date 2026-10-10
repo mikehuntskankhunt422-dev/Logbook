@@ -1,7 +1,15 @@
 import { podPackageId, type CoverDimensions, type Product } from '@logbook/core';
 
-/** The Logbook API: same origin unless the build sets VITE_API_URL (D15: website and API are hosted apart). */
+/** The Logbook API: same origin unless the build sets VITE_API_URL (D15; always for the desktop app, D79). */
 const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/+$/, '');
+
+/**
+ * Where Stripe sends a desktop customer after paying (D79): a short page on the API saying to go
+ * back to Logbook, since a browser can't open the app's window. The app notices the payment itself.
+ */
+export function checkoutDonePage(): string {
+  return `${API || location.origin}/api/checkout/done`;
+}
 
 /**
  * A GET to the API, or null when offline or the API can't answer: every caller has an offline

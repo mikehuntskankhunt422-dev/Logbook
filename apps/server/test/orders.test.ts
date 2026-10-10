@@ -243,6 +243,20 @@ describe('orders: upload, prepare, quote (M3 slice C)', () => {
     expect(pre.headers['access-control-allow-headers']).toBe('authorization, content-type');
     const other = await app.inject({ method: 'OPTIONS', url: '/api/orders', headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' } });
     expect(other.headers['access-control-allow-origin']).toBeUndefined();
+    // The desktop app's window, on each platform (D79).
+    for (const origin of ['tauri://localhost', 'http://tauri.localhost']) {
+      const app2 = await app.inject({ method: 'OPTIONS', url: '/api/orders', headers: { origin, 'access-control-request-method': 'POST' } });
+      expect(app2.headers['access-control-allow-origin']).toBe(origin);
+    }
+  });
+
+  it('serves the page Stripe sends desktop customers back to (D79)', async () => {
+    const app = buildApp(loadConfig({}), { logger: false, store: new LocalStore(tmp()), db: new OrderDb(':memory:'), render: fakeRender() });
+    apps.push(app);
+    const res = await app.inject({ method: 'GET', url: '/api/checkout/done' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.body).toContain('go back to Logbook');
   });
 
   it('limits how many orders one address can start per hour', async () => {

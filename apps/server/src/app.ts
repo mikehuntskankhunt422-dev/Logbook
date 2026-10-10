@@ -87,6 +87,7 @@ export function buildApp(config: Config, opts: AppOptions = {}): FastifyInstance
           taxEnabled: config.stripe?.taxEnabled ?? false,
           webOrigins: config.webOrigins,
           allowLoopbackReturn: config.mode === 'test',
+          publicOrigin: config.publicOrigin,
           log: app.log,
           now: opts.now,
           onPaid: () => jobs?.kick(),

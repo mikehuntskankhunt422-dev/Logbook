@@ -477,6 +477,15 @@ describe('return URLs', () => {
     expect(returnBase('http://localhost:4173/', { ...deps, allowLoopbackReturn: true })).toBe('http://localhost:4173/');
     expect(returnBase('not a url', deps)).toBeNull();
   });
+
+  it('accepts the API’s own return page for the desktop app, and nothing else on the API (D79)', () => {
+    const deps = { webOrigins: [], allowLoopbackReturn: false, publicOrigin: 'https://api.logbook.example' };
+    expect(returnBase('https://api.logbook.example/api/checkout/done', deps)).toBe('https://api.logbook.example/api/checkout/done');
+    expect(returnBase('https://api.logbook.example/api/orders', deps)).toBeNull();
+    expect(returnBase('https://elsewhere.example/api/checkout/done', deps)).toBeNull();
+    expect(returnBase('tauri://localhost/', deps)).toBeNull();
+    expect(returnBase('https://api.logbook.example/api/checkout/done', { ...deps, publicOrigin: undefined })).toBeNull();
+  });
 });
 
 describe('limits', () => {
