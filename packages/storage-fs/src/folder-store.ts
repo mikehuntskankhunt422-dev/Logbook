@@ -13,7 +13,7 @@ import { assertRelativePath, type FsBackend } from './backend.ts';
  *   media/k3/<id>.meta.json + <id>.jpg                  media and their details
  *   media/k3/<id>.meta.json.enc + <id>.bin.enc          the same with a passcode
  *   .logbook/book-draft.json, book-orders.json          the book builder's state; not part of backups
- *   .logbook/vault.json, previous-vault.json            copies of the passcode's key (D85)
+ *   .logbook/vault.json, previous-vaults/               the passcode's key, and every key it replaced (D85)
  *
  * The store keeps an index from record ID to file, built by scanning the folder. A file renamed
  * by another computer (an entry's new title) can briefly leave two files for one ID: reads take
@@ -24,7 +24,7 @@ import { assertRelativePath, type FsBackend } from './backend.ts';
  *
  * The passcode's key (the vault) is never lost to a bad file (D85): a `logbook.json` that exists
  * but can't be read is never rewritten, the vault is mirrored in `.logbook/vault.json`, and turning
- * the passcode off keeps the old key as `.logbook/previous-vault.json`.
+ * the passcode off, or on with a new key, keeps the old one in `.logbook/previous-vaults/`.
  */
 
 export const LOGBOOK_FILE = 'logbook.json';
@@ -36,7 +36,9 @@ const KEY_FILES: Record<'bookDraft' | 'bookOrders', string> = {
   bookOrders: '.logbook/book-orders.json',
 };
 const VAULT_MIRROR = '.logbook/vault.json';
-const PREVIOUS_VAULT = '.logbook/previous-vault.json';
+/** One file per replaced key, named by when it was made: a file sealed with any of them may still turn up. */
+const PREVIOUS_VAULTS = '.logbook/previous-vaults';
+const previousVaultPath = (v: StoreKeys['vault']) => `${PREVIOUS_VAULTS}/${String(v.createdAt).replace(/[^0-9A-Za-z]/g, '-')}.json`;
 
 const ID = '[0-9a-z]+';
 const ENTRY_PLAIN = new RegExp(`^(?:entries|trash)/(?:\\d{4}/)?[^/]*--(${ID})\\.json$`);
@@ -104,9 +106,9 @@ export class FolderStore implements RecordStore {
       // Journals from before the mirror, or a key changed on another computer: bring the copy in
       // step. Not when that key was just set aside: then the passcode is being turned off, and
       // this logbook.json is an older copy still arriving.
-      const previous = await store.readJson<StoreKeys['vault']>(PREVIOUS_VAULT);
+      const setAside = await store.readJson<StoreKeys['vault']>(previousVaultPath(lb.vault));
       const same = (v: unknown) => JSON.stringify(v) === JSON.stringify(lb.vault);
-      if (!same(mirror) && !same(previous)) await fs.write(VAULT_MIRROR, jsonBytes(lb.vault));
+      if (!same(mirror) && !same(setAside)) await fs.write(VAULT_MIRROR, jsonBytes(lb.vault));
     } else if (!lb && !mirror && store.hasSealedFiles()) {
       throw new Error(
         `This journal is locked with a passcode, but its key file (${LOGBOOK_FILE}) is missing from the folder. If the folder is still syncing, wait for it to finish and open Logbook again.`,
@@ -147,7 +149,9 @@ export class FolderStore implements RecordStore {
     this.media = media;
     this.blobs = blobs;
     this.strays = strays;
-    this.unreadable.clear();
+    // Still-unreadable files stay listed: a rescan in the middle of a read pass mustn't hide them.
+    const present = new Set(files);
+    for (const path of this.unreadable) if (!present.has(path)) this.unreadable.delete(path);
     this.held.clear();
   }
 
@@ -196,41 +200,40 @@ export class FolderStore implements RecordStore {
   /** The newest copy of a record (highest `rev`), and whether every indexed file for it has gone. */
   private async read<S extends StoreName>(store: S, id: string): Promise<{ best: StoreRecords[S] | undefined; gone: boolean }> {
     const paths = this.table(store).get(id) ?? [];
-    let best: StoreRecords[S] | undefined;
-    let bestText = '';
     let missing = 0;
-    const tied: string[] = [];
+    const found: { path: string; record: StoreRecords[S]; text: string }[] = [];
     for (const path of paths) {
-      const r = await this.readJson<StoreRecords[S]>(path, () => missing++);
-      if (!r) continue;
-      const text = JSON.stringify(r);
-      if (!best || rev(r) > rev(best)) {
-        best = r;
-        bestText = text;
-        tied.length = 0;
-      } else if (rev(r) === rev(best) && text !== bestText) tied.push(path);
+      const record = await this.readJson<StoreRecords[S]>(path, () => missing++);
+      if (record) found.push({ path, record, text: JSON.stringify(record) });
     }
-    // Same revision, different content: two computers edited the same version. Keep both.
-    for (const path of tied) this.held.add(path);
-    return { best, gone: paths.length > 0 && missing === paths.length };
+    // The newest copy wins (the first, on equal revisions).
+    let best = found[0];
+    for (const f of found) if (best && rev(f.record) > rev(best.record)) best = f;
+    // Kept as well, rather than deleted by the next save: a copy with the same revision but other
+    // content (two computers edited the same version), and a sealed copy beside a plain one (a
+    // passcode switched while another computer was writing; a sealed copy's revision can't be read).
+    for (const f of found) {
+      if (!best || f === best) continue;
+      const sameRevision = rev(f.record) === rev(best.record) && f.text !== best.text;
+      if (sameRevision || isSealed(f.record) !== isSealed(best.record)) this.held.add(f.path);
+    }
+    return { best: best?.record, gone: paths.length > 0 && missing === paths.length };
   }
+
 
   put<S extends StoreName>(store: S, record: StoreRecords[S]): Promise<void> {
     return this.serial(async () => {
       const path = store === 'entries' ? entryPath(record as StoreRecords['entries']) : metaPath(record as StoreRecords['media']);
       assertRelativePath(path);
+      // The save lands on the file of a copy being kept (same name after a rename): move it aside first.
+      if (this.held.has(path)) await this.keepAside(path);
       await this.fs.write(path, jsonBytes(record));
       const table = this.table(store);
       for (const old of table.get(record.id) ?? []) {
         if (old === path) continue;
-        if (this.held.has(old)) {
-          // The other computer's edit of the same version: kept for a person to compare, under a
-          // name outside the scheme, so no later scan takes it for an older copy and deletes it.
-          this.held.delete(old);
-          const kept = conflictName(old);
-          await this.fs.rename(old, kept);
-          this.strays.push(kept);
-        } else await this.fs.remove(old);
+        // The other computer's edit is kept for a person to compare; anything else goes.
+        if (this.held.has(old)) await this.keepAside(old);
+        else await this.fs.remove(old);
       }
       table.set(record.id, [path]);
       this.unreadable.delete(path);
@@ -297,7 +300,9 @@ export class FolderStore implements RecordStore {
           const old = lb.vault ?? mirror;
           // Never write over a key without keeping it: files sealed with it may still turn up.
           // Set aside first, so a failure here leaves logbook.json and the passcode as they were.
-          if (old && JSON.stringify(old) !== JSON.stringify(value)) await this.fs.write(PREVIOUS_VAULT, jsonBytes(old));
+          // A changed passcode wraps the same data key again (same createdAt): its old wrapping is
+          // not kept, or the old passcode would still open the journal.
+          if (old && old.createdAt !== (value as StoreKeys['vault'] | undefined)?.createdAt) await this.fs.write(previousVaultPath(old), jsonBytes(old));
           if (value === undefined) await this.fs.remove(VAULT_MIRROR);
         }
         const field = key as 'settings' | 'vault';
@@ -331,6 +336,17 @@ export class FolderStore implements RecordStore {
     const run = this.queue.then(fn, fn);
     this.queue = run.catch(() => undefined);
     return run;
+  }
+
+  /**
+   * Moves a kept copy to a name outside the naming scheme, so no later scan takes it for an older
+   * copy and deletes it; `conflicts()` lists it.
+   */
+  private async keepAside(path: string): Promise<void> {
+    this.held.delete(path);
+    const kept = conflictName(path);
+    await this.fs.rename(path, kept);
+    this.strays.push(kept);
   }
 
   /** A media file is named after its details (extension, sealed or not): keep it in step with them. */
@@ -387,10 +403,11 @@ export class FolderStore implements RecordStore {
   }
 }
 
-/** `…--k3f9x2m4n5p6.json` → `…--k3f9x2m4n5p6 (conflict lq2x9a).json`: outside the naming scheme. */
+/** `…--k3f9x2m4n5p6.json` → `…--k3f9x2m4n5p6 (conflict lq2x9a).json` (`.json.enc` alike): outside the naming scheme. */
 function conflictName(path: string): string {
-  return path.replace(/(\.json)?$/, ` (conflict ${Date.now().toString(36)})$1`);
+  return path.replace(/(\.json(?:\.enc)?)?$/, ` (conflict ${Date.now().toString(36)})$1`);
 }
+
 
 function rev(r: unknown): number {
   const v = (r as { rev?: unknown }).rev;

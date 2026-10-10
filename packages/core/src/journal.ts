@@ -169,17 +169,31 @@ export class Journal {
     const draft = await this.getBookDraft();
     const orders = await this.listBookOrders();
     const blobs = new Map<string, Blob>();
+    /** Photos whose data this key can't open: left sealed with their details, like other strangers. */
+    const keepSealed = new Set<string>();
+    /** Photo details whose data file hasn't arrived (a large file still syncing). */
+    const notArrived: string[] = [];
     for (const m of media) {
-      const b = await this.getMediaBlob(m.id);
-      if (b) blobs.set(m.id, b);
+      const sealed = await this.store.getBlob(m.id);
+      if (!sealed) {
+        if (this.store.kind === 'filesystem') notArrived.push(m.name);
+        continue;
+      }
+      try {
+        blobs.set(m.id, new Blob([await cipher.openBytes(m.id, new Uint8Array(await sealed.arrayBuffer()))], { type: m.mime }));
+      } catch {
+        keepSealed.add(m.id);
+      }
     }
-    // A file that exists but can't be read yet (still syncing) would stay sealed after its key is
-    // gone: stop before changing anything (D85). Files sealed with a different key don't stop it,
-    // since this key couldn't open them anyway; the old key is kept beside the journal.
-    const unreadable = this.store.unreadableFiles?.() ?? [];
-    if (unreadable.length) {
+    // A file that exists but can't be read yet, or a photo whose data is still on its way, would
+    // stay sealed after its key is gone: stop before changing anything (D85). Files sealed with a
+    // different key don't stop it, since this key couldn't open them anyway; every replaced key is
+    // kept beside the journal.
+    const waiting = [...(this.store.unreadableFiles?.() ?? []), ...notArrived];
+    if (waiting.length) {
+      const shown = waiting.slice(0, 3).join(', ') + (waiting.length > 3 ? ` and ${waiting.length - 3} more` : '');
       throw new Error(
-        `${unreadable.length} ${unreadable.length === 1 ? 'file' : 'files'} in your journal folder can't be read right now (still syncing?). Nothing was changed: the passcode stays on. Try again once the sync has finished.`,
+        `${waiting.length} ${waiting.length === 1 ? 'file' : 'files'} in your journal folder can't be read yet (still syncing?): ${shown}. Nothing was changed: the passcode stays on. Try again once the sync has finished.`,
       );
     }
     this.cipher = null;
@@ -187,7 +201,7 @@ export class Journal {
     this.vault = undefined;
     try {
       for (const e of entries) await this.store.put('entries', e);
-      for (const m of media) await this.store.put('media', m);
+      for (const m of media) if (!keepSealed.has(m.id)) await this.store.put('media', m);
       for (const [id, b] of blobs) await this.store.putBlob(id, b);
       await this.store.setKey('bookDraft', draft);
       await this.store.setKey('bookOrders', orders.length ? orders : undefined);
@@ -507,11 +521,19 @@ export class Journal {
     return mediaMetaSchema.parse(isSealed(rec) ? await this.cipher!.openJson('media', rec) : rec);
   }
 
+  /** Every photo and other media item this journal can open; ones sealed with another key are skipped. */
   async listMediaMeta(): Promise<MediaMeta[]> {
     this.assertUnlocked();
     const out: MediaMeta[] = [];
     for (const rec of await this.store.all('media')) {
-      const parsed = mediaMetaSchema.safeParse(isSealed(rec) ? await this.cipher!.openJson('media', rec) : rec);
+      let raw: unknown;
+      try {
+        if (isSealed(rec) && !this.cipher) continue;
+        raw = isSealed(rec) ? await this.cipher!.openJson('media', rec) : rec;
+      } catch {
+        continue; // sealed with a different key (another computer, an earlier passcode)
+      }
+      const parsed = mediaMetaSchema.safeParse(raw);
       if (parsed.success) out.push(parsed.data);
     }
     return out;

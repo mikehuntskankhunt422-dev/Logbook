@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { unzipSync } from 'fflate';
-import { ConflictError, exportBackup, Journal, MemoryStore, VaultChangedError, type Entry } from '@logbook/core';
+import { ConflictError, exportBackup, Journal, MemoryStore, openVault, VaultChangedError, type Entry } from '@logbook/core';
 import { assertRelativePath, DamagedFileError, FolderStore } from '../src/index.ts';
 import { NodeFsBackend } from '../src/node.ts';
 import { recordStoreContract } from '../../core/test/contract.ts';
@@ -93,9 +93,11 @@ describe('FolderStore files', () => {
 
     await j2.disableEncryption('correct horse');
     // The old key is kept aside (D85), in case a file sealed with it turns up from another computer.
-    expect(await files(root)).toEqual(
-      ['.logbook/previous-vault.json', `entries/2026/2026-10-07--secret--${e.id}.json`, 'logbook.json', `media/${id2}/${media.id}.meta.json`, `media/${id2}/${media.id}.png`].sort(),
+    const after = await files(root);
+    expect(after.filter((f) => !f.startsWith('.logbook/previous-vaults/'))).toEqual(
+      [`entries/2026/2026-10-07--secret--${e.id}.json`, 'logbook.json', `media/${id2}/${media.id}.meta.json`, `media/${id2}/${media.id}.png`].sort(),
     );
+    expect(after.filter((f) => f.startsWith('.logbook/previous-vaults/'))).toHaveLength(1);
   });
 
   it('opens a backup zip unzipped into a folder as a working journal', async () => {
@@ -231,7 +233,7 @@ describe('FolderStore keeps the passcode key safe (D85)', () => {
     expect(reopened.isEncrypted).toBe(false);
     expect((await reopened.getEntry(e.id))?.title).toBe('Secret');
     expect(await files(root)).toContain(`entries/${s.id}.json.enc`);
-    expect(await files(root)).toContain('.logbook/previous-vault.json');
+    expect((await files(root)).some((f) => f.startsWith('.logbook/previous-vaults/'))).toBe(true);
   });
 
   it('changes nothing when a file can’t be read yet (still syncing), so nothing is left sealed without its key', async () => {
@@ -239,7 +241,7 @@ describe('FolderStore keeps the passcode key safe (D85)', () => {
     const before = await files(root);
     // Another entry, sealed with this key, still arriving: half a file.
     await writeFile(join(root, 'entries', 'zzzzzzzzzzzz.json.enc'), '{"id":"zzzzzzzzzzzz","sealed":1,"iv":');
-    await expect(j.disableEncryption('correct horse')).rejects.toThrow(/can't be read right now/);
+    await expect(j.disableEncryption('correct horse')).rejects.toThrow(/can't be read yet/);
     expect(await files(root)).toEqual([...before, 'entries/zzzzzzzzzzzz.json.enc'].sort());
     expect(j.isEncrypted).toBe(true);
     expect(JSON.parse(await readFile(join(root, `entries/${e.id}.json.enc`), 'utf8')).sealed).toBe(1);
@@ -303,6 +305,79 @@ describe('FolderStore keeps the passcode key safe (D85)', () => {
   });
 });
 
+describe('FolderStore keeps every key a file may need, and no more (final review)', () => {
+  const kept = async (root: string) => (await files(root)).filter((f) => f.startsWith('.logbook/previous-vaults/'));
+
+  it('changing the passcode keeps no copy the old passcode could open', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.saveEntry(j.newEntry({ title: 'Private' }));
+    await j.enableEncryption('old passcode', FAST_KDF);
+    await j.changePasscode('old passcode', 'new passcode');
+    expect(await kept(root)).toEqual([]);
+    for (const f of await files(root)) {
+      if (!f.startsWith('.logbook/') && f !== 'logbook.json') continue;
+      const json = JSON.parse(await readFile(join(root, f), 'utf8'));
+      const vault = json.vault ?? (json.wrappedKey ? json : undefined);
+      if (vault) await expect(openVault(vault, 'old passcode')).rejects.toThrow();
+    }
+  });
+
+  it('keeps every replaced key through off, on with a new key, change and off again', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.enableEncryption('first passcode', FAST_KDF);
+    await j.disableEncryption('first passcode');
+    await j.enableEncryption('second passcode', FAST_KDF);
+    await j.changePasscode('second passcode', 'third passcode');
+    await j.disableEncryption('third passcode');
+    expect(await kept(root)).toHaveLength(2);
+  });
+
+  it('turns the passcode off past a photo sealed with another key, leaving it sealed', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.enableEncryption('correct horse', FAST_KDF);
+    const elsewhere = await folder();
+    const stranger = await Journal.open(await open(elsewhere));
+    await stranger.enableEncryption('another passcode', FAST_KDF);
+    const m = await stranger.addMedia(new Blob([pngBytes()], { type: 'image/png' }), { name: 'theirs.png' });
+    const id2 = m.id.slice(0, 2);
+    await mkdir(join(root, 'media', id2), { recursive: true });
+    for (const f of [`${m.id}.meta.json.enc`, `${m.id}.bin.enc`]) await writeFile(join(root, 'media', id2, f), await readFile(join(elsewhere, 'media', id2, f)));
+
+    const reopened = await Journal.open(await open(root));
+    await reopened.unlock('correct horse');
+    expect(await reopened.listMediaMeta()).toEqual([]);
+    await reopened.disableEncryption('correct horse');
+    expect(await files(root)).toEqual(expect.arrayContaining([`media/${id2}/${m.id}.meta.json.enc`, `media/${id2}/${m.id}.bin.enc`]));
+    // A plain backup simply can't include it, and doesn't fail because of it.
+    await expect(exportBackup(reopened)).resolves.toBeInstanceOf(Blob);
+  });
+
+  it('changes nothing while a photo’s data is still on its way', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const m = await j.addMedia(new Blob([pngBytes()], { type: 'image/png' }), { name: 'big-video.png' });
+    await j.enableEncryption('correct horse', FAST_KDF);
+    await rm(join(root, 'media', m.id.slice(0, 2), `${m.id}.bin.enc`));
+    const before = await files(root);
+    await expect(j.disableEncryption('correct horse')).rejects.toThrow(/big-video\.png/);
+    expect(await files(root)).toEqual(before);
+    expect(j.isEncrypted).toBe(true);
+  });
+
+  it('refuses a backup that would silently leave out a file it can’t read right now', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.saveEntry(j.newEntry({ title: 'Kept' }));
+    await writeFile(join(root, 'entries/2026/2026-10-08--half--zzzzzzzzzzzz.json'), '{"id":');
+    const again = await Journal.open(await open(root));
+    await again.listEntries();
+    await expect(exportBackup(again)).rejects.toThrow(/can't be read right now/);
+  });
+});
+
 describe('FolderStore with another computer on the same folder', () => {
   it('never deletes photos while tidying up: entries using them may not have synced yet', async () => {
     const root = await folder();
@@ -350,6 +425,44 @@ describe('FolderStore with another computer on the same folder', () => {
     await j3.saveEntry({ ...(await j3.getEntry(e.id))!, tags: ['and again'] });
     expect(await files(root)).toContain(kept[0]);
     expect(store3.conflicts().map((c) => ({ path: c.path, id: c.id }))).toEqual([{ path: kept[0], id: e.id }]);
+  });
+
+  it('keeps the other computer’s copy even when the next save lands on its file name', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Base' }));
+    // Both computers saved the next revision: the desktop as 'Base', the laptop renamed it 'Trip'.
+    const desktop: Entry = { ...e, rev: e.rev + 1, tags: ['desktop'] };
+    const laptop: Entry = { ...e, title: 'Trip', rev: e.rev + 1, tags: ['laptop-paragraph'] };
+    await writeFile(join(root, `entries/2026/2026-10-07--base--${e.id}.json`), JSON.stringify(desktop));
+    await writeFile(join(root, `entries/2026/2026-10-07--trip--${e.id}.json`), JSON.stringify(laptop));
+
+    const store = await open(root);
+    const j2 = await Journal.open(store);
+    const shown = (await j2.getEntry(e.id))!;
+    expect(shown.title).toBe('Base');
+    // The person retypes the laptop's title: the save goes to the laptop copy's file name.
+    await j2.saveEntry({ ...shown, title: 'Trip' });
+    const conflictFiles = (await files(root)).filter((f) => f.includes('(conflict '));
+    expect(conflictFiles).toHaveLength(1);
+    expect(JSON.parse(await readFile(join(root, conflictFiles[0]!), 'utf8')).tags).toEqual(['laptop-paragraph']);
+    expect(store.conflicts().map((c) => c.path)).toEqual(conflictFiles);
+  });
+
+  it('keeps a sealed copy and a plain one of the same entry instead of letting either delete the other', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Plain' }));
+    await j.enableEncryption('correct horse', FAST_KDF);
+    const sealedFile = `entries/${e.id}.json.enc`;
+    const sealed = await readFile(join(root, sealedFile));
+    await j.disableEncryption('correct horse');
+    // The laptop, still with the passcode on, saved this entry meanwhile: its sealed copy arrives late.
+    await writeFile(join(root, sealedFile), sealed);
+    const store = await open(root);
+    const j2 = await Journal.open(store);
+    await j2.saveEntry({ ...(await j2.getEntry(e.id))!, tags: ['after'] });
+    expect((await files(root)).some((f) => f.startsWith(`entries/${e.id} (conflict `) && f.endsWith('.json.enc'))).toBe(true);
   });
 
   it('deletes an entry’s photos with it when it’s deleted for good, and keeps photos other entries use', async () => {
