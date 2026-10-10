@@ -1,7 +1,6 @@
 import type { Root } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Journal } from '@logbook/core';
 import { FolderStore } from '@logbook/storage-fs';
 import { TauriFsBackend } from '@logbook/storage-fs/tauri';
@@ -9,15 +8,17 @@ import { journalFolder, routeLinks } from './bridge.ts';
 import { FolderSetup } from './FolderSetup.tsx';
 import { flushPendingSaves } from '../lib/pending-saves.ts';
 
-/** Longest the window waits for the last saves when closing; a stuck save mustn't keep it open. */
+/** Longest the page spends saving when the window closes (Rust gives up after 4 s regardless). */
 const CLOSE_WAIT_MS = 3000;
 
 /** The desktop app's start: the journal folder, chosen on first run, instead of browser storage. */
 export async function bootDesktop(root: Root, render: (journal: Journal) => void): Promise<void> {
   routeLinks();
+  let current: Journal | null = null;
+  saveBeforeClosing(() => current);
   const open = async () => {
     const journal = await Journal.open(await FolderStore.open(new TauriFsBackend()));
-    saveBeforeClosing(journal);
+    current = journal;
     render(journal);
   };
   let attempt = 0;
@@ -34,19 +35,14 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 
 /**
  * Closing the window, or quitting, right after typing: the editor saves 0.7 s after the last key,
- * and a closed window can't finish a save, so wait for it first (D86).
+ * and a closed window can't finish a save. Rust holds the close and asks here first (D86,
+ * src-tauri/src/lib.rs); before a journal is open there's nothing to save, so it answers at once.
  */
-function saveBeforeClosing(journal: Journal): void {
-  const flush = () =>
-    Promise.race([flushPendingSaves().then(() => journal.store.whenIdle?.()), new Promise((r) => setTimeout(r, CLOSE_WAIT_MS))]);
-  // With a listener, Tauri waits for it and then closes the window.
-  void getCurrentWindow().onCloseRequested(async () => {
-    await flush();
-  });
-  // Quitting the app (⌘Q on a Mac) asks first too: src-tauri/src/lib.rs.
-  void listen('logbook://quit-requested', async () => {
-    await flush();
-    await invoke('quit');
+function saveBeforeClosing(journal: () => Journal | null): void {
+  void listen('logbook://save-before-close', async () => {
+    const saved = flushPendingSaves().then(() => journal()?.store.whenIdle?.());
+    await Promise.race([saved, new Promise((r) => setTimeout(r, CLOSE_WAIT_MS))]);
+    await invoke('close_ready');
   });
 }
 

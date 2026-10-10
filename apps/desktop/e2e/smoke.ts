@@ -8,7 +8,7 @@
 // No test framework: plain WebDriver calls over fetch, so nothing else needs installing.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -149,7 +149,25 @@ try {
   s = await startApp();
   await until('the journal after closing', async () => (await bodyText(s)).includes('New entry'));
   check((await filesUnder(join(folder, 'entries'))).some((f) => f.includes('--closed-at-once--')), 'text typed just before closing the window is saved');
-  await wd('DELETE', `/session/${s}`);
+
+  // ── closing after switching to a folder that won't open (D86) ──
+  // Settings → "Open a different journal folder…" reloads the page onto the folder screen; the
+  // window must still close (the close is held in Rust, with a time limit).
+  const bad = join(home, 'NotAJournal');
+  await mkdir(bad, { recursive: true });
+  await writeFile(join(bad, 'logbook.json'), JSON.stringify({ format: 'something-else' }));
+  await run(s, `return window.__TAURI_INTERNALS__.invoke('use_journal_folder', { path: arguments[0] })`, [bad]);
+  await run(s, 'location.reload()');
+  await until('the folder screen with the reason', async () => (await bodyText(s)).includes("couldn't open"));
+  check(true, 'a folder that won\'t open shows the folder screen with the reason');
+  const asked = Date.now();
+  spawnSync('python3', [new URL('close-window.py', import.meta.url).pathname], { env });
+  const gone = await until('the window to close', async () => !(await wd('GET', `/session/${s}/window`).then(() => true, () => false)), 8_000).then(
+    () => true,
+    () => false,
+  );
+  check(gone, `the window still closes from there (${((Date.now() - asked) / 1000).toFixed(1)} s)`);
+  await wd('DELETE', `/session/${s}`).catch(() => undefined);
 } catch (err) {
   console.error('✗', (err as Error).message);
   if (process.env.SMOKE_DEBUG && lastSession) {

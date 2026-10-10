@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 
 struct AppState {
@@ -156,14 +157,105 @@ async fn save_file(request: Request<'_>, app: AppHandle) -> Result<Option<String
     Ok(Some(path.display().to_string()))
 }
 
-/// Quits once the window has saved what it was writing (see `run`).
-#[tauri::command]
-fn quit(app: AppHandle) {
-    app.exit(0);
+// ── closing and quitting (D86) ───────────────────────────────────────────────────────────────
+//
+// The editor saves 0.7 s after the last key, and a closed window can't finish a save. So a close
+// (the close button, ⌘W, Alt+F4) or a quit (the app's Quit item, ⌘Q) is held here: the page is
+// asked to save, and the window closes when it answers (`close_ready`) or after CLOSE_TIMEOUT,
+// whichever is first. The timeout lives here, not in the page, so a page that reloaded onto another
+// screen, or crashed, can't keep the window open.
+
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(4);
+/// A close or quit is under way: the page has been asked to save.
+static CLOSING: AtomicBool = AtomicBool::new(false);
+/// The app quits, rather than only the window closing, when the close finishes.
+static QUITTING: AtomicBool = AtomicBool::new(false);
+/// The close has been carried out; any later request goes straight through.
+static CLOSED: AtomicBool = AtomicBool::new(false);
+
+fn begin_close<R: Runtime>(window: &WebviewWindow<R>, quit: bool) {
+    if quit {
+        QUITTING.store(true, Ordering::SeqCst);
+    }
+    if CLOSING.swap(true, Ordering::SeqCst) {
+        return; // already asked; the timer is running
+    }
+    let _ = window.emit("logbook://save-before-close", ());
+    let window = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(CLOSE_TIMEOUT);
+        finish_close(&window);
+    });
 }
 
-/// Set once quitting has started, so the request to save first is sent only once.
-static QUITTING: AtomicBool = AtomicBool::new(false);
+fn finish_close<R: Runtime>(window: &WebviewWindow<R>) {
+    if CLOSED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if QUITTING.load(Ordering::SeqCst) {
+        window.app_handle().exit(0);
+    } else {
+        let _ = window.destroy();
+    }
+}
+
+/// The page has saved what it was writing: close now.
+#[tauri::command]
+fn close_ready(window: WebviewWindow) {
+    finish_close(&window);
+}
+
+/// The macOS menu bar: Tauri's usual one, except that Quit goes through `begin_close`. The stock
+/// Quit item ends the app at once (it never reaches Tauri's exit hook), losing the last edit.
+/// Logging out or shutting down with Logbook open still ends it without that chance.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn mac_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let quit = MenuItem::with_id(app, "quit", "Quit Logbook", true, Some("CmdOrCtrl+Q"))?;
+    let app_menu = Submenu::with_items(
+        app,
+        "Logbook",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
+    // Without an Edit menu, ⌘C, ⌘V and ⌘Z don't reach text fields on macOS.
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::fullscreen(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    Menu::with_items(app, &[&app_menu, &edit, &window])
+}
 
 /// Opens a web address in the default browser: links in entries, and Stripe's payment page.
 #[tauri::command]
@@ -201,7 +293,27 @@ pub fn run() {
                 other => (None, other),
             };
             app.manage(AppState { config_file, root: Mutex::new(root), missing });
+            #[cfg(target_os = "macos")]
+            app.set_menu(mac_menu(app.handle())?)?;
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "quit" {
+                match app.get_webview_window("main") {
+                    Some(window) => begin_close(&window, true),
+                    None => app.exit(0),
+                }
+            }
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if !CLOSED.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                        begin_close(&webview, false);
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             journal_folder,
@@ -216,25 +328,10 @@ pub fn run() {
             journal_list,
             save_file,
             open_url,
-            quit,
+            close_ready,
         ])
-        .build(tauri::generate_context!())
-        .expect("Logbook couldn't start")
-        .run(|app, event| {
-            // Quitting (⌘Q, logging out) with the window still open: it saves the last edits first
-            // and then calls `quit` (D86). Closing the window is handled by the window itself.
-            if let RunEvent::ExitRequested { api, code: None, .. } = &event {
-                if !app.webview_windows().is_empty() && !QUITTING.swap(true, Ordering::SeqCst) {
-                    api.prevent_exit();
-                    let _ = app.emit("logbook://quit-requested", ());
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_secs(5));
-                        app.exit(0);
-                    });
-                }
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("Logbook couldn't start");
 }
 
 #[cfg(test)]

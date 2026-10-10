@@ -16,6 +16,10 @@ use std::time::{Duration, Instant};
 
 /// How long a read waits for iCloud to bring an offloaded file back.
 const ICLOUD_WAIT: Duration = Duration::from_secs(30);
+/// After a download timed out (offline, most likely), later reads within this long don't wait:
+/// a journal with many offloaded files would otherwise stall for 30 s per file.
+const ICLOUD_QUIET: Duration = Duration::from_secs(120);
+static LAST_ICLOUD_TIMEOUT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 /// Joins a checked relative path (`/`-separated) onto the journal folder.
 pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -39,10 +43,19 @@ pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
 /// The file's bytes, or None when it doesn't exist. May wait for iCloud (see the module comment),
 /// so call it off the async runtime's worker threads.
 pub fn read(root: &Path, rel: &str) -> Result<Option<Vec<u8>>, String> {
-    read_with(root, rel, &icloud_download, ICLOUD_WAIT)
+    read_with(root, rel, &icloud_download, icloud_wait())
 }
 
-fn read_with(root: &Path, rel: &str, download: &dyn Fn(&Path), wait: Duration) -> Result<Option<Vec<u8>>, String> {
+/// The full wait, unless a download timed out a moment ago.
+fn icloud_wait() -> Duration {
+    let last = *LAST_ICLOUD_TIMEOUT.lock().unwrap_or_else(|e| e.into_inner());
+    match last {
+        Some(at) if at.elapsed() < ICLOUD_QUIET => Duration::ZERO,
+        _ => ICLOUD_WAIT,
+    }
+}
+
+fn read_with(root: &Path, rel: &str, download: &dyn Fn(&Path) -> bool, wait: Duration) -> Result<Option<Vec<u8>>, String> {
     let path = resolve(root, rel)?;
     if !materialize(&path, download, wait).map_err(|e| describe(rel, e))? {
         return Ok(None);
@@ -66,7 +79,7 @@ fn placeholder_for(name: &str) -> Option<&str> {
 }
 
 /// Whether `path` is on disk, after asking iCloud for it and waiting when only its placeholder is.
-fn materialize(path: &Path, download: &dyn Fn(&Path), wait: Duration) -> io::Result<bool> {
+fn materialize(path: &Path, download: &dyn Fn(&Path) -> bool, wait: Duration) -> io::Result<bool> {
     if path.exists() {
         return Ok(true);
     }
@@ -74,25 +87,38 @@ fn materialize(path: &Path, download: &dyn Fn(&Path), wait: Duration) -> io::Res
         Some(placeholder) if placeholder.exists() => {}
         _ => return Ok(false),
     }
-    download(path);
+    // Off a Mac, or when iCloud refuses: nothing will arrive, so don't wait for it.
+    if !download(path) {
+        return Err(io::Error::other("offloaded to iCloud Drive; open the journal on a Mac signed in to iCloud to download it"));
+    }
     let end = Instant::now() + wait;
-    while Instant::now() < end {
+    loop {
         if path.exists() {
             return Ok(true);
         }
+        if Instant::now() >= end {
+            break;
+        }
         thread::sleep(Duration::from_millis(100));
+    }
+    if !wait.is_zero() {
+        *LAST_ICLOUD_TIMEOUT.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
     }
     Err(io::Error::new(io::ErrorKind::TimedOut, "still downloading from iCloud Drive; try again in a moment"))
 }
 
-fn icloud_download(path: &Path) {
+/// Asks iCloud Drive for a local copy; false when that isn't possible here.
+fn icloud_download(path: &Path) -> bool {
     #[cfg(target_os = "macos")]
     {
-        // `brctl download` asks iCloud Drive for a local copy (macOS 10.15 and later).
-        let _ = std::process::Command::new("brctl").arg("download").arg(path).status();
+        // `brctl download` (macOS 10.15 and later) starts the download and returns.
+        std::process::Command::new("brctl").arg("download").arg(path).status().is_ok_and(|s| s.success())
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = path;
+    {
+        let _ = path;
+        false
+    }
 }
 
 /// Writes to a temporary file beside the target, flushes it to disk, then renames it over the
@@ -123,7 +149,7 @@ pub fn write_atomic(target: &Path, data: &[u8]) -> io::Result<()> {
 
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
     let (a, b) = (resolve(root, from)?, resolve(root, to)?);
-    materialize(&a, &icloud_download, ICLOUD_WAIT).map_err(|e| describe(from, e))?;
+    materialize(&a, &icloud_download, icloud_wait()).map_err(|e| describe(from, e))?;
     if let Some(dir) = b.parent() {
         fs::create_dir_all(dir).map_err(|e| describe(to, e))?;
     }
@@ -232,14 +258,22 @@ mod tests {
         );
 
         // Reading asks iCloud for the file and waits for it to arrive.
-        let arrive = |p: &Path| fs::write(p, b"{\"title\":\"Trip\"}").unwrap();
+        let arrive = |p: &Path| {
+            fs::write(p, b"{\"title\":\"Trip\"}").unwrap();
+            true
+        };
         let got = read_with(root, "entries/2025/2025-03-01--trip--abc.json", &arrive, Duration::from_secs(2)).unwrap();
         assert_eq!(got.as_deref(), Some(&b"{\"title\":\"Trip\"}"[..]));
 
         // A download that doesn't come in time is an error, never "no such file".
         fs::write(root.join("entries/2025/.2025-03-03--late--ghi.json.icloud"), b"placeholder").unwrap();
-        let err = read_with(root, "entries/2025/2025-03-03--late--ghi.json", &|_| {}, Duration::from_millis(300)).unwrap_err();
+        let err = read_with(root, "entries/2025/2025-03-03--late--ghi.json", &|_| true, Duration::from_millis(300)).unwrap_err();
         assert!(err.contains("still downloading"), "{err}");
+
+        // Where no download can start (not a Mac), it says so at once instead of waiting.
+        let started = Instant::now();
+        let err = read_with(root, "entries/2025/2025-03-03--late--ghi.json", &|_| false, Duration::from_secs(30)).unwrap_err();
+        assert!(err.contains("offloaded to iCloud Drive") && started.elapsed() < Duration::from_secs(1), "{err}");
 
         // Deleting an offloaded file deletes its placeholder.
         remove(root, "entries/2025/2025-03-03--late--ghi.json").unwrap();

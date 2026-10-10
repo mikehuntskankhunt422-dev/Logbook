@@ -16,7 +16,7 @@ The first preview of Logbook's desktop app: a private journal kept as files in a
 
 - Choose where your journal lives (`Documents/Logbook` is suggested). Each entry is a readable file, and photos, videos and recordings are ordinary files beside them. The folder can sit in OneDrive, Dropbox or iCloud Drive.
 - Write entries with text, photos, galleries and collages, video, audio, files, links and YouTube or Vimeo videos; moods, covers and tags; calendar, "On this day", search and streaks.
-- Backups to a single file, restore, and a passcode lock that encrypts every file in the folder.
+- Backups to a single file, restore, and a passcode lock that encrypts your entries and media in the folder.
 - The book builder with its page-by-page preview.
 
 **Not in this preview yet**

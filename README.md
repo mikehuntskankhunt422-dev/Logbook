@@ -46,7 +46,7 @@ Logbook/
 
 **Backups.** The folder is your journal, so a copy of the folder is a backup. Logbook can also save one backup file: **Settings → Backups → Save a backup**, and it reminds you when it's been a while. **Restore from backup** brings one back, merged with what you have or replacing it. A backup unzipped into an empty folder also opens as a journal.
 
-**Passcode lock.** **Settings → Passcode lock** encrypts every file in the folder, so entries can't be read without your passcode, and locks Logbook after a few idle minutes. A forgotten passcode can't be recovered.
+**Passcode lock.** **Settings → Passcode lock** encrypts your entries, photos and other media in the folder, so they can't be read without your passcode, and locks Logbook after a few idle minutes. A forgotten passcode can't be recovered. Copies a sync service set aside as conflicts are kept as they were.
 
 **Printed books.** **Book** lets you pick a date range or individual entries, the size (6×9 or 8.5×11 inches), paperback or hardcover, and a matte or gloss cover, and shows every page as it will be printed. Ordering, with a proof to check, the price, delivery and payment through Stripe, opens in an update; books are printed and posted by [Lulu](https://www.lulu.com).
 
