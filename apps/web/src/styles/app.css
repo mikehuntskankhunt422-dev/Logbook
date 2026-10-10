@@ -1649,3 +1649,21 @@ mark {
   background: #fff;
   max-width: 100%;
 }
+
+/* Desktop app: choosing the journal folder (src/desktop/FolderSetup.tsx). */
+.folder-setup {
+  width: min(520px, 100%);
+}
+.folder-setup-actions {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 12px;
+}
+.folder-setup-actions .btn {
+  overflow-wrap: anywhere;
+}
+.folder-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
