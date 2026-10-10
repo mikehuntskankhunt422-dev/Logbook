@@ -44,7 +44,7 @@ const ENTRY_SEALED = new RegExp(`^entries/(${ID})\\.json\\.enc$`);
 const MEDIA_META = new RegExp(`^media/[^/]+/(${ID})\\.meta\\.json(\\.enc)?$`);
 const MEDIA_DATA = new RegExp(`^media/[^/]+/(${ID})\\.(?!meta\\.)([a-z0-9]{1,8})(\\.enc)?$`);
 /** Files the operating system or sync tools leave around, and our own temporary files. */
-const IGNORED = /(^|\/)(\.DS_Store|desktop\.ini|Thumbs\.db|\.dropbox[^/]*|~\$[^/]*)$|\.logbook-tmp-[^/]*$/i;
+const IGNORED = /(^|\/)(\.DS_Store|desktop\.ini|Thumbs\.db|\.localized|Icon\r|\.dropbox[^/]*|~\$[^/]*|\._[^/]*)$|\.logbook-tmp-[^/]*$/i;
 
 export interface ConflictFile {
   path: string;
