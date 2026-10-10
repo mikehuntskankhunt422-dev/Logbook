@@ -13,12 +13,18 @@ import { assertRelativePath, type FsBackend } from './backend.ts';
  *   media/k3/<id>.meta.json + <id>.jpg                  media and their details
  *   media/k3/<id>.meta.json.enc + <id>.bin.enc          the same with a passcode
  *   .logbook/book-draft.json, book-orders.json          the book builder's state; not part of backups
+ *   .logbook/vault.json, previous-vault.json            copies of the passcode's key (D85)
  *
  * The store keeps an index from record ID to file, built by scanning the folder. A file renamed
  * by another computer (an entry's new title) can briefly leave two files for one ID: reads take
  * the higher `rev`, and the next save removes the other. Files a sync tool made when two
  * computers changed the same file ("… (conflicted copy).json", "…-LAPTOP.json") don't match the
- * naming scheme; they are left alone and listed by `conflicts()`.
+ * naming scheme; they are left alone and listed by `conflicts()`, as is the losing copy when two
+ * files for one entry have the same `rev` but different content.
+ *
+ * The passcode's key (the vault) is never lost to a bad file (D85): a `logbook.json` that exists
+ * but can't be read is never rewritten, the vault is mirrored in `.logbook/vault.json`, and turning
+ * the passcode off keeps the old key as `.logbook/previous-vault.json`.
  */
 
 export const LOGBOOK_FILE = 'logbook.json';
@@ -29,6 +35,8 @@ const KEY_FILES: Record<'bookDraft' | 'bookOrders', string> = {
   bookDraft: '.logbook/book-draft.json',
   bookOrders: '.logbook/book-orders.json',
 };
+const VAULT_MIRROR = '.logbook/vault.json';
+const PREVIOUS_VAULT = '.logbook/previous-vault.json';
 
 const ID = '[0-9a-z]+';
 const ENTRY_PLAIN = new RegExp(`^(?:entries|trash)/(?:\\d{4}/)?[^/]*--(${ID})\\.json$`);
@@ -43,6 +51,19 @@ export interface ConflictFile {
   /** The record the file probably belongs to, if its name still contains a known ID. */
   id: string | null;
   kind: 'entry' | 'media';
+}
+
+/** A journal file that exists but can't be read: Logbook refuses to change it rather than guess. */
+export class DamagedFileError extends Error {
+  constructor(
+    readonly path: string,
+    cause: unknown,
+  ) {
+    super(
+      `${path} in your journal folder can't be read (${cause instanceof Error ? cause.message : String(cause)}). If the folder is still syncing, wait for it to finish and open Logbook again. Otherwise restore the file from a backup.`,
+    );
+    this.name = 'DamagedFileError';
+  }
 }
 
 interface LogbookFile {
@@ -64,6 +85,8 @@ export class FolderStore implements RecordStore {
   private blobs = new Map<string, string>();
   private strays: string[] = [];
   private unreadable = new Set<string>();
+  /** The losing copies of same-`rev` duplicates with different content: kept, and reported as conflicts. */
+  private held = new Set<string>();
   /** Every change runs in order, so two saves of one entry can't interleave their renames. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -76,7 +99,26 @@ export class FolderStore implements RecordStore {
     if (lb && lb.format !== FOLDER_FORMAT) throw new Error(`${LOGBOOK_FILE} in this folder isn't a Logbook journal.`);
     if (lb && lb.version > FOLDER_VERSION) throw new Error('This journal was saved by a newer version of Logbook. Update the app first.');
     await store.rescan();
+    const mirror = await store.readJson<StoreKeys['vault']>(VAULT_MIRROR);
+    if (lb?.vault) {
+      // Journals from before the mirror, or a key changed on another computer: bring the copy in step.
+      if (JSON.stringify(mirror) !== JSON.stringify(lb.vault)) await fs.write(VAULT_MIRROR, jsonBytes(lb.vault));
+    } else if (!lb && !mirror && store.hasSealedFiles()) {
+      throw new Error(
+        `This journal is locked with a passcode, but its key file (${LOGBOOK_FILE}) is missing from the folder. If the folder is still syncing, wait for it to finish and open Logbook again.`,
+      );
+    }
     return store;
+  }
+
+  /** Re-reads the folder (RecordStore.refresh): another computer may have changed it. */
+  refresh(): Promise<void> {
+    return this.rescan();
+  }
+
+  /** Resolves once every change asked for so far is on disk. */
+  whenIdle(): Promise<void> {
+    return this.queue.then(() => undefined);
   }
 
   /** Rebuilds the index from the folder: after a sync tool or another computer changed it. */
@@ -102,6 +144,12 @@ export class FolderStore implements RecordStore {
     this.blobs = blobs;
     this.strays = strays;
     this.unreadable.clear();
+    this.held.clear();
+  }
+
+  private hasSealedFiles(): boolean {
+    for (const table of [this.entries, this.media]) for (const paths of table.values()) if (paths.some((p) => p.endsWith('.enc'))) return true;
+    return [...this.blobs.values()].some((p) => p.endsWith('.enc'));
   }
 
   /**
@@ -109,7 +157,7 @@ export class FolderStore implements RecordStore {
    * tool made when two computers changed the same file. Nothing reads them; a person decides.
    */
   conflicts(): ConflictFile[] {
-    return this.strays.map((path) => {
+    return [...this.strays, ...this.held].map((path) => {
       const ids = [...path.matchAll(/[0-9a-z]{12}/g)].map((m) => m[0]);
       const known = path.startsWith('media/') ? this.media : this.entries;
       return { path, id: ids.find((id) => known.has(id)) ?? null, kind: path.startsWith('media/') ? 'media' : 'entry' };
@@ -131,12 +179,36 @@ export class FolderStore implements RecordStore {
   }
 
   async get<S extends StoreName>(store: S, id: string): Promise<StoreRecords[S] | undefined> {
-    let best: StoreRecords[S] | undefined;
-    for (const path of this.table(store).get(id) ?? []) {
-      const r = await this.readJson<StoreRecords[S]>(path);
-      if (r && (!best || rev(r) > rev(best))) best = r;
+    const found = await this.read(store, id);
+    // Every file the index knew is gone: another computer renamed, trashed or restored the entry.
+    // Look again, so a save's revision check sees that computer's version instead of nothing.
+    if (found.gone) {
+      await this.rescan();
+      return (await this.read(store, id)).best;
     }
-    return best;
+    return found.best;
+  }
+
+  /** The newest copy of a record (highest `rev`), and whether every indexed file for it has gone. */
+  private async read<S extends StoreName>(store: S, id: string): Promise<{ best: StoreRecords[S] | undefined; gone: boolean }> {
+    const paths = this.table(store).get(id) ?? [];
+    let best: StoreRecords[S] | undefined;
+    let bestText = '';
+    let missing = 0;
+    const tied: string[] = [];
+    for (const path of paths) {
+      const r = await this.readJson<StoreRecords[S]>(path, () => missing++);
+      if (!r) continue;
+      const text = JSON.stringify(r);
+      if (!best || rev(r) > rev(best)) {
+        best = r;
+        bestText = text;
+        tied.length = 0;
+      } else if (rev(r) === rev(best) && text !== bestText) tied.push(path);
+    }
+    // Same revision, different content: two computers edited the same version. Keep both.
+    for (const path of tied) this.held.add(path);
+    return { best, gone: paths.length > 0 && missing === paths.length };
   }
 
   put<S extends StoreName>(store: S, record: StoreRecords[S]): Promise<void> {
@@ -145,7 +217,14 @@ export class FolderStore implements RecordStore {
       assertRelativePath(path);
       await this.fs.write(path, jsonBytes(record));
       const table = this.table(store);
-      for (const old of table.get(record.id) ?? []) if (old !== path) await this.fs.remove(old);
+      for (const old of table.get(record.id) ?? []) {
+        if (old === path) continue;
+        if (this.held.has(old)) {
+          // The other computer's edit of the same version: left in place for a person to compare.
+          this.held.delete(old);
+          this.strays.push(old);
+        } else await this.fs.remove(old);
+      }
       table.set(record.id, [path]);
       this.unreadable.delete(path);
       if (store === 'media') await this.renameBlobFor(record as StoreRecords['media']);
@@ -190,18 +269,28 @@ export class FolderStore implements RecordStore {
   }
 
   async getKey<K extends keyof StoreKeys>(key: K): Promise<StoreKeys[K] | undefined> {
-    if (key === 'settings' || key === 'vault') return (await this.readLogbook())?.[key as 'settings' | 'vault'] as StoreKeys[K] | undefined;
+    if (key === 'settings') return (await this.readLogbook())?.settings as StoreKeys[K] | undefined;
+    // logbook.json missing (not synced yet, offloaded) falls back to the mirror; damaged throws.
+    if (key === 'vault') return ((await this.readLogbook())?.vault ?? (await this.readJson<StoreKeys['vault']>(VAULT_MIRROR))) as StoreKeys[K] | undefined;
     return (await this.readJson(KEY_FILES[key as 'bookDraft' | 'bookOrders'])) as StoreKeys[K] | undefined;
   }
 
   setKey<K extends keyof StoreKeys>(key: K, value: StoreKeys[K] | undefined): Promise<void> {
     return this.serial(async () => {
       if (key === 'settings' || key === 'vault') {
-        const lb: LogbookFile = (await this.readLogbook()) ?? { format: FOLDER_FORMAT, version: FOLDER_VERSION };
+        // Throws on a damaged logbook.json: rewriting it could drop the vault for good (D85).
+        const existing = await this.readLogbook();
+        const mirror = await this.readJson<StoreKeys['vault']>(VAULT_MIRROR);
+        const lb: LogbookFile = existing ?? { format: FOLDER_FORMAT, version: FOLDER_VERSION, ...(mirror ? { vault: mirror } : {}) };
         const field = key as 'settings' | 'vault';
         if (value === undefined) delete lb[field];
         else (lb as unknown as Record<string, unknown>)[field] = value;
         await this.fs.write(LOGBOOK_FILE, jsonBytes(lb));
+        if (key === 'vault') {
+          if (value !== undefined) await this.fs.write(VAULT_MIRROR, jsonBytes(value));
+          // The passcode is off: keep the old key, in case a file sealed with it turns up later.
+          else if (mirror) await this.fs.rename(VAULT_MIRROR, PREVIOUS_VAULT);
+        }
         return;
       }
       const path = KEY_FILES[key as 'bookDraft' | 'bookOrders'];
@@ -239,13 +328,40 @@ export class FolderStore implements RecordStore {
     this.blobs.set(meta.id, want);
   }
 
+  /** logbook.json, or undefined when there is none. Throws DamagedFileError when it can't be read. */
   private async readLogbook(): Promise<LogbookFile | undefined> {
-    return this.readJson<LogbookFile>(LOGBOOK_FILE);
+    let data: Uint8Array | undefined;
+    try {
+      data = await this.fs.read(LOGBOOK_FILE);
+    } catch (err) {
+      throw new DamagedFileError(LOGBOOK_FILE, err);
+    }
+    if (!data) return undefined;
+    try {
+      const lb = JSON.parse(decoder.decode(data)) as LogbookFile;
+      if (typeof lb !== 'object' || lb === null || Array.isArray(lb)) throw new Error('not a settings file');
+      return lb;
+    } catch (err) {
+      throw new DamagedFileError(LOGBOOK_FILE, err);
+    }
   }
 
-  private async readJson<T>(path: string): Promise<T | undefined> {
-    const data = await this.fs.read(path);
-    if (!data) return undefined;
+  /**
+   * A record file's JSON. Undefined when it's missing (`onMissing` is told) or can't be read or
+   * parsed (a sync in progress, damage), which `unreadableFiles()` then lists.
+   */
+  private async readJson<T>(path: string, onMissing?: () => void): Promise<T | undefined> {
+    let data: Uint8Array | undefined;
+    try {
+      data = await this.fs.read(path);
+    } catch {
+      this.unreadable.add(path);
+      return undefined;
+    }
+    if (!data) {
+      onMissing?.();
+      return undefined;
+    }
     try {
       const value = JSON.parse(decoder.decode(data)) as T;
       this.unreadable.delete(path);

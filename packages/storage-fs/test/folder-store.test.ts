@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { unzipSync } from 'fflate';
-import { exportBackup, Journal, MemoryStore, type Entry } from '@logbook/core';
-import { assertRelativePath, FolderStore } from '../src/index.ts';
+import { ConflictError, exportBackup, Journal, MemoryStore, VaultChangedError, type Entry } from '@logbook/core';
+import { assertRelativePath, DamagedFileError, FolderStore } from '../src/index.ts';
 import { NodeFsBackend } from '../src/node.ts';
 import { recordStoreContract } from '../../core/test/contract.ts';
 import { FAST_KDF, pngBytes } from '../../core/test/helpers.ts';
@@ -78,7 +78,9 @@ describe('FolderStore files', () => {
 
     await j.enableEncryption('correct horse', FAST_KDF);
     const id2 = media.id.slice(0, 2);
-    expect(await files(root)).toEqual([`entries/${e.id}.json.enc`, 'logbook.json', `media/${id2}/${media.id}.bin.enc`, `media/${id2}/${media.id}.meta.json.enc`].sort());
+    expect(await files(root)).toEqual(
+      ['.logbook/vault.json', `entries/${e.id}.json.enc`, 'logbook.json', `media/${id2}/${media.id}.bin.enc`, `media/${id2}/${media.id}.meta.json.enc`].sort(),
+    );
     const sealed = await readFile(join(root, 'entries', `${e.id}.json.enc`), 'utf8');
     expect(sealed).not.toContain('Secret');
 
@@ -90,7 +92,10 @@ describe('FolderStore files', () => {
     expect(new Uint8Array(await (await j2.getMediaBlob(media.id))!.arrayBuffer())).toEqual(pngBytes());
 
     await j2.disableEncryption('correct horse');
-    expect(await files(root)).toEqual([`entries/2026/2026-10-07--secret--${e.id}.json`, 'logbook.json', `media/${id2}/${media.id}.meta.json`, `media/${id2}/${media.id}.png`].sort());
+    // The old key is kept aside (D85), in case a file sealed with it turns up from another computer.
+    expect(await files(root)).toEqual(
+      ['.logbook/previous-vault.json', `entries/2026/2026-10-07--secret--${e.id}.json`, 'logbook.json', `media/${id2}/${media.id}.meta.json`, `media/${id2}/${media.id}.png`].sort(),
+    );
   });
 
   it('opens a backup zip unzipped into a folder as a working journal', async () => {
@@ -158,6 +163,126 @@ describe('FolderStore files', () => {
     const root = await folder();
     await writeFile(join(root, 'logbook.json'), JSON.stringify({ format: 'something-else' }));
     await expect(open(root)).rejects.toThrow(/isn't a Logbook journal/);
+  });
+});
+
+describe('FolderStore keeps the passcode key safe (D85)', () => {
+  async function encrypted() {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Secret' }));
+    await j.enableEncryption('correct horse', FAST_KDF);
+    return { root, j, e };
+  }
+
+  it('refuses to open a folder whose logbook.json is damaged, and never rewrites it', async () => {
+    const { root, j } = await encrypted();
+    const good = await readFile(join(root, 'logbook.json'), 'utf8');
+    // Damaged while the journal is open (a hand edit with a typo, a truncated file after a crash).
+    await writeFile(join(root, 'logbook.json'), good.slice(0, 40));
+    await expect(j.updateSettings({ theme: 'dark' })).rejects.toThrow(DamagedFileError);
+    expect(await readFile(join(root, 'logbook.json'), 'utf8')).toBe(good.slice(0, 40));
+    await expect(open(root)).rejects.toThrow(/logbook\.json in your journal folder can't be read/);
+    await writeFile(join(root, 'logbook.json'), '');
+    await expect(open(root)).rejects.toThrow(DamagedFileError);
+  });
+
+  it('opens with the mirrored key when logbook.json is missing, and puts the key back on the next save', async () => {
+    const { root, e } = await encrypted();
+    await rm(join(root, 'logbook.json'));
+    const j = await Journal.open(await open(root));
+    expect(j.isLocked).toBe(true);
+    await j.unlock('correct horse');
+    expect((await j.getEntry(e.id))?.title).toBe('Secret');
+    await j.updateSettings({ theme: 'dark' });
+    expect(JSON.parse(await readFile(join(root, 'logbook.json'), 'utf8'))).toMatchObject({ settings: { theme: 'dark' }, vault: { v: 1 } });
+  });
+
+  it('refuses to open an encrypted folder with no key file at all, rather than show it as empty', async () => {
+    const { root } = await encrypted();
+    await rm(join(root, 'logbook.json'));
+    await rm(join(root, '.logbook/vault.json'));
+    await expect(open(root)).rejects.toThrow(/key file \(logbook\.json\) is missing/);
+  });
+
+  it('turns the passcode off including an entry another computer wrote meanwhile', async () => {
+    const { root, j } = await encrypted();
+    // A second computer, same folder: adds a sealed entry after this one opened.
+    const other = await Journal.open(await open(root));
+    await other.unlock('correct horse');
+    const theirs = await other.saveEntry(other.newEntry({ date: '2026-10-08', title: 'From the laptop' }));
+    await j.disableEncryption('correct horse');
+    const reopened = await Journal.open(await open(root));
+    expect(reopened.isEncrypted).toBe(false);
+    expect((await reopened.getEntry(theirs.id))?.title).toBe('From the laptop');
+  });
+
+  it('keeps the passcode on while a file sealed with a different key remains', async () => {
+    const { root, j } = await encrypted();
+    const elsewhere = await folder();
+    const stranger = await Journal.open(await open(elsewhere));
+    const s = await stranger.saveEntry(stranger.newEntry({ title: 'Other key' }));
+    await stranger.enableEncryption('another passcode', FAST_KDF);
+    await mkdir(join(root, 'entries'), { recursive: true });
+    await writeFile(join(root, 'entries', `${s.id}.json.enc`), await readFile(join(elsewhere, 'entries', `${s.id}.json.enc`)));
+
+    await expect(j.disableEncryption('correct horse')).rejects.toThrow(/still encrypted/);
+    expect(j.isEncrypted).toBe(true);
+    expect(JSON.parse(await readFile(join(root, 'logbook.json'), 'utf8')).vault).toBeDefined();
+  });
+
+  it('follows a passcode turned off on another computer: unlock adopts it, and an unlocked window stops sealing', async () => {
+    const { root } = await encrypted();
+    const locked = await Journal.open(await open(root));
+    const unlocked = await Journal.open(await open(root));
+    await unlocked.unlock('correct horse');
+    const laptop = await Journal.open(await open(root));
+    await laptop.unlock('correct horse');
+    await laptop.disableEncryption('correct horse');
+
+    await expect(unlocked.saveEntry(unlocked.newEntry({ title: 'Would be sealed with a dropped key' }))).rejects.toThrow(VaultChangedError);
+    await locked.unlock('anything');
+    expect(locked.isEncrypted).toBe(false);
+    const saved = await locked.saveEntry(locked.newEntry({ date: '2026-10-09', title: 'Plain now' }));
+    expect(await files(root)).toContain(`entries/2026/2026-10-09--plain-now--${saved.id}.json`);
+  });
+});
+
+describe('FolderStore with another computer on the same folder', () => {
+  it('never deletes photos while tidying up: entries using them may not have synced yet', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const m = await j.addMedia(new Blob([pngBytes()], { type: 'image/png' }), { name: 'beach.png' });
+    // The entry that uses the photo hasn't arrived on this computer yet.
+    expect(await j.collectGarbage()).toBe(0);
+    expect(await j.getMediaMeta(m.id)).toBeDefined();
+  });
+
+  it('sees an entry another computer renamed, so a stale save is a conflict instead of a silent overwrite', async () => {
+    const root = await folder();
+    const desktop = await Journal.open(await open(root));
+    const e = await desktop.saveEntry(desktop.newEntry({ date: '2026-10-07', title: 'Trip' }));
+    const laptop = await Journal.open(await open(root));
+    await laptop.saveEntry({ ...(await laptop.getEntry(e.id))!, title: 'Trip to Rome', tags: ['italy'] });
+
+    await expect(desktop.saveEntry({ ...e, title: 'Trip' }, { expectedRev: e.rev })).rejects.toThrow(ConflictError);
+    expect((await desktop.getEntry(e.id))?.title).toBe('Trip to Rome');
+  });
+
+  it('keeps both copies when two computers saved the same version differently, and lists the other as a conflict', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Base' }));
+    const theirs: Entry = { ...e, title: 'Laptop edit', rev: e.rev };
+    const theirPath = `entries/2026/2026-10-07--laptop-edit--${e.id}.json`;
+    await writeFile(join(root, theirPath), JSON.stringify(theirs));
+
+    const store = await open(root);
+    const j2 = await Journal.open(store);
+    const shown = (await j2.getEntry(e.id))!;
+    await j2.saveEntry({ ...shown, tags: ['kept'] });
+    expect(await files(root)).toContain(theirPath);
+    expect(store.conflicts().map((c) => c.path)).toContain(shown.title === 'Base' ? theirPath : `entries/2026/2026-10-07--base--${e.id}.json`);
   });
 });
 

@@ -29,6 +29,18 @@ export type BookOrderRef = z.infer<typeof bookOrderRefSchema>;
 /** Only the most recent orders are kept; older ones can be looked up from their emails (M4). */
 export const MAX_BOOK_ORDERS = 20;
 
+/**
+ * The passcode was turned off, on, or changed somewhere else (another computer sharing the journal
+ * folder, or another window) since this window read it. Sealing with the old key would make the
+ * entry unreadable, so the write is refused until Logbook is restarted.
+ */
+export class VaultChangedError extends Error {
+  constructor() {
+    super('The passcode was changed on another computer or in another window. Restart Logbook to keep writing.');
+    this.name = 'VaultChangedError';
+  }
+}
+
 export class LockedError extends Error {
   constructor() {
     super('The journal is locked.');
@@ -89,8 +101,24 @@ export class Journal {
 
   async unlock(passcode: string): Promise<void> {
     if (!this.vault) return;
-    this.cipher = await openVault(this.vault, passcode);
+    // Another computer may have turned the passcode off or changed it while this one was locked.
+    const stored = await this.store.getKey('vault');
+    if (!stored) {
+      this.vault = undefined;
+      this.cipher = null;
+      this.emit('lock');
+      return;
+    }
+    this.cipher = await openVault(stored, passcode);
+    this.vault = stored;
     this.emit('lock');
+  }
+
+  /** The cipher to seal with, after checking the stored vault is still the one it came from. */
+  private async sealer(): Promise<Cipher> {
+    const stored = await this.store.getKey('vault');
+    if (!this.cipher || JSON.stringify(stored) !== JSON.stringify(this.vault)) throw new VaultChangedError();
+    return this.cipher;
   }
 
   lock(): void {
@@ -122,6 +150,8 @@ export class Journal {
   async disableEncryption(passcode: string): Promise<void> {
     if (!this.vault) return;
     const cipher = await openVault(this.vault, passcode); // throws WrongPasscodeError
+    // On a shared folder, include what other computers wrote since this one last looked.
+    await this.store.refresh?.();
     this.cipher = cipher;
     const entries = await this.readAllEntries(true);
     const media = await this.listMediaMeta();
@@ -141,6 +171,15 @@ export class Journal {
       for (const [id, b] of blobs) await this.store.putBlob(id, b);
       await this.store.setKey('bookDraft', draft);
       await this.store.setKey('bookOrders', orders.length ? orders : undefined);
+      // Never drop the key while anything is still sealed with it (a file that arrived meanwhile,
+      // or one this passcode can't open): it would stay unreadable for good.
+      await this.store.refresh?.();
+      const left = [...(await this.store.all('entries')), ...(await this.store.all('media'))].filter(isSealed).length;
+      if (left) {
+        throw new Error(
+          `${left} ${left === 1 ? 'entry or photo is' : 'entries or photos are'} still encrypted (just synced from another computer, or locked with a different passcode). The passcode stays on; try again in a moment.`,
+        );
+      }
       await this.store.setKey('vault', undefined);
     } catch (err) {
       this.vault = vault;
@@ -194,7 +233,7 @@ export class Journal {
   async saveBookDraft(draft: BookOptions): Promise<void> {
     this.assertUnlocked();
     const value = bookOptionsSchema.parse(draft);
-    await this.store.setKey('bookDraft', this.cipher ? await this.cipher.sealJson('book', 'draft', value) : value);
+    await this.store.setKey('bookDraft', this.cipher ? await (await this.sealer()).sealJson('book', 'draft', value) : value);
   }
 
   // ── print orders ──────────────────────────────────────────────────────────────────────────────
@@ -227,7 +266,7 @@ export class Journal {
   }
 
   private async writeBookOrders(orders: BookOrderRef[]): Promise<void> {
-    await this.store.setKey('bookOrders', this.cipher ? await this.cipher.sealJson('book', 'orders', orders) : orders);
+    await this.store.setKey('bookOrders', this.cipher ? await (await this.sealer()).sealJson('book', 'orders', orders) : orders);
   }
 
   // ── settings ──────────────────────────────────────────────────────────────────────────────────
@@ -334,7 +373,7 @@ export class Journal {
   }
 
   private async writeEntry(entry: Entry): Promise<void> {
-    const rec = this.cipher ? await this.cipher.sealJson('entry', entry.id, entry) : entry;
+    const rec = this.cipher ? await (await this.sealer()).sealJson('entry', entry.id, entry) : entry;
     await this.store.put('entries', rec);
   }
 
@@ -427,13 +466,13 @@ export class Journal {
   }
 
   private async writeMediaMeta(meta: MediaMeta): Promise<void> {
-    const rec = this.cipher ? await this.cipher.sealJson('media', meta.id, meta) : meta;
+    const rec = this.cipher ? await (await this.sealer()).sealJson('media', meta.id, meta) : meta;
     await this.store.put('media', rec);
   }
 
   private async writeBlob(id: string, blob: Blob): Promise<void> {
     if (!this.cipher) return this.store.putBlob(id, blob);
-    const sealed = await this.cipher.sealBytes(id, new Uint8Array(await blob.arrayBuffer()));
+    const sealed = await (await this.sealer()).sealBytes(id, new Uint8Array(await blob.arrayBuffer()));
     await this.store.putBlob(id, new Blob([sealed], { type: 'application/octet-stream' }));
   }
 
@@ -472,8 +511,14 @@ export class Journal {
     this.emit('media');
   }
 
-  /** Deletes media that no entry (including trashed ones) references, plus their derived files. */
+  /**
+   * Deletes media that no entry (including trashed ones) references, plus their derived files.
+   * Not on a folder journal (D85): there the entries this computer can see are never known to be
+   * all of them (a sync still arriving, a conflict copy, a file another computer just moved), and
+   * deleting a photo some unseen entry uses would delete it on every computer.
+   */
   async collectGarbage(): Promise<number> {
+    if (this.store.kind === 'filesystem') return 0;
     const used = new Set<string>();
     for (const e of await this.readAllEntries(true)) for (const id of referencedMediaIds(e)) used.add(id);
     const all = await this.listMediaMeta();
