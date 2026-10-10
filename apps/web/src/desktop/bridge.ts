@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { announce } from '../app/toasts.tsx';
 
 /** The desktop app's own commands (apps/desktop/src-tauri/src/lib.rs). Desktop build only. */
 
@@ -48,20 +49,24 @@ export function openExternal(url: string): Promise<void> {
 /**
  * Links in a desktop window: web links open in the browser instead of replacing the app, and
  * downloads (attachments) go through a save dialog, which a webview doesn't offer by itself.
+ * Links inside text being edited stay put, as in a browser: a click there places the cursor.
  */
 export function routeLinks(): void {
   document.addEventListener('click', (e) => {
     const a = (e.target as Element | null)?.closest?.('a');
-    if (!a || e.defaultPrevented) return;
+    if (!a || e.defaultPrevented || a.closest('[contenteditable="true"]')) return;
     const href = a.getAttribute('href') ?? '';
     if (a.hasAttribute('download') && href.startsWith('blob:')) {
       e.preventDefault();
+      const name = a.getAttribute('download') || 'file';
       void fetch(href)
         .then((r) => r.blob())
-        .then((b) => saveFile(b, a.getAttribute('download') || 'file'));
+        .then((b) => saveFile(b, name))
+        .then((where) => where && announce(`Saved ${where}`))
+        .catch((err: unknown) => announce(`Couldn't save ${name}: ${err instanceof Error ? err.message : String(err)}`));
     } else if (/^(https?:|mailto:)/i.test(href) && new URL(href, location.href).origin !== location.origin) {
       e.preventDefault();
-      void openExternal(href);
+      void openExternal(href).catch((err: unknown) => announce(`Couldn't open the link: ${String(err)}`));
     }
   });
 }

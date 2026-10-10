@@ -2,10 +2,20 @@
 //! (packages/storage-fs/src/tauri.ts). Every path is relative to the folder and checked the same
 //! way as `assertRelativePath` in packages/storage-fs/src/backend.ts, so nothing outside it can be
 //! read or written.
+//!
+//! iCloud Drive on macOS 13 and earlier replaces a file it has offloaded to save space with a hidden
+//! placeholder, `.<name>.icloud`, until it's downloaded again (macOS 14 keeps the real name and
+//! downloads on read). The journal would lose sight of those entries and photos, so `list` reports a
+//! placeholder under its real name and `read` asks iCloud for the file and waits for it.
 
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// How long a read waits for iCloud to bring an offloaded file back.
+const ICLOUD_WAIT: Duration = Duration::from_secs(30);
 
 /// Joins a checked relative path (`/`-separated) onto the journal folder.
 pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -26,13 +36,63 @@ pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(out)
 }
 
-/// The file's bytes, or None when it doesn't exist.
+/// The file's bytes, or None when it doesn't exist. May wait for iCloud (see the module comment),
+/// so call it off the async runtime's worker threads.
 pub fn read(root: &Path, rel: &str) -> Result<Option<Vec<u8>>, String> {
-    match fs::read(resolve(root, rel)?) {
+    read_with(root, rel, &icloud_download, ICLOUD_WAIT)
+}
+
+fn read_with(root: &Path, rel: &str, download: &dyn Fn(&Path), wait: Duration) -> Result<Option<Vec<u8>>, String> {
+    let path = resolve(root, rel)?;
+    if !materialize(&path, download, wait).map_err(|e| describe(rel, e))? {
+        return Ok(None);
+    }
+    match fs::read(&path) {
         Ok(data) => Ok(Some(data)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(describe(rel, e)),
     }
+}
+
+/// The placeholder iCloud leaves for an offloaded `path`.
+fn icloud_placeholder(path: &Path) -> Option<PathBuf> {
+    let name = path.file_name()?.to_str()?;
+    Some(path.with_file_name(format!(".{name}.icloud")))
+}
+
+/// `a.json` for a placeholder named `.a.json.icloud`.
+fn placeholder_for(name: &str) -> Option<&str> {
+    name.strip_prefix('.')?.strip_suffix(".icloud").filter(|n| !n.is_empty() && !n.starts_with('.'))
+}
+
+/// Whether `path` is on disk, after asking iCloud for it and waiting when only its placeholder is.
+fn materialize(path: &Path, download: &dyn Fn(&Path), wait: Duration) -> io::Result<bool> {
+    if path.exists() {
+        return Ok(true);
+    }
+    match icloud_placeholder(path) {
+        Some(placeholder) if placeholder.exists() => {}
+        _ => return Ok(false),
+    }
+    download(path);
+    let end = Instant::now() + wait;
+    while Instant::now() < end {
+        if path.exists() {
+            return Ok(true);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err(io::Error::new(io::ErrorKind::TimedOut, "still downloading from iCloud Drive; try again in a moment"))
+}
+
+fn icloud_download(path: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        // `brctl download` asks iCloud Drive for a local copy (macOS 10.15 and later).
+        let _ = std::process::Command::new("brctl").arg("download").arg(path).status();
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = path;
 }
 
 /// Writes to a temporary file beside the target, flushes it to disk, then renames it over the
@@ -63,15 +123,21 @@ pub fn write_atomic(target: &Path, data: &[u8]) -> io::Result<()> {
 
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
     let (a, b) = (resolve(root, from)?, resolve(root, to)?);
+    materialize(&a, &icloud_download, ICLOUD_WAIT).map_err(|e| describe(from, e))?;
     if let Some(dir) = b.parent() {
         fs::create_dir_all(dir).map_err(|e| describe(to, e))?;
     }
     fs::rename(&a, &b).map_err(|e| describe(from, e))
 }
 
-/// Deletes a file; a missing file is fine.
+/// Deletes a file, or its iCloud placeholder; a missing file is fine.
 pub fn remove(root: &Path, rel: &str) -> Result<(), String> {
-    match fs::remove_file(resolve(root, rel)?) {
+    let path = resolve(root, rel)?;
+    let target = match icloud_placeholder(&path) {
+        Some(placeholder) if !path.exists() && placeholder.exists() => placeholder,
+        _ => path,
+    };
+    match fs::remove_file(target) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(describe(rel, e)),
@@ -94,15 +160,15 @@ pub fn list(root: &Path, dir: &str) -> Result<Vec<String>, String> {
             let entry = entry.map_err(|e| describe(&rel, e))?;
             let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
             let kind = entry.file_type().map_err(|e| describe(&rel, e))?;
-            let child = format!("{rel}/{name}");
             if kind.is_dir() {
-                stack.push((entry.path(), child));
+                stack.push((entry.path(), format!("{rel}/{name}")));
             } else if kind.is_file() {
-                out.push(child);
+                out.push(format!("{rel}/{}", placeholder_for(&name).unwrap_or(&name)));
             }
         }
     }
     out.sort();
+    out.dedup();
     Ok(out)
 }
 
@@ -150,5 +216,35 @@ mod tests {
         assert_eq!(list(root, "trash").unwrap(), Vec::<String>::new());
         // No temporary files are left behind.
         assert_eq!(fs::read_dir(root.join("media/ab")).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn brings_back_files_icloud_offloaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("entries/2025")).unwrap();
+        fs::write(root.join("entries/2025/.2025-03-01--trip--abc.json.icloud"), b"placeholder").unwrap();
+        fs::write(root.join("entries/2025/2025-03-02--home--def.json"), b"{}").unwrap();
+        // Listed under the real name, so the journal still sees the entry.
+        assert_eq!(
+            list(root, "entries").unwrap(),
+            vec!["entries/2025/2025-03-01--trip--abc.json", "entries/2025/2025-03-02--home--def.json"]
+        );
+
+        // Reading asks iCloud for the file and waits for it to arrive.
+        let arrive = |p: &Path| fs::write(p, b"{\"title\":\"Trip\"}").unwrap();
+        let got = read_with(root, "entries/2025/2025-03-01--trip--abc.json", &arrive, Duration::from_secs(2)).unwrap();
+        assert_eq!(got.as_deref(), Some(&b"{\"title\":\"Trip\"}"[..]));
+
+        // A download that doesn't come in time is an error, never "no such file".
+        fs::write(root.join("entries/2025/.2025-03-03--late--ghi.json.icloud"), b"placeholder").unwrap();
+        let err = read_with(root, "entries/2025/2025-03-03--late--ghi.json", &|_| {}, Duration::from_millis(300)).unwrap_err();
+        assert!(err.contains("still downloading"), "{err}");
+
+        // Deleting an offloaded file deletes its placeholder.
+        remove(root, "entries/2025/2025-03-03--late--ghi.json").unwrap();
+        assert!(!root.join("entries/2025/.2025-03-03--late--ghi.json.icloud").exists());
+        assert_eq!(placeholder_for(".icloud"), None);
+        assert_eq!(placeholder_for("..icloud"), None);
     }
 }

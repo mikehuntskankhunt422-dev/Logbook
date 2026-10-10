@@ -4,10 +4,11 @@ import { podPackageId, type CoverDimensions, type Product } from '@logbook/core'
 const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/+$/, '');
 
 /**
- * Whether this build can order printed books. A desktop build made without the API's address
- * (a preview before the API is deployed, M6) can build and preview a book but not order it.
+ * Whether this build can order printed books. A desktop release built without the API's address
+ * (a preview before the API is deployed, M6) can build and preview a book but not order it. The
+ * dev window (`npm run desktop`) reaches the API through Vite's /api proxy.
  */
-export const orderingAvailable = !(import.meta.env.VITE_PLATFORM === 'desktop' && !API);
+export const orderingAvailable = !(import.meta.env.VITE_PLATFORM === 'desktop' && !API && !import.meta.env.DEV);
 
 /**
  * Where Stripe sends a desktop customer after paying (D79): a short page on the API saying to go

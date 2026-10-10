@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window: Logbook's own commands (src/lib.rs) plus the core event and window APIs. File access goes only through those commands, which stay inside the journal folder.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "The main window: Logbook's own commands (src/lib.rs) plus the core event and window APIs, and closing itself once it has saved (D86). File access goes only through those commands, which stay inside the journal folder.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy"
+  ]
 }

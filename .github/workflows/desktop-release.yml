@@ -49,9 +49,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
-          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          version=$(node -p "require('./apps/desktop/package.json').version")
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app's version $version (apps/desktop/src-tauri/tauri.conf.json)."
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app's version $version (apps/desktop/package.json)."
             exit 1
           fi
       - uses: actions/setup-node@v4

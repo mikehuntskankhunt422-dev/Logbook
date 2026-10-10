@@ -5,6 +5,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
+import desktopPkg from '../desktop/package.json' with { type: 'json' };
 
 const require = createRequire(import.meta.url);
 
@@ -24,7 +25,8 @@ export default defineConfig(({ mode }) => {
       ],
     },
     define: {
-      'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+      // The desktop app's version lives in apps/desktop/package.json (tauri.conf.json reads it too).
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(desktop ? desktopPkg.version : pkg.version),
       'import.meta.env.VITE_PLATFORM': JSON.stringify(desktop ? 'desktop' : 'web'),
     },
     plugins: [

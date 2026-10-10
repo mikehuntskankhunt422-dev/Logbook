@@ -161,7 +161,12 @@ function BackupBanner() {
         Your journal only lives on this device, so a copy somewhere else keeps it safe.
       </span>
       <span className="row">
-        <button type="button" className="btn btn-small btn-primary" onClick={() => void downloadBackup(journal, journal.isEncrypted).then((saved) => saved && toast(BACKUP_DONE))}>
+        <button type="button" className="btn btn-small btn-primary" onClick={() =>
+            void downloadBackup(journal, journal.isEncrypted).then(
+              (saved) => saved && toast(BACKUP_DONE),
+              (err: unknown) => toast(`Couldn't save the backup: ${err instanceof Error ? err.message : String(err)}`),
+            )
+          }>
           Back up now
         </button>
         <button

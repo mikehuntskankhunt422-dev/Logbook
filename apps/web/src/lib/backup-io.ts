@@ -36,7 +36,7 @@ export async function makeBackup(journal: Journal, keepEncrypted: boolean): Prom
 /** Downloads a backup zip (the desktop app asks where to save it). False when the person cancelled. */
 export async function downloadBackup(journal: Journal, keepEncrypted: boolean): Promise<boolean> {
   const blob = await makeBackup(journal, keepEncrypted);
-  if (isDesktop) {
+  if (import.meta.env.VITE_PLATFORM === 'desktop') {
     const { saveFile } = await import('../desktop/bridge.ts');
     if (!(await saveFile(blob, backupFileName()))) return false;
   } else downloadBlob(blob, backupFileName());

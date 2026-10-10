@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 interface Toast {
   id: number;
@@ -9,6 +9,12 @@ interface Toast {
 const Ctx = createContext<(message: string, action?: Toast['action'], ms?: number) => void>(() => {});
 
 let next = 1;
+const TOAST_EVENT = 'logbook:toast';
+
+/** Shows a toast from code outside React components (the desktop app's link handling). */
+export function announce(message: string): void {
+  window.dispatchEvent(new CustomEvent<string>(TOAST_EVENT, { detail: message }));
+}
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -22,6 +28,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
   const value = useMemo(() => push, [push]);
+  useEffect(() => {
+    const onAnnounce = (e: Event) => push((e as CustomEvent<string>).detail);
+    window.addEventListener(TOAST_EVENT, onAnnounce);
+    return () => window.removeEventListener(TOAST_EVENT, onAnnounce);
+  }, [push]);
   return (
     <Ctx.Provider value={value}>
       {children}

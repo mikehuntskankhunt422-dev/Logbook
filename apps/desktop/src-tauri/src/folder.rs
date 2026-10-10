@@ -28,16 +28,26 @@ pub fn journal_folder_for(chosen: &Path) -> Result<PathBuf, String> {
     if !chosen.is_absolute() {
         return Err("Choose a folder on this computer.".into());
     }
-    if chosen.join("logbook.json").is_file() {
+    // A journal, possibly with logbook.json offloaded by iCloud Drive (journal_fs.rs).
+    if chosen.join("logbook.json").is_file() || chosen.join(".logbook.json.icloud").is_file() {
         return Ok(chosen.to_path_buf());
     }
     let empty = match fs::read_dir(chosen) {
-        Ok(mut entries) => entries.next().is_none(),
+        // Files the system or a sync tool leaves in any folder (Finder's .DS_Store) don't count.
+        Ok(entries) => entries.filter_map(Result::ok).all(|e| is_clutter(&e.file_name().to_string_lossy())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
         Err(e) => return Err(format!("Logbook can't open {}: {e}", chosen.display())),
     };
     let is_logbook_named = chosen.file_name().is_some_and(|n| n.eq_ignore_ascii_case("logbook"));
     Ok(if empty || is_logbook_named { chosen.to_path_buf() } else { chosen.join("Logbook") })
+}
+
+/// Files the system or a sync tool leaves in folders (as FolderStore's IGNORED list).
+fn is_clutter(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    matches!(lower.as_str(), ".ds_store" | "desktop.ini" | "thumbs.db" | "icon\r" | ".localized" | ".logbook-write-test")
+        || lower.starts_with(".dropbox")
+        || lower.starts_with("._")
 }
 
 /// Creates the folder and checks Logbook can write in it.
@@ -59,10 +69,16 @@ mod tests {
         let root = dir.path();
         // Empty: used as is.
         assert_eq!(journal_folder_for(root).unwrap(), root);
+        // Only system clutter: still empty.
+        fs::write(root.join(".DS_Store"), b"").unwrap();
+        fs::write(root.join("desktop.ini"), b"").unwrap();
+        assert_eq!(journal_folder_for(root).unwrap(), root);
         // Holding other files: a Logbook folder inside it.
         fs::write(root.join("taxes.pdf"), b"").unwrap();
         assert_eq!(journal_folder_for(root).unwrap(), root.join("Logbook"));
-        // Already a journal: used as is.
+        // Already a journal, even with logbook.json offloaded by iCloud: used as is.
+        fs::write(root.join(".logbook.json.icloud"), b"").unwrap();
+        assert_eq!(journal_folder_for(root).unwrap(), root);
         fs::write(root.join("logbook.json"), b"{}").unwrap();
         assert_eq!(journal_folder_for(root).unwrap(), root);
         // Doesn't exist yet: created where chosen.

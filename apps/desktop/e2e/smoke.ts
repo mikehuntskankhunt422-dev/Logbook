@@ -1,13 +1,13 @@
 // Drives the built desktop app through WebDriver (tauri-driver + WebKitWebDriver, Linux only):
 // first run in an empty home folder, the default journal folder, an entry with a photo, the files
-// that appear on disk, and the journal after a restart.
+// that appear on disk, the journal after a restart, and an entry typed just before the window closes.
 //
 //   npx tauri build --debug --no-bundle            (in apps/desktop)
 //   xvfb-run npm run test:e2e [-- path to the app]  (needs tauri-driver and WebKitWebDriver on PATH)
 //
 // No test framework: plain WebDriver calls over fetch, so nothing else needs installing.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -135,6 +135,20 @@ try {
   await run(s, "location.hash = '#/settings'");
   await until('settings', async () => (await bodyText(s)).includes('Journal folder'));
   check((await bodyText(s)).includes(folder), 'Settings shows the journal folder');
+
+  // ── closing the window straight after typing (D86) ──
+  await run(s, "location.hash = '#/new'");
+  const quick = await until('the title field', () => find(s, 'css selector', '#entry-title'));
+  await type(s, quick, 'Closed at once');
+  // Well inside the editor's 0.7 s autosave delay: only the close handler can save this. The
+  // window manager's close message, as from the close button (WebDriver's close skips it).
+  const closed = spawnSync('python3', [new URL('close-window.py', import.meta.url).pathname], { env });
+  check(closed.status === 0, 'the window got a close request');
+  await until('the window to close', async () => !(await wd('GET', `/session/${s}/window`).then(() => true, () => false)), 10_000).catch(() => undefined);
+  await wd('DELETE', `/session/${s}`).catch(() => undefined);
+  s = await startApp();
+  await until('the journal after closing', async () => (await bodyText(s)).includes('New entry'));
+  check((await filesUnder(join(folder, 'entries'))).some((f) => f.includes('--closed-at-once--')), 'text typed just before closing the window is saved');
   await wd('DELETE', `/session/${s}`);
 } catch (err) {
   console.error('✗', (err as Error).message);

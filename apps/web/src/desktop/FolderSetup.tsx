@@ -6,7 +6,18 @@ import { defaultJournalFolder, openJournalFolder, pickFolder } from './bridge.ts
  * lives. Picking a folder that already holds a journal opens it, so this is also how a second
  * computer joins a journal kept in OneDrive or Dropbox, or how an unzipped backup is opened.
  */
-export function FolderSetup({ onReady, missing }: { onReady: (folder: string) => void; missing?: string | null }) {
+export function FolderSetup({
+  onReady,
+  missing,
+  error: openError,
+  folder,
+}: {
+  onReady: (folder: string) => void;
+  missing?: string | null;
+  /** Opening a folder failed: why, and which folder (D86). */
+  error?: string;
+  folder?: string | null;
+}) {
   const [suggested, setSuggested] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +46,11 @@ export function FolderSetup({ onReady, missing }: { onReady: (folder: string) =>
         </div>
         <h1>Where should Logbook keep your journal?</h1>
         {missing && <p className="error">Logbook can't find your journal at {missing}. If it's on a drive that isn't connected, connect it and restart Logbook, or choose the folder again.</p>}
+        {openError && (
+          <p className="error" role="alert">
+            Logbook couldn't open {folder ? <span className="folder-path">{folder}</span> : 'that folder'}: {openError}
+          </p>
+        )}
         <p className="muted">
           Your journal is saved as ordinary files in a folder on this computer. Nothing is uploaded. To keep a copy in the cloud, put the folder inside OneDrive, Dropbox or iCloud Drive.
         </p>

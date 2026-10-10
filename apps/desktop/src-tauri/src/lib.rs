@@ -6,9 +6,11 @@ mod folder;
 mod journal_fs;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_dialog::DialogExt;
 
 struct AppState {
@@ -54,9 +56,10 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-fn body(request: &Request<'_>) -> Result<Vec<u8>, String> {
+/// The request's raw bytes, borrowed: a backup can be gigabytes, so it isn't copied again here.
+fn body<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
     match request.body() {
-        InvokeBody::Raw(data) => Ok(data.clone()),
+        InvokeBody::Raw(data) => Ok(data),
         InvokeBody::Json(_) => Err("expected raw bytes".into()),
     }
 }
@@ -107,7 +110,10 @@ fn reveal_journal_folder(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 async fn journal_read(path: String, state: State<'_, AppState>) -> Result<Response, String> {
-    match journal_fs::read(&state.root()?, &path)? {
+    let root = state.root()?;
+    // A read may wait for iCloud to bring a file back: keep it off the async workers.
+    let data = tauri::async_runtime::spawn_blocking(move || journal_fs::read(&root, &path)).await.map_err(|e| e.to_string())??;
+    match data {
         Some(data) => Ok(Response::new(data)),
         None => Err("ENOENT".into()),
     }
@@ -115,7 +121,7 @@ async fn journal_read(path: String, state: State<'_, AppState>) -> Result<Respon
 
 #[tauri::command]
 async fn journal_write(request: Request<'_>, state: State<'_, AppState>) -> Result<(), String> {
-    journal_fs::write(&state.root()?, &header(&request, "x-path")?, &body(&request)?)
+    journal_fs::write(&state.root()?, &header(&request, "x-path")?, body(&request)?)
 }
 
 #[tauri::command]
@@ -146,9 +152,18 @@ async fn save_file(request: Request<'_>, app: AppHandle) -> Result<Option<String
     }
     let Some(picked) = dialog.blocking_save_file() else { return Ok(None) };
     let path = picked.into_path().map_err(|e| e.to_string())?;
-    journal_fs::write_atomic(&path, &data).map_err(|e| format!("Couldn't save {}: {e}", path.display()))?;
+    journal_fs::write_atomic(&path, data).map_err(|e| format!("Couldn't save {}: {e}", path.display()))?;
     Ok(Some(path.display().to_string()))
 }
+
+/// Quits once the window has saved what it was writing (see `run`).
+#[tauri::command]
+fn quit(app: AppHandle) {
+    app.exit(0);
+}
+
+/// Set once quitting has started, so the request to save first is sent only once.
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 /// Opens a web address in the default browser: links in entries, and Stripe's payment page.
 #[tauri::command]
@@ -201,9 +216,25 @@ pub fn run() {
             journal_list,
             save_file,
             open_url,
+            quit,
         ])
-        .run(tauri::generate_context!())
-        .expect("Logbook couldn't start");
+        .build(tauri::generate_context!())
+        .expect("Logbook couldn't start")
+        .run(|app, event| {
+            // Quitting (⌘Q, logging out) with the window still open: it saves the last edits first
+            // and then calls `quit` (D86). Closing the window is handled by the window itself.
+            if let RunEvent::ExitRequested { api, code: None, .. } = &event {
+                if !app.webview_windows().is_empty() && !QUITTING.swap(true, Ordering::SeqCst) {
+                    api.prevent_exit();
+                    let _ = app.emit("logbook://quit-requested", ());
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(5));
+                        app.exit(0);
+                    });
+                }
+            }
+        });
 }
 
 #[cfg(test)]

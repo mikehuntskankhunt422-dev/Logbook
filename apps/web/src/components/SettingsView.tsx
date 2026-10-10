@@ -442,7 +442,11 @@ function DangerPanel() {
   return (
     <section className="panel" aria-labelledby="danger-h">
       <h2 id="danger-h">Delete everything</h2>
-      <p>Permanently removes every entry and file from this device. Back up first.</p>
+      <p>
+        {isDesktop
+          ? 'Permanently removes every entry and file from your journal folder. If the folder is synced with OneDrive, Dropbox or iCloud Drive, they disappear from your other computers too. Back up first.'
+          : 'Permanently removes every entry and file from this device. Back up first.'}
+      </p>
       {journal.issues.length > 0 && (
         <p className="notice notice-warn">
           {journal.issues.length} {journal.issues.length === 1 ? 'entry' : 'entries'} could not be read and {journal.issues.length === 1 ? 'is' : 'are'} hidden. A backup still includes{' '}
@@ -470,7 +474,7 @@ function DangerPanel() {
                   clearMediaUrlCache();
                   setOpen(false);
                   setTyped('');
-                  toast('Everything was deleted from this device.');
+                  toast(isDesktop ? 'Everything was deleted from your journal folder.' : 'Everything was deleted from this device.');
                 })
               }
             >

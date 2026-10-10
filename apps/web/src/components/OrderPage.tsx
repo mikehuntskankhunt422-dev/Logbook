@@ -285,7 +285,7 @@ function ProofAndPay({ order, orderRef, cancelled, onChange, reload }: OrderBody
     try {
       const returnUrl = isDesktop ? checkoutDonePage() : `${location.origin}${location.pathname}`;
       const { url } = await checkoutOrder(orderRef.id, orderRef.token, { quoteVersion: order.quote.version, returnUrl, checked });
-      if (isDesktop) {
+      if (import.meta.env.VITE_PLATFORM === 'desktop') {
         // Stripe's page opens in the browser (PLAN §2); this window follows the order meanwhile.
         const { openExternal } = await import('../desktop/bridge.ts');
         await openExternal(url);
