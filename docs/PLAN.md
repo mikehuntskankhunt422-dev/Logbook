@@ -1,8 +1,8 @@
 # Logbook: Plan
 
-Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · **Changed 2026-10-10: desktop first, mobile later, no store or signing fees for now (D77)** · Owner: you · Author: Claude
+Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · **Changed 2026-10-10: desktop only, no mobile app, no signing fees for now (D77, D78)** · Owner: you · Author: Claude
 
-> **Desktop first (D77, 2026-10-10).** Logbook launches as a **free desktop app** downloaded from GitHub Releases. The website is no longer published: the same web build still runs inside the desktop app and in development and tests, but it isn't hosted for the public. Customers pay only for printed books. A **mobile app** follows gradually: an Android app downloaded from GitHub first, then the Google Play and App Store once book sales cover their fees (US$25 once, US$99 a year). Until then, installers are unsigned, so Windows and macOS warn about an unknown developer the first time. The sections below that describe the website, the PWA or Cloudflare Pages are kept for reference; where they disagree with this note, this note wins.
+> **Desktop only (D77, D78, 2026-10-10).** Logbook is a **free desktop app** that has to be downloaded and installed, from GitHub Releases. There is no website and no mobile app. The web build still runs inside the desktop app and in development and tests, but it isn't hosted for the public. Customers pay only for printed books. Installers are unsigned for now, so Windows and macOS warn about an unknown developer the first time. The sections below that describe the website, the PWA or Cloudflare Pages are kept for reference; where they disagree with this note, this note wins.
 
 This plan covers the architecture, the shared-core layout for web and desktop, milestones with acceptance criteria, risks, and the API facts still to verify. Companion documents:
 
@@ -244,17 +244,12 @@ Each milestone ends with tests run and a report on what works, what's untested, 
 - `scripts/verify-lulu-packages` and `scripts/refresh-lulu-countries`
 - Tests: state-machine unit tests; sandbox e2e that creates real print jobs for the 40-page and 200-page samples and follows them to the furthest status the sandbox reaches.
 
-**M5: Desktop (the main product, D77)**
+**M5: Desktop (the only product, D77, D78)**
 - Tauri 2 shell, `storage-fs` adapter, folder picker, watcher, conflict UI, import from zip backup
 - Windows MSI/NSIS first, then macOS (dmg) and Linux (AppImage, deb, rpm)
 - Updater with a `latest.json` signed by our own updater key (free); GitHub Actions matrix that builds and attaches installers to each release
 - Ordering from the desktop: Checkout opens in the default browser; Stripe's return goes to a small "Payment received, go back to Logbook" page served by the API, and the app polls the order (no website needed)
 - Installers **unsigned** for now (no Apple or Windows signing fees). A first-run guide on the download page shows how to get past Windows SmartScreen and macOS Gatekeeper. Signing instructions for each OS are written down for when it's worth paying for
-
-**M7: Mobile, rolled out gradually (after M6, D77)**
-- Stage 1, free: Tauri 2 Android build of the same app, journal stored as files inside the app, APK attached to GitHub Releases
-- Stage 2, once sales cover the fees: Google Play (US$25 once; new personal accounts need a closed test with about 12 testers for 14 days) and the App Store (US$99 a year, built on GitHub's Mac runners, app review)
-- Checkout returns to the app through App Links / Universal Links, which need a domain of ours; until then, the same return page and polling as desktop
 
 **M6: Polish, admin, docs**
 - Admin page (password-protected): order list, status, errors, retry and refund
@@ -410,7 +405,5 @@ All verified facts and their sources are in [ASSUMPTIONS.md](ASSUMPTIONS.md). St
 - Your business name, contact email and domain, used in legal drafts, emails and Lulu `contact_email`
 
 **Before M5:** ~~an Apple Developer account (for macOS signing), a decision on a Windows signing route~~ not needed for now: installers ship unsigned (D77). The GitHub repository for Actions and Releases exists.
-
-**Before M7 stage 2 (store release):** a Google Play developer account (US$25 once) and an Apple Developer account (US$99 a year, which also covers macOS signing), when book sales cover them.
 
 **Also:** git has no name or email configured on this PC, so I haven't made any commits. Tell me the name and email to use for this repo's commits (set locally, not globally).
