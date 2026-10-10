@@ -259,6 +259,9 @@ Each milestone ends with tests run and a report on what works, what's untested, 
 
 **Done when (your definition, updated for D77):** in test mode, you can write a journal with photos in the desktop app, build a 200-page book, see an accurate preview and price, pay with a Stripe test card, and watch a Lulu sandbox print job get created and tracked. In addition: a refund works after a simulated failure, the desktop installer from GitHub Releases installs and updates itself, and the go-live checklist is complete.
 
+**Later (after M6, not scheduled)**
+- **Export entries as documents:** PDF, plain text (`.txt`), Word (`.docx`), and maybe Markdown, for reading or sharing outside Logbook. This is not the zip backup, which stays the format for moving or restoring a journal. Pick entries the way the book builder does (a date range or individual entries). One file for the selection, or one file per entry. Photos go into the PDF and Word files; `.txt` keeps only the text and captions. Exporting from a journal with the passcode lock on writes readable files, so ask first.
+
 ---
 
 ## 4. Product configuration (curated) and package IDs
