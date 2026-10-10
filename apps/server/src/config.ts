@@ -164,6 +164,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new ConfigError(`PORT must be a port number, not "${env['PORT']}".`);
 
   const host = env['HOST'] ?? '127.0.0.1';
+  const stripe = loadStripe(mode, env);
+  const publicOrigin = loadPublicOrigin(mode, env['PUBLIC_URL']);
+  // Logbook is a desktop app (D78): without its return page, no live customer could pay (D79).
+  if (mode === 'live' && stripe && !publicOrigin) throw new ConfigError("Set PUBLIC_URL to this API's public https address: Stripe sends desktop customers back to its /api/checkout/done page.");
   return {
     mode,
     host,
@@ -178,11 +182,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
             clientSecret,
           }
         : undefined,
-    stripe: loadStripe(mode, env),
+    stripe,
     storage: loadStorage(mode, host, env),
     databasePath: env['DATABASE_PATH'] || '.data/logbook.sqlite',
     webOrigins: (env['WEB_ORIGIN'] ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
-    publicOrigin: loadPublicOrigin(mode, env['PUBLIC_URL']),
+    publicOrigin,
     chromiumPath: env['LOGBOOK_CHROMIUM_PATH'] || undefined,
     fulfilment: loadFulfilment(mode, Boolean(clientKey && clientSecret), env),
   };

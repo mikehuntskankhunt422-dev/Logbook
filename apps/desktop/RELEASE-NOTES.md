@@ -2,14 +2,14 @@ The first preview of Logbook's desktop app: a private journal kept as files in a
 
 **Download** the file for your computer below:
 
-- **Windows 10 or 11:** `Logbook_0.1.0_x64-setup.exe`
-- **macOS 10.15 or later** (Apple silicon and Intel): `Logbook_0.1.0_universal.dmg`
+- **Windows 10 or 11:** the file ending in `_x64-setup.exe`
+- **macOS 10.15 or later** (Apple silicon and Intel): the file ending in `_universal.dmg`
 - **Linux:** the `.AppImage` (most distributions), `.deb` (Ubuntu, Debian) or `.rpm` (Fedora)
 
 **The first time you open it:** Logbook isn't signed with a paid certificate yet, so your computer warns about it once.
 
 - Windows: "Windows protected your PC" → **More info** → **Run anyway**.
-- macOS: drag Logbook to Applications and open it. When macOS says it can't check it, click **Done**, then **System Settings → Privacy & Security → Open Anyway**.
+- macOS 15 or later: drag Logbook to Applications and open it. When macOS says it can't check it, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. On earlier versions, Control-click Logbook in Applications and choose **Open**.
 - Linux AppImage: `chmod +x Logbook_*.AppImage`, then run it.
 
 **In this preview**

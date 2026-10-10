@@ -23,7 +23,9 @@ Each release lists the files' SHA-256 checksums in `SHA256SUMS.txt`.
 Logbook isn't signed with a paid Apple or Microsoft certificate, so both systems warn about it once.
 
 - **Windows:** if "Windows protected your PC" appears, click **More info**, then **Run anyway**.
-- **macOS:** open the `.dmg` and drag Logbook to Applications. The first time you open it, macOS says it can't check it for malicious software. Click **Done**, open **System Settings → Privacy & Security**, scroll down to the message about Logbook, click **Open Anyway** and confirm.
+- **macOS:** open the `.dmg` and drag Logbook to Applications. The first time you open it, macOS says it can't check it for malicious software.
+  - macOS 15 (Sequoia) or later: click **Done**, open **System Settings → Privacy & Security**, scroll down to the message about Logbook, click **Open Anyway** and confirm.
+  - Earlier versions: in Applications, Control-click (or right-click) Logbook, choose **Open**, then click **Open** in the message.
 - **Linux:** make the AppImage executable (`chmod +x Logbook_*.AppImage`) and run it. The `.deb` and `.rpm` install like any other package.
 
 ## Using Logbook

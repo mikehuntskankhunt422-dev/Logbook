@@ -44,7 +44,7 @@ npx tauri build --debug --no-bundle    # the app, without installers
 xvfb-run -a npm run test:e2e           # Linux: drives the app through WebDriver (M5 §1.2)
 ```
 
-The smoke test needs `tauri-driver` (`cargo install tauri-driver --version =2.0.6 --locked`) and WebKitWebDriver (`webkit2gtk-driver` on Ubuntu). It starts the app in a fresh home folder, chooses the default journal folder, writes an entry with a photo, checks the files on disk, restarts and checks again.
+The smoke test needs `tauri-driver` (`cargo install tauri-driver --version =2.0.6 --locked`), WebKitWebDriver (`webkit2gtk-driver` on Ubuntu) and `python3-xlib`. It starts the app in a fresh home folder, chooses the default journal folder, writes an entry with a photo, checks the files on disk, restarts and checks again, then types an entry and closes the window at once, as the close button does, to check it was saved.
 
 `npm run test:e2e` also runs the preview-parity check (the builder's page count for each sample equals the server's). Set `LOGBOOK_ALL_BROWSERS=1` to include Firefox and WebKit, after `npx playwright install firefox webkit` in `apps/web`. The e2e API always uses local storage and no Lulu, even when bucket variables are set. Set `LOGBOOK_E2E_ONLINE=1` (with the bucket and `LULU_SANDBOX_*` variables) to run "Prepare my book" against the real bucket and the Lulu sandbox instead (M3 §3 C).
 
@@ -60,7 +60,7 @@ npm run desktop:build    # installers for this computer's OS, in apps/desktop/sr
 
 To release a version:
 
-1. Set the version in `apps/desktop/src-tauri/tauri.conf.json` (`0.1.1`; numbers only, no `-beta` suffix).
+1. Set the version in `apps/desktop/package.json` (`0.1.1`; numbers only, no `-beta` suffix). `tauri.conf.json` and the version written into backups both read it from there.
 2. Write what changed in `apps/desktop/RELEASE-NOTES.md`; it becomes the release's description.
 3. Tag the commit `v<version>` and push the tag. The workflow refuses a tag that doesn't match the version, and marks `0.x` versions as pre-releases.
 
@@ -73,7 +73,7 @@ The installers aren't code-signed (D77): Windows SmartScreen and macOS Gatekeepe
 | Variable | What |
 |---|---|
 | `HOST`, `PORT` | Where it listens (default `127.0.0.1:4242`) |
-| `PUBLIC_URL` | The API's public address. Stripe sends desktop customers to its `/api/checkout/done` page after paying (D79); https in live mode |
+| `PUBLIC_URL` | The API's public address. Stripe sends desktop customers to its `/api/checkout/done` page after paying (D79). Required in live mode once Stripe is set, and https there |
 | `WEB_ORIGIN` | Websites that may call the order API from a browser and that Stripe may return to (comma-separated). The desktop app's origins are always allowed |
 | `DATABASE_PATH` | The orders database (SQLite, default `.data/logbook.sqlite`) |
 | `LULU_SANDBOX_CLIENT_KEY`, `LULU_SANDBOX_CLIENT_SECRET` | Lulu's sandbox (test mode). Live mode uses `LULU_CLIENT_KEY`, `LULU_CLIENT_SECRET` |
@@ -102,7 +102,7 @@ Lulu fetches files by URL. Without a bucket, run the CI workflow by hand with **
 
 ### Ordering and payment
 
-With the API running, "Prepare my book…" in the builder works end to end: orders are stored in `apps/server/.data/` with `LOCAL_STORAGE=on` (development only, D51), or in a bucket. `npm run storage:setup -w @logbook/server` sets a bucket's permissions (uploads from the app, and reading proofs for the order page) and 7-day deletion, and checks them (M3 §3 C).
+With the API running, "Prepare my book…" in the builder works end to end: orders are stored in `apps/server/.data/` with `LOCAL_STORAGE=on` (development only, D51), or in a bucket. `npm run storage:setup -w @logbook/server` sets a bucket's permissions (uploads from the desktop app and the dev servers, and reading proofs for the order page) and 7-day deletion, and checks them (M3 §3 C). Run it again on a bucket set up before the desktop app existed: its rules didn't include the app's origins.
 
 Payments use Stripe test mode. `STRIPE_TEST_WEBHOOK_SECRET` verifies Stripe's webhooks at `POST /api/stripe/webhook`; for local runs, `stripe listen --forward-to localhost:4242/api/stripe/webhook` prints one. Stripe returns browser customers only to a website in `WEB_ORIGIN` (or any loopback address in test mode), and desktop customers to `/api/checkout/done` at `PUBLIC_URL`. The desktop app opens Stripe in the default browser and follows the order itself (D79).
 

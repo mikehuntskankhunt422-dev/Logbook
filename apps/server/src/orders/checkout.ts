@@ -56,6 +56,14 @@ export interface CheckoutDeps {
   onPaid?: (orderId: string) => void;
 }
 
+function safeOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Where Stripe sends the customer back to: the website's address without query or fragment, if
  * it's one of ours, or the API's own "go back to Logbook" page for the desktop app (D79).
@@ -240,7 +248,11 @@ export class CheckoutService {
       if (!stripe) throw new OrderError('Payments are not available on this server yet.', 503);
       if (!input.checked) throw new OrderError('Please confirm that you have checked your book.', 400);
       const base = returnBase(input.returnUrl, this.deps);
-      if (!base) throw new OrderError('This website is not allowed to take payments.', 400);
+      if (!base) {
+        // A desktop return page refused here usually means PUBLIC_URL isn't this API's address.
+        this.deps.log.warn({ orderId: order.id, origin: safeOrigin(input.returnUrl), publicOrigin: this.deps.publicOrigin ?? null }, 'checkout return address refused');
+        throw new OrderError("Logbook's print service can't take payments from here yet. Please try again later.", 400);
+      }
 
       let o = this.deps.db.get(order.id)!;
       const now = this.now();

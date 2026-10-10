@@ -35,6 +35,9 @@ describe('config (D18)', () => {
     expect(() => loadConfig({ PUBLIC_URL: 'api.logbook.example' })).toThrow(/PUBLIC_URL/);
     const live = { APP_MODE: 'live', ALLOW_LIVE: 'true', OWNER_EMAIL: 'me@example.com' };
     expect(() => loadConfig({ ...live, PUBLIC_URL: 'http://api.logbook.example' })).toThrow(/https/);
+    // Taking payments live without it would strand every desktop customer at Checkout.
+    expect(() => loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_live_x' })).toThrow(/PUBLIC_URL/);
+    expect(loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_live_x', PUBLIC_URL: 'https://api.logbook.example' }).publicOrigin).toBe('https://api.logbook.example');
   });
 
   it('needs your address for Lulu in live mode, both Resend settings or neither, and faults only in test mode (M4)', () => {
@@ -63,7 +66,7 @@ describe('config (D18)', () => {
     const live = { APP_MODE: 'live', ALLOW_LIVE: 'true' };
     expect(() => loadConfig({ ...live, STRIPE_TEST_SECRET_KEY: 'sk_test_abc' })).toThrow(/never mix/);
     expect(() => loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_test_abc' })).toThrow(/must be a live key/);
-    expect(loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_live_abc' }).stripe?.secretKey).toBe('sk_live_abc');
+    expect(loadConfig({ ...live, STRIPE_LIVE_SECRET_KEY: 'sk_live_abc', PUBLIC_URL: 'https://api.logbook.example' }).stripe?.secretKey).toBe('sk_live_abc');
     // A webhook secret must look like one, and needs its key.
     expect(() => loadConfig({ STRIPE_TEST_SECRET_KEY: 'sk_test_abc', STRIPE_TEST_WEBHOOK_SECRET: 'sk_test_oops' })).toThrow(/whsec_/);
     expect(() => loadConfig({ STRIPE_TEST_WEBHOOK_SECRET: 'whsec_x' })).toThrow(/without STRIPE_TEST_SECRET_KEY/);
