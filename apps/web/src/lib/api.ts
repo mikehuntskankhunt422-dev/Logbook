@@ -1,7 +1,22 @@
 import { podPackageId, type CoverDimensions, type Product } from '@logbook/core';
 
-/** The Logbook API: same origin unless the build sets VITE_API_URL (D15: website and API are hosted apart). */
+/** The Logbook API: same origin unless the build sets VITE_API_URL (D15; always for the desktop app, D79). */
 const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/+$/, '');
+
+/**
+ * Whether this build can order printed books. A desktop release built without the API's address
+ * (a preview before the API is deployed, M6) can build and preview a book but not order it. The
+ * dev window (`npm run desktop`) reaches the API through Vite's /api proxy.
+ */
+export const orderingAvailable = !(import.meta.env.VITE_PLATFORM === 'desktop' && !API && !import.meta.env.DEV);
+
+/**
+ * Where Stripe sends a desktop customer after paying (D79): a short page on the API saying to go
+ * back to Logbook, since a browser can't open the app's window. The app notices the payment itself.
+ */
+export function checkoutDonePage(): string {
+  return `${API || location.origin}/api/checkout/done`;
+}
 
 /**
  * A GET to the API, or null when offline or the API can't answer: every caller has an offline

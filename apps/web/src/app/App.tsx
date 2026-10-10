@@ -8,7 +8,7 @@ import { EntryEditor } from '../components/EntryEditor.tsx';
 import { CalendarView, Memories, SearchView, Timeline } from '../components/views.tsx';
 import { SettingsView } from '../components/SettingsView.tsx';
 import { StreakBadge } from '../components/common.tsx';
-import { downloadBackup } from '../lib/backup-io.ts';
+import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 
 /** Print layout and Paged.js load only when someone opens the book builder. */
 const BookBuilder = lazy(() => import('../components/BookBuilder.tsx').then((m) => ({ default: m.BookBuilder })));
@@ -161,7 +161,12 @@ function BackupBanner() {
         Your journal only lives on this device, so a copy somewhere else keeps it safe.
       </span>
       <span className="row">
-        <button type="button" className="btn btn-small btn-primary" onClick={() => void downloadBackup(journal, journal.isEncrypted).then(() => toast('Backup downloaded.'))}>
+        <button type="button" className="btn btn-small btn-primary" onClick={() =>
+            void downloadBackup(journal, journal.isEncrypted).then(
+              (saved) => saved && toast(BACKUP_DONE),
+              (err: unknown) => toast(`Couldn't save the backup: ${err instanceof Error ? err.message : String(err)}`),
+            )
+          }>
           Back up now
         </button>
         <button

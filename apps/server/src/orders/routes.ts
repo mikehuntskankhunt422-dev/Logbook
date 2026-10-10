@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { StripeSignatureError } from '../payments/stripe.ts';
 import { LOCAL_STORAGE_ROUTE, LocalStore } from '../storage/local.ts';
 import type { ObjectStore } from '../storage/store.ts';
-import type { CheckoutService } from './checkout.ts';
+import { CHECKOUT_DONE_PATH, type CheckoutService } from './checkout.ts';
 import { createOrderSchema, OrderError, type OrderService } from './service.ts';
 
 const quoteSchema = z.object({ country: z.string().regex(/^[A-Z]{2}$/), state: z.string().regex(/^[A-Z0-9]{1,3}$/).optional() });
@@ -55,6 +55,54 @@ function fail(reply: FastifyReply, err: unknown) {
  * and hands out signed upload URLs; content goes straight to storage. Reading an order needs the
  * secret token returned when it was created.
  */
+/**
+ * The desktop app's window (D77, D79): Tauri serves it from `tauri://localhost` on macOS and Linux
+ * and `http://tauri.localhost` on Windows. Its requests carry the same order token as the website's.
+ */
+export const DESKTOP_APP_ORIGINS = ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'];
+
+/**
+ * Where Stripe sends a desktop customer (D79). A browser can't bring the app's window back, so
+ * this only says what happened and to return to Logbook, which notices the payment by itself. The
+ * page holds no order details; the order ID stays in the address's #fragment, which never reaches us.
+ */
+const CHECKOUT_DONE_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Back to Logbook</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; font: 17px/1.5 system-ui, sans-serif; background: #fbf7f1; color: #1f1b16; }
+  main { max-width: 30rem; padding: 2rem 1.25rem; text-align: center; }
+  h1 { font-size: 1.5rem; margin: 0.5rem 0 1rem; }
+  p { margin: 0 0 1rem; }
+  @media (prefers-color-scheme: dark) { body { background: #15130f; color: #f3ede4; } }
+</style>
+</head>
+<body>
+<main>
+  <div aria-hidden="true" style="font-size:2.6rem">📓</div>
+  <h1 id="title">You can go back to Logbook now</h1>
+  <p id="said">If you paid, Logbook shows your order as paid within a few seconds. If you left without paying, nothing was charged, and you can pay from Logbook whenever you're ready.</p>
+  <p>You can close this tab.</p>
+</main>
+<script>
+  // Stripe adds ?cancelled=1 after the order's #fragment when the customer leaves without paying.
+  if (/[?&]cancelled=1/.test(location.hash)) {
+    document.getElementById('title').textContent = 'Nothing was charged';
+    document.getElementById('said').textContent = "You left the payment page. Go back to Logbook to pay whenever you're ready.";
+  } else if (location.hash) {
+    document.getElementById('title').textContent = 'Thank you! Go back to Logbook';
+    document.getElementById('said').textContent = 'Logbook shows your order as paid within a few seconds, then follows your book to the printer and to your door.';
+  }
+</script>
+</body>
+</html>
+`;
+
 export function registerOrderRoutes(
   app: FastifyInstance,
   service: OrderService | undefined,
@@ -67,16 +115,21 @@ export function registerOrderRoutes(
   const steps = new HourlyLimit(PAYMENT_STEPS_PER_HOUR);
   const tooMany = (reply: FastifyReply) => reply.code(429).header('Retry-After', '3600').send({ error: 'Too many changes to this order in the last hour. Please try again later.' });
 
-  // CORS for the website when it's hosted apart from the API (D15). Only listed origins.
+  // CORS for the website when it's hosted apart from the API (D15), and for the desktop app (D79). Only listed origins.
+  const corsOrigins = new Set([...webOrigins, ...DESKTOP_APP_ORIGINS]);
   app.addHook('onRequest', async (req, reply) => {
     if (!req.url.startsWith('/api/orders')) return;
     const origin = req.headers.origin;
-    if (!origin || !webOrigins.includes(origin)) return;
+    if (!origin || !corsOrigins.has(origin)) return;
     reply.header('Access-Control-Allow-Origin', origin).header('Vary', 'Origin');
     if (req.method === 'OPTIONS') {
       return reply.code(204).header('Access-Control-Allow-Methods', 'GET, POST').header('Access-Control-Allow-Headers', 'authorization, content-type').header('Access-Control-Max-Age', '600').send();
     }
   });
+
+  app.get(CHECKOUT_DONE_PATH, async (_req, reply) =>
+    reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'public, max-age=3600').header('Referrer-Policy', 'no-referrer').send(CHECKOUT_DONE_HTML),
+  );
 
   app.post('/api/orders', { bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
     if (!service) return reply.code(503).send({ error: 'Ordering is not available on this server yet.' });

@@ -21,6 +21,11 @@ export interface Config {
   databasePath: string;
   /** Website origins allowed to call the order API from a browser (the website and API are hosted apart, D15). */
   webOrigins: string[];
+  /**
+   * This API's own public address (`PUBLIC_URL`, e.g. https://api.logbookjournal.app). Stripe sends
+   * desktop customers to its "go back to Logbook" page there (D79).
+   */
+  publicOrigin?: string;
   /** Chromium to use instead of Playwright's bundled build (dev containers whose browser build differs). */
   chromiumPath?: string;
   /** After payment (M4): who Lulu and alerts reach, emails, and test-only fault injection. */
@@ -52,6 +57,19 @@ const STRIPE = {
   test: { keyVar: 'STRIPE_TEST_SECRET_KEY', hookVar: 'STRIPE_TEST_WEBHOOK_SECRET', prefixes: ['sk_test_', 'rk_test_'] },
   live: { keyVar: 'STRIPE_LIVE_SECRET_KEY', hookVar: 'STRIPE_LIVE_WEBHOOK_SECRET', prefixes: ['sk_live_', 'rk_live_'] },
 } as const;
+
+/** `PUBLIC_URL` as an origin; live mode needs https. */
+function loadPublicOrigin(mode: 'test' | 'live', raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new ConfigError(`PUBLIC_URL must be the API's address, like https://api.example.com, not "${raw}".`);
+  }
+  if (mode === 'live' && u.protocol !== 'https:') throw new ConfigError('PUBLIC_URL must use https in live mode.');
+  return u.origin;
+}
 
 /** Stripe keys for `mode`, refusing the other mode's variables and any key that belongs to the other mode (D18). */
 function loadStripe(mode: 'test' | 'live', env: Record<string, string | undefined>): Config['stripe'] {
@@ -146,6 +164,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new ConfigError(`PORT must be a port number, not "${env['PORT']}".`);
 
   const host = env['HOST'] ?? '127.0.0.1';
+  const stripe = loadStripe(mode, env);
+  const publicOrigin = loadPublicOrigin(mode, env['PUBLIC_URL']);
+  // Logbook is a desktop app (D78): without its return page, no live customer could pay (D79).
+  if (mode === 'live' && stripe && !publicOrigin) throw new ConfigError("Set PUBLIC_URL to this API's public https address: Stripe sends desktop customers back to its /api/checkout/done page.");
   return {
     mode,
     host,
@@ -160,10 +182,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
             clientSecret,
           }
         : undefined,
-    stripe: loadStripe(mode, env),
+    stripe,
     storage: loadStorage(mode, host, env),
     databasePath: env['DATABASE_PATH'] || '.data/logbook.sqlite',
     webOrigins: (env['WEB_ORIGIN'] ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
+    publicOrigin,
     chromiumPath: env['LOGBOOK_CHROMIUM_PATH'] || undefined,
     fulfilment: loadFulfilment(mode, Boolean(clientKey && clientSecret), env),
   };

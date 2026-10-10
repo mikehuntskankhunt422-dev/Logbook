@@ -14,6 +14,8 @@
     "dev": "npm run dev -w @logbook/web",
     "build": "npm run build -w @logbook/web",
     "preview": "npm run preview -w @logbook/web",
+    "desktop": "npm run dev -w @logbook/desktop",
+    "desktop:build": "npm run build -w @logbook/desktop",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",

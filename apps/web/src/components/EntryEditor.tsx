@@ -24,6 +24,7 @@ import { useJournal } from '../app/journal-context.tsx';
 import { navigate } from '../app/router.ts';
 import { useToast } from '../app/toasts.tsx';
 import { canCompressVideo, compressVideo, importFile } from '../lib/media-import.ts';
+import { onFlush } from '../lib/pending-saves.ts';
 import { celebrate, useReducedMotion } from '../lib/motion.ts';
 import { AudioBlock, BLOCK_LABELS, EmbedBlock, FileBlock, GalleryBlock, LinkBlock, PhotoBlock, RichTextBlock, VideoBlock } from './blocks.tsx';
 import { Dialog, formatLongDate, useCoverStyle } from './common.tsx';
@@ -48,6 +49,8 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef<Entry | null>(null);
   latest.current = entry;
+  /** The save in progress, so closing the app can wait for it. */
+  const saving = useRef<Promise<void>>(Promise.resolve());
 
   // Load an existing entry, or start a new in-memory draft that is saved on first change.
   useEffect(() => {
@@ -74,10 +77,17 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     };
   }, [journal, entryId, newDate, toast]);
 
-  const save = useCallback(async () => {
+  const save = useCallback(() => {
     const current = latest.current;
-    if (!current || !dirty.current) return;
+    if (!current || !dirty.current) return saving.current;
     dirty.current = false;
+    saving.current = saveNow(current);
+    return saving.current;
+    // saveNow is redefined each render with the same dependencies as save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journal, entries, toast]);
+
+  async function saveNow(current: Entry) {
     setSaveState('saving');
     const isFirstSave = savedRev.current === null;
     const datesBefore = entries.map((e) => e.date);
@@ -103,9 +113,7 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
         toast(`Couldn't save: ${(err as Error).message}`);
       }
     }
-    // celebrateFirstSave is stable enough; entries snapshot is intentionally the pre-save list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [journal, entries, toast]);
+  }
 
   function celebrateFirstSave(datesBefore: string[], date: string) {
     if (date !== today()) return;
@@ -141,9 +149,16 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     const onHide = () => document.visibilityState === 'hidden' && flush();
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', flush);
+    // The desktop app closing (D86): save now and let it wait for the write.
+    const unregister = onFlush(async () => {
+      clearTimeout(timer.current);
+      await save();
+      return !dirty.current; // still dirty: the save failed
+    });
     return () => {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flush);
+      unregister();
       flush();
     };
   }, [save]);

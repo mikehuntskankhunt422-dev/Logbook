@@ -12,8 +12,7 @@ import { App } from './app/App.tsx';
 
 async function boot() {
   const root = createRoot(document.getElementById('root')!);
-  try {
-    const journal = await Journal.open(await IndexedDbStore.open());
+  const render = (journal: Journal) =>
     root.render(
       <StrictMode>
         <ToastProvider>
@@ -23,6 +22,16 @@ async function boot() {
         </ToastProvider>
       </StrictMode>,
     );
+
+  // Written out rather than `isDesktop` so the browser build drops the desktop code entirely.
+  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+    // The journal folder on disk (D77).
+    const { bootDesktop, showError } = await import('./desktop/boot.tsx');
+    return bootDesktop(root, render).catch((err: unknown) => showError(root, err));
+  }
+
+  try {
+    render(await Journal.open(await IndexedDbStore.open()));
   } catch (err) {
     // Private browsing in some browsers, or storage disabled by policy.
     root.render(

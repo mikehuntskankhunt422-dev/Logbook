@@ -1,4 +1,5 @@
 import { backupFileName, exportBackup, type Journal } from '@logbook/core';
+import { isDesktop } from './platform.ts';
 
 /**
  * Getting backups out of the browser: a plain download everywhere, or "back up to a folder" through
@@ -12,7 +13,9 @@ type DirHandle = FileSystemDirectoryHandle & {
 };
 
 export function supportsFolderBackup(): boolean {
-  return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  // The desktop app saves through its own dialog; its webview may also offer this API, but the
+  // remembered folder would live in browser storage the app doesn't otherwise use.
+  return !isDesktop && typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
 export function downloadBlob(blob: Blob, name: string): void {
@@ -27,14 +30,22 @@ export function downloadBlob(blob: Blob, name: string): void {
 }
 
 export async function makeBackup(journal: Journal, keepEncrypted: boolean): Promise<Blob> {
-  return exportBackup(journal, { keepEncrypted, app: `logbook-web ${import.meta.env.VITE_APP_VERSION ?? 'dev'}` });
+  return exportBackup(journal, { keepEncrypted, app: `logbook-${isDesktop ? 'desktop' : 'web'} ${import.meta.env.VITE_APP_VERSION ?? 'dev'}` });
 }
 
-export async function downloadBackup(journal: Journal, keepEncrypted: boolean): Promise<void> {
+/** Downloads a backup zip (the desktop app asks where to save it). False when the person cancelled. */
+export async function downloadBackup(journal: Journal, keepEncrypted: boolean): Promise<boolean> {
   const blob = await makeBackup(journal, keepEncrypted);
-  downloadBlob(blob, backupFileName());
+  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+    const { saveFile } = await import('../desktop/bridge.ts');
+    if (!(await saveFile(blob, backupFileName()))) return false;
+  } else downloadBlob(blob, backupFileName());
   await journal.markBackedUp();
+  return true;
 }
+
+/** What the person just did with a backup, for the confirmation. */
+export const BACKUP_DONE = isDesktop ? 'Backup saved.' : 'Backup downloaded.';
 
 // ── remembered folder ───────────────────────────────────────────────────────────────────────────
 

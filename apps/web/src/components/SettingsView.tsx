@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
-import { backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
+import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
+import { isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
+
+/** The desktop app's journal folder (D77); written out so the browser build leaves it out. */
+const JournalFolderPanel =
+  import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel }))) : null;
 
 export function SettingsView() {
   return (
@@ -14,7 +19,15 @@ export function SettingsView() {
       <AppearancePanel />
       <BackupPanel />
       <PasscodePanel />
-      <StoragePanel />
+      {JournalFolderPanel ? (
+        <Suspense fallback={null}>
+          <JournalFolderPanel>
+            <CompressSetting />
+          </JournalFolderPanel>
+        </Suspense>
+      ) : (
+        <StoragePanel />
+      )}
       <TrashPanel />
       <DangerPanel />
     </>
@@ -99,7 +112,9 @@ function BackupPanel() {
     <section className="panel" aria-labelledby="backup-h">
       <h2 id="backup-h">Backups</h2>
       <p>
-        Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.
+        {isDesktop
+          ? 'Your journal folder is the journal. A backup zip is a copy of it you can keep somewhere else: another drive, or cloud storage. Back it up regularly.'
+          : 'Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.'}
         {settings.lastBackupAt ? ` Last backup: ${new Date(settings.lastBackupAt).toLocaleString()}.` : ' You have not made a backup yet.'}
       </p>
       {journal.isEncrypted && (
@@ -108,8 +123,8 @@ function BackupPanel() {
         </label>
       )}
       <div className="row">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => (await downloadBackup(journal, encrypted), celebrate('backup'), toast('Backup downloaded.')))}>
-          ⬇️ Download backup (.zip)
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => void ((await downloadBackup(journal, encrypted)) && (celebrate('backup'), toast(BACKUP_DONE))))}>
+          {isDesktop ? '💾 Save a backup (.zip)…' : '⬇️ Download backup (.zip)'}
         </button>
         {supportsFolderBackup() && (
           <button
@@ -341,7 +356,6 @@ function PasscodePanel() {
 }
 
 function StoragePanel() {
-  const { journal, settings } = useJournal();
   const [est, setEst] = useState<Awaited<ReturnType<typeof storageEstimate>>>(null);
   const refresh = () => void storageEstimate().then(setEst);
   useEffect(refresh, []);
@@ -372,12 +386,19 @@ function StoragePanel() {
       ) : (
         <p className="muted">This browser doesn't report storage use.</p>
       )}
-      <label className="row">
-        <input type="checkbox" checked={settings.compressLargeMedia} onChange={(e) => void journal.updateSettings({ compressLargeMedia: e.target.checked })} /> Shrink very large photos when adding them (still
-        sharp enough to print)
-      </label>
+      <CompressSetting />
       <p className="hint">Clearing your browser's site data deletes your journal. Keep backups.</p>
     </section>
+  );
+}
+
+function CompressSetting() {
+  const { journal, settings } = useJournal();
+  return (
+    <label className="row">
+      <input type="checkbox" checked={settings.compressLargeMedia} onChange={(e) => void journal.updateSettings({ compressLargeMedia: e.target.checked })} /> Shrink very large photos when adding them (still
+      sharp enough to print)
+    </label>
   );
 }
 
@@ -421,7 +442,11 @@ function DangerPanel() {
   return (
     <section className="panel" aria-labelledby="danger-h">
       <h2 id="danger-h">Delete everything</h2>
-      <p>Permanently removes every entry and file from this device. Back up first.</p>
+      <p>
+        {isDesktop
+          ? 'Permanently removes every entry and file from your journal folder. If the folder is synced with OneDrive, Dropbox or iCloud Drive, they disappear from your other computers too. Back up first.'
+          : 'Permanently removes every entry and file from this device. Back up first.'}
+      </p>
       {journal.issues.length > 0 && (
         <p className="notice notice-warn">
           {journal.issues.length} {journal.issues.length === 1 ? 'entry' : 'entries'} could not be read and {journal.issues.length === 1 ? 'is' : 'are'} hidden. A backup still includes{' '}
@@ -449,7 +474,7 @@ function DangerPanel() {
                   clearMediaUrlCache();
                   setOpen(false);
                   setTyped('');
-                  toast('Everything was deleted from this device.');
+                  toast(isDesktop ? 'Everything was deleted from your journal folder.' : 'Everything was deleted from this device.');
                 })
               }
             >

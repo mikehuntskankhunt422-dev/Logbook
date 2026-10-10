@@ -52,6 +52,13 @@ export function extensionFor(meta: Pick<MediaMeta, 'mime' | 'name'>): string {
   return EXT_BY_MIME[meta.mime] ?? fromName ?? 'bin';
 }
 
+const MIME_BY_EXT = Object.fromEntries(Object.entries(EXT_BY_MIME).map(([mime, ext]) => [ext, mime]));
+
+/** The MIME type a media file's extension stands for, or `application/octet-stream`. */
+export function mimeForExtension(ext: string): string {
+  return MIME_BY_EXT[ext.toLowerCase()] ?? 'application/octet-stream';
+}
+
 export const paths = {
   entry: (e: Entry) =>
     `${e.deletedAt ? 'trash' : 'entries'}/${e.date.slice(0, 4)}/${e.date}--${slugify(e.title || 'untitled')}--${e.id}.json`,
@@ -151,6 +158,14 @@ export async function exportBackup(journal: Journal, opts: ExportOptions = {}): 
     }
   }
 
+  // A folder journal can hold files that can't be read at the moment (still syncing, offloaded by
+  // iCloud): a backup without them would look complete and not be (D85).
+  const unreadable = journal.store.unreadableFiles?.() ?? [];
+  if (unreadable.length) {
+    throw new BackupError(
+      `${unreadable.length} ${unreadable.length === 1 ? 'file' : 'files'} in your journal folder can't be read right now (still syncing, or offloaded by iCloud Drive?), so the backup would be incomplete. Try again once ${unreadable.length === 1 ? 'it is' : 'they are'} available.`,
+    );
+  }
   await add(
     'logbook.json',
     json({ format: 'logbook', version: BACKUP_VERSION, settings: journal.getSettings(), vault: keepEncrypted ? journal.getVault() : undefined }),

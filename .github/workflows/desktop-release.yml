@@ -1,0 +1,119 @@
+name: Desktop installers
+
+# Logbook's installers on Windows, macOS and Linux (M5 slice E, D84). A push to a work branch that
+# touches the app builds them as workflow artifacts to try; a v* tag also publishes them as a
+# GitHub release. Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['claude/**']
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-release.yml'
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Installers (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            bundles: nsis
+            args: ''
+            rust-targets: ''
+          - name: macOS
+            os: macos-latest
+            bundles: dmg
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Linux
+            # An older Ubuntu, so the AppImage runs on more distributions.
+            os: ubuntu-22.04
+            bundles: appimage,deb,rpm
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the app's version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app's version $version (apps/desktop/package.json)."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.name }}
+      - name: Tauri's Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: npm ci
+      - name: Build the installers
+        run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+        working-directory: apps/desktop
+        env:
+          # The API's address, once it's deployed (M6). Without it the app can't order books and says so.
+          VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
+      - name: Collect the installers
+        shell: bash
+        run: |
+          mkdir -p installers
+          find apps/desktop/src-tauri/target -path '*/release/bundle/*' -type f \
+            \( -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+            -exec cp {} installers/ \;
+          ls -l installers
+          test -n "$(ls installers)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.name }}
+          path: installers/*
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: installers
+      - name: Checksums
+        working-directory: installers
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # 0.x versions are previews.
+          case "$version" in 0.*) pre=--prerelease; title="Logbook $version (preview)" ;; *) pre=; title="Logbook $version" ;; esac
+          gh release create "$GITHUB_REF_NAME" installers/* --repo "$GITHUB_REPOSITORY" --verify-tag $pre \
+            --title "$title" --notes-file apps/desktop/RELEASE-NOTES.md

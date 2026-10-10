@@ -20,6 +20,8 @@ const REUSE_MARGIN_MS = 5 * 60 * 1000;
 /** How often reading an order may ask Stripe about its open session (the return page polls). */
 const SYNC_EVERY_MS = 10_000;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+/** The API's page that tells a desktop customer to go back to the app (D79). */
+export const CHECKOUT_DONE_PATH = '/api/checkout/done';
 /** Stripe tax codes, checked against the API 2026-10-08: printed books, and shipping sold with them. */
 const TAX_CODE_BOOK = 'txcd_35010000';
 const TAX_CODE_SHIPPING = 'txcd_92010001';
@@ -46,14 +48,27 @@ export interface CheckoutDeps {
   webOrigins: string[];
   /** Test mode also accepts a loopback website (development and e2e). */
   allowLoopbackReturn: boolean;
+  /** This API's public origin, whose CHECKOUT_DONE_PATH page desktop customers return to (D79). */
+  publicOrigin?: string;
   log: { info(obj: object, msg: string): void; warn(obj: object, msg: string): void; error(obj: object, msg: string): void };
   now?: () => Date;
   /** Called after an order is paid (its fulfilment job is queued in the same transaction). */
   onPaid?: (orderId: string) => void;
 }
 
-/** Where Stripe sends the customer back to: the website's address without query or fragment, if it's one of ours. */
-export function returnBase(url: string, deps: Pick<CheckoutDeps, 'webOrigins' | 'allowLoopbackReturn'>): string | null {
+function safeOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where Stripe sends the customer back to: the website's address without query or fragment, if
+ * it's one of ours, or the API's own "go back to Logbook" page for the desktop app (D79).
+ */
+export function returnBase(url: string, deps: Pick<CheckoutDeps, 'webOrigins' | 'allowLoopbackReturn' | 'publicOrigin'>): string | null {
   let u: URL;
   try {
     u = new URL(url);
@@ -61,7 +76,8 @@ export function returnBase(url: string, deps: Pick<CheckoutDeps, 'webOrigins' | 
     return null;
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-  const ours = deps.webOrigins.includes(u.origin) || (deps.allowLoopbackReturn && LOOPBACK.has(u.hostname));
+  const ours =
+    deps.webOrigins.includes(u.origin) || (deps.allowLoopbackReturn && LOOPBACK.has(u.hostname)) || (u.origin === deps.publicOrigin && u.pathname === CHECKOUT_DONE_PATH);
   return ours ? `${u.origin}${u.pathname}` : null;
 }
 
@@ -232,7 +248,11 @@ export class CheckoutService {
       if (!stripe) throw new OrderError('Payments are not available on this server yet.', 503);
       if (!input.checked) throw new OrderError('Please confirm that you have checked your book.', 400);
       const base = returnBase(input.returnUrl, this.deps);
-      if (!base) throw new OrderError('This website is not allowed to take payments.', 400);
+      if (!base) {
+        // A desktop return page refused here usually means PUBLIC_URL isn't this API's address.
+        this.deps.log.warn({ orderId: order.id, origin: safeOrigin(input.returnUrl), publicOrigin: this.deps.publicOrigin ?? null }, 'checkout return address refused');
+        throw new OrderError("Logbook's print service can't take payments from here yet. Please try again later.", 400);
+      }
 
       let o = this.deps.db.get(order.id)!;
       const now = this.now();

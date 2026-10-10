@@ -1,6 +1,8 @@
 # Logbook: Plan
 
-Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · Owner: you · Author: Claude
+Status: **approved 2026-10-07**, with premium colour only (D24), the cost-based pricing table (D25), and all Lulu destinations (D26) · **Changed 2026-10-10: desktop only, no mobile app, no signing fees for now (D77, D78)** · Owner: you · Author: Claude
+
+> **Desktop only (D77, D78, 2026-10-10).** Logbook is a **free desktop app** that has to be downloaded and installed, from GitHub Releases. There is no website and no mobile app. The web build still runs inside the desktop app and in development and tests, but it isn't hosted for the public. Customers pay only for printed books. Installers are unsigned for now, so Windows and macOS warn about an unknown developer the first time. The sections below that describe the website, the PWA or Cloudflare Pages are kept for reference; where they disagree with this note, this note wins.
 
 This plan covers the architecture, the shared-core layout for web and desktop, milestones with acceptance criteria, risks, and the API facts still to verify. Companion documents:
 
@@ -8,6 +10,7 @@ This plan covers the architecture, the shared-core layout for web and desktop, m
 - [M2.md](M2.md): the detailed plan for milestone 2 (book builder and print PDFs), with spike results.
 - [M3.md](M3.md): milestone 3 (pricing and Stripe): prices from sandbox costs, Checkout and webhooks in Stripe test mode.
 - [M4.md](M4.md): milestone 4 (Lulu fulfilment): sandbox findings, the fulfilment design, end-to-end results, and what it still needs.
+- [M5.md](M5.md): milestone 5 (the desktop app): the journal folder, the Tauri app, paying from the desktop, and what's left (installers, updates, watching the folder).
 - [ASSUMPTIONS.md](ASSUMPTIONS.md): Stripe and Lulu facts I verified against official sources today, with links, and the ones I could not verify yet.
 - [reference/](reference/): dated snapshots of Lulu's OpenAPI spec, product spec sheet and Book Creation Guide, so later work can be checked against the exact text I read.
 
@@ -242,18 +245,19 @@ Each milestone ends with tests run and a report on what works, what's untested, 
 - `scripts/verify-lulu-packages` and `scripts/refresh-lulu-countries`
 - Tests: state-machine unit tests; sandbox e2e that creates real print jobs for the 40-page and 200-page samples and follows them to the furthest status the sandbox reaches.
 
-**M5: Desktop**
+**M5: Desktop (the only product, D77, D78)**
 - Tauri 2 shell, `storage-fs` adapter, folder picker, watcher, conflict UI, import from zip backup
-- Windows MSI/NSIS first, then macOS (dmg, notarised) and Linux (AppImage, deb, rpm)
-- Updater with signed `latest.json`; GitHub Actions matrix that builds and attaches installers to each release
-- Signing instructions for each OS
+- Windows MSI/NSIS first, then macOS (dmg) and Linux (AppImage, deb, rpm)
+- Updater with a `latest.json` signed by our own updater key (free); GitHub Actions matrix that builds and attaches installers to each release
+- Ordering from the desktop: Checkout opens in the default browser; Stripe's return goes to a small "Payment received, go back to Logbook" page served by the API, and the app polls the order (no website needed)
+- Installers **unsigned** for now (no Apple or Windows signing fees). A first-run guide on the download page shows how to get past Windows SmartScreen and macOS Gatekeeper. Signing instructions for each OS are written down for when it's worth paying for
 
 **M6: Polish, admin, docs**
 - Admin page (password-protected): order list, status, errors, retry and refund
 - Legal drafts (Privacy, Terms, Refund & Reprint, content notice), all marked **for lawyer review**
 - README: setup, env vars, local run with the Stripe CLI, deploy, signing; `docs/PLATFORMS.md`; go-live checklist; final pass on accessibility and Lighthouse
 
-**Done when (your definition):** in test mode, you can write a journal with photos (web or desktop), build a 200-page book, see an accurate preview and price, pay with a Stripe test card, and watch a Lulu sandbox print job get created and tracked. In addition: a refund works after a simulated failure, the PWA and a signed desktop installer install, and the go-live checklist is complete.
+**Done when (your definition, updated for D77):** in test mode, you can write a journal with photos in the desktop app, build a 200-page book, see an accurate preview and price, pay with a Stripe test card, and watch a Lulu sandbox print job get created and tracked. In addition: a refund works after a simulated failure, the desktop installer from GitHub Releases installs and updates itself, and the go-live checklist is complete.
 
 ---
 
@@ -276,7 +280,8 @@ That gives 16 package IDs. Page limits from the sheet are **32–800 for paperba
 
 | Concern | Choice | Why (details in DECISIONS.md) |
 |---|---|---|
-| Website/PWA | Cloudflare Pages | Static, global, free tier, sits next to R2 |
+| Website/PWA | ~~Cloudflare Pages~~ Not published (D77): the desktop app is the product. Cloudflare Pages remains the choice if a website comes back | Static, global, free tier, sits next to R2 |
+| Desktop downloads | GitHub Releases, with the updater's `latest.json` | Free, and Actions already builds there |
 | API + PDF rendering | Fly.io, Docker image based on Playwright's official image, 1 machine with 2 GB RAM and a volume | Chromium needs a real container; edge runtimes can't run it |
 | Orders DB | SQLite (better-sqlite3) on the Fly volume, nightly backup to R2 | Orders only and low volume. Swapping to Postgres is a documented change |
 | Temp files | Cloudflare R2 (S3 API), presigned URLs, lifecycle delete after 7 days | Lulu fetches by URL; no egress fees |
@@ -400,6 +405,6 @@ All verified facts and their sources are in [ASSUMPTIONS.md](ASSUMPTIONS.md). St
 - A Cloudflare account (R2 bucket + Pages) and a Resend API key with a verified sending domain
 - Your business name, contact email and domain, used in legal drafts, emails and Lulu `contact_email`
 
-**Before M5:** an Apple Developer account (for macOS signing), a decision on a Windows signing route, and a GitHub repository for Actions and Releases.
+**Before M5:** ~~an Apple Developer account (for macOS signing), a decision on a Windows signing route~~ not needed for now: installers ship unsigned (D77). The GitHub repository for Actions and Releases exists.
 
 **Also:** git has no name or email configured on this PC, so I haven't made any commits. Tell me the name and email to use for this repo's commits (set locally, not globally).
