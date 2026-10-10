@@ -62,7 +62,7 @@ To release a version:
 
 1. Set the version in `apps/desktop/package.json` (`0.1.1`; numbers only, no `-beta` suffix). `tauri.conf.json` and the version written into backups both read it from there.
 2. Write what changed in `apps/desktop/RELEASE-NOTES.md`; it becomes the release's description.
-3. Tag the commit `v<version>` and push the tag. The workflow refuses a tag that doesn't match the version, and marks `0.x` versions as pre-releases.
+3. Either push a tag `v<version>`, or run the **Desktop installers** workflow by hand on `main` (Actions → Desktop installers → Run workflow) with the version; that run makes the tag itself (D87). Either way the workflow refuses a version that doesn't match `apps/desktop/package.json`, and marks `0.x` versions as pre-releases.
 
 The installers aren't code-signed (D77): Windows SmartScreen and macOS Gatekeeper warn on first open, and the README explains how to get past them. macOS builds are signed ad hoc (`signingIdentity: "-"`), without which Apple silicon Macs may report the app as damaged. A desktop build can order books only if it knows the API's address: set the repository variable `LOGBOOK_API_URL` (Settings → Secrets and variables → Actions → Variables) once the API is deployed. Without it, the book builder says ordering isn't open yet.
 
