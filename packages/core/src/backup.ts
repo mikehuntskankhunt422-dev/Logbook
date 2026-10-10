@@ -52,6 +52,13 @@ export function extensionFor(meta: Pick<MediaMeta, 'mime' | 'name'>): string {
   return EXT_BY_MIME[meta.mime] ?? fromName ?? 'bin';
 }
 
+const MIME_BY_EXT = Object.fromEntries(Object.entries(EXT_BY_MIME).map(([mime, ext]) => [ext, mime]));
+
+/** The MIME type a media file's extension stands for, or `application/octet-stream`. */
+export function mimeForExtension(ext: string): string {
+  return MIME_BY_EXT[ext.toLowerCase()] ?? 'application/octet-stream';
+}
+
 export const paths = {
   entry: (e: Entry) =>
     `${e.deletedAt ? 'trash' : 'entries'}/${e.date.slice(0, 4)}/${e.date}--${slugify(e.title || 'untitled')}--${e.id}.json`,
