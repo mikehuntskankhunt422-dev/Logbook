@@ -7,6 +7,7 @@ import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, re
 import { isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
+import { ExportPanel } from './ExportPanel.tsx';
 
 /** The desktop app's journal folder (D77); written out so the browser build leaves it out. */
 const JournalFolderPanel =
@@ -20,6 +21,7 @@ export function SettingsView() {
       <h1>Settings</h1>
       <AppearancePanel />
       <BackupPanel />
+      <ExportPanel />
       <PasscodePanel />
       {JournalFolderPanel ? (
         <Suspense fallback={null}>

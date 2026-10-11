@@ -1,5 +1,7 @@
 Logbook now **updates itself**. From this version on, Logbook looks for a new version when it starts and twice a day, and asks before installing it: **Update and restart** saves your writing, installs the update and opens Logbook again. **Settings → Updates** checks at any time. Updates install only if they carry Logbook's signature, and your journal folder isn't touched.
 
+**Export your journal.** **Settings → Export** saves your entries (all of them, a year, or a date range) as **Markdown** (one file, or a file per entry for notes apps such as Obsidian), **plain text**, a **web page** with your photos and videos, or a **PDF**: Logbook opens your computer's print window, where you choose "Save as PDF" (on Windows, "Microsoft Print to PDF"). Exported files aren't protected by the passcode.
+
 **Coming from 0.1.0?** 0.1.0 can't update itself, so install this version over it once, by hand; your journal folder carries over. After that, updates arrive on their own.
 
 **Download** the file for your computer below:

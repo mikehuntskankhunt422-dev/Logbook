@@ -4,7 +4,7 @@ A private journal for your computer: write about your days with photos, video, v
 
 Logbook is a free desktop app for Windows, macOS and Linux. Your journal is kept as ordinary files in a folder you choose, never on our servers. The only thing that costs money is a printed book, if you order one.
 
-> **Status: preview (0.2.0).** Writing, photos and media, search, the calendar, backups, the passcode lock, the book builder with its page-by-page preview and automatic updates all work. **Not yet:** ordering a printed book (it opens once Logbook's print service is online) and a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
+> **Status: preview (0.2.0).** Writing, photos and media, search, the calendar, backups, the passcode lock, the book builder with its page-by-page preview, export to Markdown, text, web page or PDF, and automatic updates all work. **Not yet:** ordering a printed book (it opens once Logbook's print service is online) and a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
 
 ## Download
 
@@ -47,6 +47,8 @@ Logbook/
 **Backups.** The folder is your journal, so a copy of the folder is a backup. Logbook can also save one backup file: **Settings → Backups → Save a backup**, and it reminds you when it's been a while. **Restore from backup** brings one back, merged with what you have or replacing it. A backup unzipped into an empty folder also opens as a journal.
 
 **Updates.** Logbook looks for a new version when it starts and twice a day, and asks before installing it: **Update and restart** saves your writing, installs the update and opens Logbook again. **Settings → Updates** checks at any time. Updates come from this repository's releases and install only if they carry Logbook's signature.
+
+**Export.** **Settings → Export** turns your entries (all of them, a year, or a date range) into documents for other apps or for keeping: **Markdown** (one file, or a file per entry for notes apps such as Obsidian), **plain text**, a **web page**, or a **PDF** (Logbook opens your computer's print window: choose "Save as PDF" there). With photos included, you get a .zip holding the documents and a `media` folder. Exported files aren't protected by the passcode. To keep a copy you can restore into Logbook, make a backup instead.
 
 **Passcode lock.** **Settings → Passcode lock** encrypts your entries, photos and other media in the folder, so they can't be read without your passcode, and locks Logbook after a few idle minutes. A forgotten passcode can't be recovered. Conflict copies (made by a sync service, or by Logbook when two computers changed the same entry) are kept as they were, unencrypted.
 

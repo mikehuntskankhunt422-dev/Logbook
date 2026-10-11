@@ -41,6 +41,11 @@ export async function saveFile(blob: Blob, name: string): Promise<string | null>
   });
 }
 
+/** The system print window (with "Save as PDF") for what the window shows. */
+export function printPage(): Promise<void> {
+  return invoke('print_page');
+}
+
 /** Opens a web or email link in the default browser. */
 export function openExternal(url: string): Promise<void> {
   return invoke('open_url', { url });

@@ -277,6 +277,14 @@ fn mac_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Menu::with_items(app, &[&app_menu, &edit, &window])
 }
 
+/// The system print window for what the page is showing: the PDF export (D89) lays the entries out
+/// for print first. A web page's own `print()` does nothing in macOS's webview, so it goes through
+/// here: Windows and Linux show their print dialog, macOS its print sheet, each with "Save as PDF".
+#[tauri::command]
+fn print_page(window: WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
 /// Opens a web address in the default browser: links in entries, and Stripe's payment page.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -407,6 +415,7 @@ pub fn run() {
             close_cancel,
             update_check,
             update_install,
+            print_page,
         ])
         .run(tauri::generate_context!())
         .expect("Logbook couldn't start");
