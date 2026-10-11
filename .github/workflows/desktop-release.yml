@@ -4,6 +4,10 @@ name: Desktop installers
 # touches the app builds them as workflow artifacts to try; a v* tag also publishes them as a
 # GitHub release. So does running it by hand on main ("Run workflow", D87), which creates the tag.
 # Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
+#
+# Automatic updates (D88): with the TAURI_SIGNING_PRIVATE_KEY secrets set, each build also signs the
+# files the updater installs, and a release carries latest.json, which the app reads from the
+# newest release. Publishing refuses to go ahead without them.
 
 on:
   push:
@@ -39,7 +43,8 @@ jobs:
             rust-targets: ''
           - name: macOS
             os: macos-latest
-            bundles: dmg
+            # The app bundle too: the updater installs it, zipped (Logbook.app.tar.gz).
+            bundles: app,dmg
             args: --target universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
           - name: Linux
@@ -81,18 +86,36 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - run: npm ci
+      - name: Updater signing key
+        id: signing
+        shell: bash
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          PUBLISHING: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ "$HAS_KEY" = true ]; then
+            echo "config=--config src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBLISHING" = true ]; then
+            echo "::error::A release needs the updater signing key: add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secrets (docs/DEVELOPING.md)."
+            exit 1
+          else
+            echo "::notice::No updater signing key, so these installers can't be offered as updates. Fine for trying a branch."
+          fi
       - name: Build the installers
-        run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+        run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }} ${{ steps.signing.outputs.config }}
         working-directory: apps/desktop
         env:
           # The API's address, once it's deployed (M6). Without it the app can't order books and says so.
           VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Collect the installers
         shell: bash
         run: |
           mkdir -p installers
           find apps/desktop/src-tauri/target -path '*/release/bundle/*' -type f \
-            \( -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+            \( -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+               -o -name '*.app.tar.gz' -o -name '*.sig' \) \
             -exec cp {} installers/ \;
           ls -l installers
           test -n "$(ls installers)"
@@ -117,6 +140,13 @@ jobs:
           pattern: installers-*
           merge-multiple: true
           path: installers
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The updater's latest.json
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts installers "$TAG" "$GITHUB_REPOSITORY"
       - name: Checksums
         working-directory: installers
         run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
@@ -126,8 +156,9 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: |
           version="${TAG#v}"
-          # 0.x versions are previews.
-          case "$version" in 0.*) pre=--prerelease; title="Logbook $version (preview)" ;; *) pre=; title="Logbook $version" ;; esac
+          # 0.x versions are previews, said in the title. Not GitHub pre-releases: the updater reads
+          # latest.json from the release GitHub calls latest, which is never a pre-release (D88).
+          case "$version" in 0.*) title="Logbook $version (preview)" ;; *) title="Logbook $version" ;; esac
           # Run by hand, the tag is made here, on the commit that was built.
-          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" $pre \
+          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "$title" --notes-file apps/desktop/RELEASE-NOTES.md

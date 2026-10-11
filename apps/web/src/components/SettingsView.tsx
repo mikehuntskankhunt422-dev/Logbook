@@ -11,6 +11,8 @@ import { Dialog, formatLongDate } from './common.tsx';
 /** The desktop app's journal folder (D77); written out so the browser build leaves it out. */
 const JournalFolderPanel =
   import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel }))) : null;
+/** The desktop app's automatic updates (D88). */
+const UpdatesPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel }))) : null;
 
 export function SettingsView() {
   return (
@@ -27,6 +29,11 @@ export function SettingsView() {
         </Suspense>
       ) : (
         <StoragePanel />
+      )}
+      {UpdatesPanel && (
+        <Suspense fallback={null}>
+          <UpdatesPanel />
+        </Suspense>
       )}
       <TrashPanel />
       <DangerPanel />

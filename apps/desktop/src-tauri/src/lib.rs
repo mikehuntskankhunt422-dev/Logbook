@@ -287,6 +287,55 @@ fn open_url(url: String) -> Result<(), String> {
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+// ── updates (M5 slice F, D88) ────────────────────────────────────────────────────────────────
+//
+// The updater reads `latest.json` from the newest GitHub release and accepts only files signed
+// with our updater key (tauri.conf.json holds the public half). The page saves everything before
+// it asks for the install, because on Windows the installer ends the app straight away.
+
+/// An update found by the last check, kept until it's installed.
+#[derive(Default)]
+struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
+
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+}
+
+/// Looks for a newer version; None when this is the newest.
+#[tauri::command]
+async fn update_check(app: AppHandle, pending: State<'_, PendingUpdate>) -> Result<Option<UpdateInfo>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    let info = update.as_ref().map(|u| UpdateInfo { version: u.version.clone() });
+    *pending.0.lock().map_err(|_| "busy".to_string())? = update;
+    Ok(info)
+}
+
+/// Downloads and installs the update found by `update_check`, then starts the new version. A try
+/// that fails needs a fresh check: the release may have been fixed in the meantime.
+/// Reports progress as `logbook://update-progress` events: [bytes so far, total if known].
+#[tauri::command]
+async fn update_install(app: AppHandle, pending: State<'_, PendingUpdate>) -> Result<(), String> {
+    let update = pending.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update waiting.")?;
+    let progress = app.clone();
+    let mut received: u64 = 0;
+    update
+        .download_and_install(
+            move |chunk, total| {
+                received += chunk as u64;
+                let _ = progress.emit("logbook://update-progress", (received, total));
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    // Windows never gets here: its installer has already ended the app and will start it again.
+    // The page saved before asking, so the restart goes straight through the close hold (D86).
+    CLOSED.store(true, Ordering::SeqCst);
+    app.restart()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -307,6 +356,8 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(PendingUpdate::default())
         .setup(|app| {
             let config_file = app.path().app_config_dir()?.join("config.json");
             let config = folder::load(&config_file);
@@ -354,6 +405,8 @@ pub fn run() {
             open_url,
             close_ready,
             close_cancel,
+            update_check,
+            update_install,
         ])
         .run(tauri::generate_context!())
         .expect("Logbook couldn't start");
