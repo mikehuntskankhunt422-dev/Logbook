@@ -119,6 +119,10 @@ jobs:
             -exec cp {} installers/ \;
           ls -l installers
           test -n "$(ls installers)"
+      - name: The update files are signed with the app's key
+        if: steps.signing.outputs.config != ''
+        shell: bash
+        run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.name }}
