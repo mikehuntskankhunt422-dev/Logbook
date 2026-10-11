@@ -1,7 +1,7 @@
-import { zipSync, strToU8, type Zippable } from 'fflate';
+import { Zip, ZipDeflate, ZipPassThrough, strToU8 } from 'fflate';
 import { extensionFor } from '../backup.ts';
 import { toIsoDate } from '../dates.ts';
-import type { Journal } from '../journal.ts';
+import { LockedError, type Journal } from '../journal.ts';
 import { mediaKind, referencedMediaIds, type Entry, type MediaMeta } from '../model.ts';
 import { chronological, type ExportMedia, type MediaLookup, type RenderOptions } from './common.ts';
 import { exportPageHtml } from './html.ts';
@@ -24,6 +24,8 @@ export interface JournalExportOptions extends RenderOptions {
   layout?: 'one-file' | 'per-entry';
   now?: Date;
   onProgress?: (done: number, total: number) => void;
+  /** Tests only: a smaller ceiling than EXPORT_ZIP_LIMIT. */
+  zipLimit?: number;
 }
 
 export interface JournalExport {
@@ -33,6 +35,19 @@ export interface JournalExport {
   mediaFiles: number;
   /** Media an entry uses that couldn't be read (still syncing, say), left out of the export. */
   mediaMissing: number;
+}
+
+/**
+ * fflate writes no Zip64 records, so a zip must stay under 4 GiB; the margin leaves room for the
+ * documents and the zip's own headers.
+ */
+export const EXPORT_ZIP_LIMIT = 0xffffffff - 64 * 1024 * 1024;
+
+export class ExportTooLargeError extends Error {
+  constructor() {
+    super('These entries have too many photos and videos for one export file (more than 4 GB). Export a year or a shorter range at a time, or leave out the media.');
+    this.name = 'ExportTooLargeError';
+  }
 }
 
 const EXTENSION: Record<ExportFormat, string> = { markdown: 'md', text: 'txt', html: 'html' };
@@ -45,28 +60,65 @@ export async function exportEntries(journal: Journal, chosen: Entry[], opts: Jou
   const perEntry = opts.format === 'markdown' && opts.layout === 'per-entry';
   const ids = [...new Set(entries.flatMap(referencedMediaIds))];
 
-  // Names and copies of the media, read one at a time.
+  // The zip is written as it goes, one media file at a time, so the export holds each file once
+  // (as exportBackup does) rather than all of them plus one more copy of the whole archive.
+  const root = `Logbook export ${day}`;
+  let archive: { zip: Zip; chunks: Uint8Array[]; done: Promise<void> } | undefined;
+  let zipBytes = 0;
+  const addToZip = (path: string, data: Uint8Array, compress: boolean) => {
+    zipBytes += data.length + 128 + 2 * path.length;
+    if (zipBytes > (opts.zipLimit ?? EXPORT_ZIP_LIMIT)) throw new ExportTooLargeError();
+    if (!archive) {
+      const chunks: Uint8Array[] = [];
+      let zip!: Zip;
+      const done = new Promise<void>((resolve, reject) => {
+        zip = new Zip((err, chunk, final) => {
+          if (err) return reject(err);
+          chunks.push(chunk);
+          if (final) resolve();
+        });
+      });
+      archive = { zip, chunks, done };
+    }
+    const f = compress ? new ZipDeflate(`${root}/${path}`, { level: 6 }) : new ZipPassThrough(`${root}/${path}`);
+    archive.zip.add(f);
+    f.push(data, true);
+  };
+
+  // Names and copies of the media, read one at a time. A lock part-way stops the export: what's
+  // left can't be read, and an export with holes in it would look complete.
   const lookup = new Map<string, ExportMedia>();
-  const files: Zippable = {};
   const used = new Set<string>();
+  const unlessLocked = (err: unknown) => {
+    if (err instanceof LockedError || journal.isLocked) throw new LockedError();
+    return undefined;
+  };
   let missing = 0;
+  let mediaFiles = 0;
   let done = 0;
   for (const id of ids) {
-    const meta = await journal.getMediaMeta(id).catch(() => undefined);
-    const name = meta ? fileNameOf(meta) : '';
-    const info: ExportMedia = { kind: meta ? mediaKind(meta.mime) : 'file', name, width: meta?.width, height: meta?.height };
-    if (includeMedia && meta) {
-      const blob = await journal.getMediaBlob(id).catch(() => undefined);
+    const meta = await journal.getMediaMeta(id).catch(unlessLocked);
+    if (!meta) {
+      // Without its record the block names itself by its own type ("Photo", "Video").
+      if (includeMedia) missing++;
+      opts.onProgress?.(++done, ids.length);
+      continue;
+    }
+    const name = fileNameOf(meta);
+    const info: ExportMedia = { kind: mediaKind(meta.mime), name, width: meta.width, height: meta.height };
+    if (includeMedia) {
+      const blob = await journal.getMediaBlob(id).catch(unlessLocked);
       if (blob) {
         const file = unique(`media/${name}`, used);
-        files[file] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }];
+        addToZip(file, new Uint8Array(await blob.arrayBuffer()), false);
+        mediaFiles++;
         // Percent-encoded, parentheses too, so the plain `](path)` form works in every Markdown reader.
         info.src = file
           .split('/')
           .map((seg) => encodeURIComponent(seg).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`))
           .join('/');
       } else missing++;
-    } else if (includeMedia) missing++;
+    }
     lookup.set(id, info);
     opts.onProgress?.(++done, ids.length);
   }
@@ -88,19 +140,17 @@ export async function exportEntries(journal: Journal, chosen: Entry[], opts: Jou
     docs.push([includeMedia ? 'index.html' : `Logbook ${day}.html`, exportPageHtml(entries, media, { ...render, mode: 'page', subtitle })]);
   }
 
-  const mediaFiles = Object.keys(files).length;
   if (docs.length === 1 && mediaFiles === 0) {
     const [[path, text]] = docs as [[string, string]];
     const blob = new Blob([text], { type: `${MIME[opts.format]};charset=utf-8` });
     return { blob, fileName: path.endsWith('index.html') ? `Logbook ${day}.html` : path, entries: entries.length, mediaFiles, mediaMissing: missing };
   }
   // A zip opens into one folder, not a scatter of files.
-  const root = `Logbook export ${day}`;
-  const zip: Zippable = {};
-  for (const [path, text] of docs) zip[`${root}/${path}`] = [strToU8(text), { level: 6 }];
-  for (const [path, data] of Object.entries(files)) zip[`${root}/${path}`] = data;
-  const bytes = zipSync(zip);
-  return { blob: new Blob([bytes as BlobPart], { type: 'application/zip' }), fileName: `${root} (${EXTENSION[opts.format]}).zip`, entries: entries.length, mediaFiles, mediaMissing: missing };
+  for (const [path, text] of docs) addToZip(path, strToU8(text), true);
+  const { zip, chunks, done: finished } = archive!;
+  zip.end();
+  await finished;
+  return { blob: new Blob(chunks as BlobPart[], { type: 'application/zip' }), fileName: `${root} (${EXTENSION[opts.format]}).zip`, entries: entries.length, mediaFiles, mediaMissing: missing };
 }
 
 function dateSpan(entries: Entry[], opts: RenderOptions): string {

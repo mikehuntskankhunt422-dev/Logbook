@@ -77,6 +77,7 @@ test('exports Markdown, plain text and a web page', async ({ page }) => {
 });
 
 test('PDF: lays the entries out for print and opens the print window', async ({ page }, info) => {
+  await page.clock.install();
   await seed(page);
   await page.evaluate(() => {
     (window as unknown as { printed: number }).printed = 0;
@@ -98,8 +99,53 @@ test('PDF: lays the entries out for print and opens the print window', async ({ 
   expect(await layout.locator('img').first().evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(64);
   if (info.project.name === 'desktop-chromium') await page.pdf({ path: info.outputPath('export.pdf'), format: 'A4' });
 
-  // Leaving Settings takes the layout away.
+  // Leaving Settings keeps the layout a minute for a print still in progress, then takes it away.
   await page.emulateMedia({ media: 'screen' });
-  await page.goto('/#/');
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Journal' }).click();
+  await expect(layout).toHaveCount(1);
+  await page.clock.fastForward(61_000);
   await expect(layout).toHaveCount(0);
+});
+
+test('PDF: locking takes the decrypted layout away at once, and an export stopped by a lock prints nothing', async ({ page }) => {
+  await page.clock.install();
+  await seed(page);
+  await page.getByRole('button', { name: 'Set a passcode' }).click();
+  await page.getByLabel('New passcode').fill('purple-otter-42');
+  await page.getByLabel('Type it again').fill('purple-otter-42');
+  await page.getByLabel(/I understand a forgotten passcode/).check();
+  await page.getByRole('button', { name: 'Save passcode' }).click();
+  await expect(page.getByText(/Your journal is encrypted on this device/).first()).toBeVisible();
+  await page.evaluate(() => {
+    (window as unknown as { printed: number }).printed = 0;
+    window.print = () => void (window as unknown as { printed: number }).printed++;
+  });
+  const panel = page.getByRole('region', { name: 'Export' });
+  await panel.getByRole('button', { name: 'PDF' }).click();
+  await panel.getByRole('button', { name: /Print or save as PDF/ }).click();
+  await expect(page.getByText('2 entries ready to print.')).toBeVisible();
+  await expect(page.locator('#lbx-print')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(page.getByRole('heading', { name: 'Logbook is locked' })).toBeVisible();
+  await expect(page.locator('#lbx-print')).toHaveCount(0);
+
+  // Locked while the layout is being prepared: no print window, nothing left in the page.
+  await page.getByLabel('Passcode').fill('purple-otter-42');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByRole('heading', { name: 'Export' })).toBeVisible();
+  await page.evaluate(() => {
+    // Hold every picture's decode, so the lock lands while the layout waits for them.
+    HTMLImageElement.prototype.decode = () => new Promise(() => {});
+  });
+  await panel.getByRole('button', { name: 'PDF' }).click();
+  await panel.getByRole('button', { name: /Print or save as PDF/ }).click();
+  await expect(panel.getByRole('button', { name: 'Preparing…' })).toBeVisible();
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(page.getByRole('heading', { name: 'Logbook is locked' })).toBeVisible();
+  await expect(page.locator('#lbx-print')).toHaveCount(0);
+  // Past the 20 s wait for pictures: the run sees the lock and stops instead of printing.
+  await page.clock.fastForward(21_000);
+  await expect(page.getByText('Logbook locked before the export was finished, so nothing was saved.', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1);
+  await expect(page.locator('#lbx-print')).toHaveCount(0);
 });

@@ -4,7 +4,8 @@ import { Journal } from '../src/journal.ts';
 import { MemoryStore } from '../src/storage.ts';
 import { emptyDoc } from '../src/richtext.ts';
 import type { RichNode } from '../src/model.ts';
-import { entriesHtml, entryToMarkdown, entryToText, exportEntries, richTextToExportHtml, richTextToMarkdown, richTextToText, safeName } from '../src/export/index.ts';
+import { ExportTooLargeError, entriesHtml, entryToMarkdown, entryToText, exportEntries, richTextToExportHtml, richTextToMarkdown, richTextToText, safeName } from '../src/export/index.ts';
+import { LockedError } from '../src/journal.ts';
 import { FAST_KDF, pngBytes } from './helpers.ts';
 
 const t = (text: string, marks: RichNode['marks'] = []): RichNode => ({ type: 'text', text, ...(marks.length ? { marks } : {}) });
@@ -70,6 +71,34 @@ describe('rich text to Markdown and plain text', () => {
   });
 });
 
+describe('Markdown that reads back as written (pre-merge review)', () => {
+  const md = (...content: RichNode[]) => richTextToMarkdown({ type: 'doc', content }, 1);
+  const li = (...content: RichNode[]): RichNode => ({ type: 'listItem', content });
+  const ul = (...content: RichNode[]): RichNode => ({ type: 'bulletList', content });
+  const br: RichNode = { type: 'hardBreak' };
+
+  it('keeps a # at the end of a heading', () => {
+    expect(md({ type: 'heading', attrs: { level: 2 }, content: [t('Issue #')] })).toBe('## Issue \\#');
+  });
+
+  it('puts a blank line between blocks of one list item, but keeps a sub-list tight', () => {
+    expect(md(ul(li(p(t('a')), ul(li(p(t('sub')))), p(t('b')))))).toBe('- a\n  - sub\n\n  b');
+    expect(md(ul(li(p(t('first')), p(t('second')))))).toBe('- first\n\n  second');
+  });
+
+  it('uses HTML tags for emphasis that starts or ends with punctuation', () => {
+    expect(md(p(t('"quote"', [{ type: 'bold' }]), t('word')))).toBe('<strong>"quote"</strong>word');
+    expect(md(p(t('今天很好。', [{ type: 'bold' }]), t('明天')))).toBe('<strong>今天很好。</strong>明天');
+    expect(md(p(t('A '), t('bold', [{ type: 'bold' }]), t(' word')))).toBe('A **bold** word');
+  });
+
+  it('drops a line break at the end of a paragraph, and turns one in a heading into a space', () => {
+    expect(md(p(t('one'), br), p(t('two')))).toBe('one\n\ntwo');
+    expect(md({ type: 'heading', attrs: { level: 2 }, content: [t('H'), br, t('second')] })).toBe('## H second');
+    expect(md(p(t('one'), br, t('two')))).toBe('one\\\ntwo');
+  });
+});
+
 describe('entries as documents', () => {
   const entry = {
     v: 1 as const,
@@ -95,6 +124,18 @@ describe('entries as documents', () => {
     expect(md).toMatch(/^---\ntitle: "A good day"\ndate: 2026-10-07\nmood: "😄"\ntags: \["beach","swim"\]\n---\n\n# A good day\n\n\*2026-10-07 · Mood: 😄 · Tags: beach, swim\*\n\nSwam at Glenelg\n\n/);
     expect(md).toContain('![Sunset](media/beach%20day.png)\n*Sunset*');
     expect(md).toContain('[Tide times](https://example.com)');
+  });
+
+  it('trims captions, so they stay italic and never turn into a list', () => {
+    const withCaption = { ...entry, blocks: [{ id: 'p', type: 'photo' as const, mediaId: 'm1', caption: ' Sunset at the pier ' }] };
+    expect(entryToMarkdown(withCaption, () => ({ kind: 'image', name: 'a.png', src: 'media/a.png' }))).toContain('![Sunset at the pier](media/a.png)\n*Sunset at the pier*');
+  });
+
+  it('writes out a link block that isn’t a web or email address instead of linking it', () => {
+    const bad = { ...entry, blocks: [{ id: 'l', type: 'link' as const, url: 'javascript:alert(1)', title: 'click me', caption: '' }] };
+    const out = entryToMarkdown(bad, () => undefined);
+    expect(out).toContain('click me (javascript:alert(1))');
+    expect(out).not.toContain('](');
   });
 
   it('names a photo that isn’t in the export', () => {
@@ -199,6 +240,29 @@ describe('exportEntries', () => {
     const files = await unzip(out.blob);
     expect(strFromU8(files['Logbook export 2026-10-11/2026-10-07 A good day.md']!)).toContain('Swam at Glenelg');
     expect(files['Logbook export 2026-10-11/media/Beach day.png']).toEqual(pngBytes());
+  });
+});
+
+describe('exportEntries when things go wrong (pre-merge review)', () => {
+  const now = new Date('2026-10-11T09:00:00');
+
+  it('stops with LockedError when the journal locks part-way, rather than saving an export with holes', async () => {
+    const { journal, entries } = await journalWithPhoto();
+    await journal.enableEncryption('correct horse', FAST_KDF);
+    await expect(exportEntries(journal, entries, { format: 'markdown', includeMedia: true, now, onProgress: (done) => done === 1 && journal.lock() })).rejects.toBeInstanceOf(LockedError);
+  });
+
+  it('labels media whose record is gone by its block type, not "File"', async () => {
+    const { journal, entries } = await journalWithPhoto();
+    journal.getMediaMeta = async () => undefined;
+    const out = await exportEntries(journal, entries, { format: 'markdown', includeMedia: true, now });
+    expect(out).toMatchObject({ mediaFiles: 0, mediaMissing: 2 });
+    expect(await out.blob.text()).toContain('*\\[Photo\\]*\n*Sunset*');
+  });
+
+  it('refuses before a zip would pass the 4 GB a zip without Zip64 can hold', async () => {
+    const { journal, entries } = await journalWithPhoto();
+    await expect(exportEntries(journal, entries, { format: 'html', includeMedia: true, now, zipLimit: 100 })).rejects.toBeInstanceOf(ExportTooLargeError);
   });
 });
 

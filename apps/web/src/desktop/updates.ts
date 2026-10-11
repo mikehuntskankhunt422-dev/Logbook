@@ -52,8 +52,10 @@ export async function checkForUpdate(): Promise<string | null> {
 }
 
 /**
- * Saves everything, then downloads and installs the version found, and restarts into it. After a
- * failed try it looks again first, so a release that was fixed meanwhile is the one installed.
+ * Downloads the version found, then installs it and restarts into it. Writing goes on while it
+ * downloads; before the install the window is blocked and everything is saved again, so nothing
+ * typed during the download is lost when the app closes (D88). After a failed try it looks again
+ * first, so a release that was fixed meanwhile is the one installed.
  */
 export async function installUpdate(): Promise<void> {
   let version = state.phase === 'available' || state.phase === 'failed' ? state.version : null;
@@ -62,23 +64,64 @@ export async function installUpdate(): Promise<void> {
     version = await checkForUpdate().catch(() => null);
     if (!version) return;
   }
-  set({ phase: 'installing', version, received: 0, total: null });
-  const fail = (error: string) => set({ phase: 'failed', version, error });
-  if (!(await saveEverything(SAVE_WAIT_MS))) {
-    return fail("Your latest writing couldn't be saved, so Logbook didn't update. Copy it somewhere safe and try again.");
-  }
+  const v = version;
+  set({ phase: 'installing', version: v, received: 0, total: null });
+  const fail = (error: string) => set({ phase: 'failed', version: v, error });
+  const notSaved = "Your latest writing couldn't be saved, so Logbook didn't update. Copy it somewhere safe and try again.";
+  if (!(await saveEverything(SAVE_WAIT_MS))) return fail(notSaved);
   const stop = await listen<[number, number | null]>('logbook://update-progress', (e) => {
     const [received, total] = e.payload;
-    set({ phase: 'installing', version, received, total });
+    set({ phase: 'installing', version: v, received, total });
   });
   try {
-    // Doesn't come back when it works: the app restarts as the new version.
-    await invoke('update_install');
+    await invoke('update_download');
   } catch (err) {
-    fail(String(err));
+    return fail(String(err));
   } finally {
     stop();
   }
+  const unblock = blockWindow(`Installing Logbook ${v}…`, 'Logbook will open again by itself in a moment.');
+  try {
+    if (!(await saveEverything(SAVE_WAIT_MS))) {
+      unblock();
+      return fail(notSaved);
+    }
+    // Doesn't come back when it works: the app restarts as the new version.
+    await invoke('update_apply');
+  } catch (err) {
+    unblock();
+    fail(String(err));
+  }
+}
+
+/**
+ * Covers the window and stops all input (the app underneath is inert), so nothing new is written
+ * between the last save and the install. Returns the function that lifts it.
+ */
+function blockWindow(title: string, detail: string): () => void {
+  const others = [...document.body.children].filter((el) => !el.hasAttribute('inert'));
+  others.forEach((el) => el.setAttribute('inert', ''));
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  const cover = document.createElement('div');
+  cover.setAttribute('role', 'alertdialog');
+  cover.setAttribute('aria-modal', 'true');
+  cover.setAttribute('aria-live', 'assertive');
+  cover.style.cssText =
+    'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:16px;background:color-mix(in srgb, var(--bg, #fff) 88%, transparent);color:var(--ink, #111);font:inherit;text-align:center';
+  const box = document.createElement('div');
+  const h = document.createElement('h2');
+  h.textContent = title;
+  h.style.margin = '0 0 6px';
+  const p = document.createElement('p');
+  p.textContent = detail;
+  p.style.margin = '0';
+  box.append(h, p);
+  cover.append(box);
+  document.body.append(cover);
+  return () => {
+    cover.remove();
+    others.forEach((el) => el.removeAttribute('inert'));
+  };
 }
 
 /** The quiet checks: shortly after starting, then twice a day. A failed one says nothing. */

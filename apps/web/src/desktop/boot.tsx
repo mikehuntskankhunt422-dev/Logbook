@@ -6,6 +6,7 @@ import { FolderStore } from '@logbook/storage-fs';
 import { TauriFsBackend } from '@logbook/storage-fs/tauri';
 import { journalFolder, routeLinks } from './bridge.ts';
 import { FolderSetup } from './FolderSetup.tsx';
+import { UpdateOffer } from './UpdatesPanel.tsx';
 import { saveEverything, setOpenJournal } from './saving.ts';
 import { checkForUpdatesSoon } from './updates.ts';
 import { announce } from '../app/toasts.tsx';
@@ -62,6 +63,7 @@ export function showError(root: Root, err: unknown): void {
       <h1>Logbook can't open your journal folder</h1>
       <p>Check that the folder is still there and that Logbook may read and write it, then restart Logbook.</p>
       <pre className="muted">{String(err)}</pre>
+      <UpdateOffer />
     </main>,
   );
 }

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ExportTooLargeError, LockedError, referencedMediaIds } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
-import { clearPrintView, exportToFile, printEntries, type ExportChoice } from '../lib/export-io.ts';
+import { exportToFile, printEntries, releasePrintView, type ExportChoice } from '../lib/export-io.ts';
 import { isDesktop } from '../lib/platform.ts';
 
 const FORMATS: { id: ExportChoice; label: string; about: string }[] = [
@@ -25,9 +26,17 @@ export function ExportPanel() {
   const to = range?.to ?? dates.at(-1) ?? '';
   const chosen = useMemo(() => entries.filter((e) => e.date >= from && e.date <= to), [entries, from, to]);
   const [busy, setBusy] = useState(false);
+  const run$ = useRef<AbortController | null>(null);
 
-  // The print layout lives in the page until Settings is left.
-  useEffect(() => clearPrintView, []);
+  // Leaving Settings stops an export that's still being prepared; the print layout goes once
+  // anything still printing has had time to finish (export-io.ts).
+  useEffect(
+    () => () => {
+      run$.current?.abort();
+      releasePrintView();
+    },
+    [],
+  );
 
   if (!entries.length) {
     return (
@@ -39,22 +48,30 @@ export function ExportPanel() {
   }
 
   const run = async () => {
+    const controller = new AbortController();
+    run$.current = controller;
     setBusy(true);
     try {
-      const r = format === 'pdf' ? await printEntries(journal, chosen) : await exportToFile(journal, chosen, { format, layout, includeMedia });
+      const r = format === 'pdf' ? await printEntries(journal, chosen, controller.signal) : await exportToFile(journal, chosen, { format, layout, includeMedia }, controller.signal);
       if (!r.saved) return;
       const what = `${r.entries} ${r.entries === 1 ? 'entry' : 'entries'}`;
       const missing = r.mediaMissing ? ` ${r.mediaMissing} ${r.mediaMissing === 1 ? 'file' : 'files'} couldn't be read (still syncing?) and ${r.mediaMissing === 1 ? 'was' : 'were'} left out.` : '';
       toast(format === 'pdf' ? `${what} ready to print.${missing}` : `Exported ${what}.${missing}`, undefined, missing ? 8000 : 5000);
     } catch (err) {
-      toast(`Couldn't export: ${err instanceof Error ? err.message : String(err)}`, undefined, 8000);
+      if (err instanceof LockedError) toast('Logbook locked before the export was finished, so nothing was saved. Unlock it and export again.', undefined, 8000);
+      else if (err instanceof ExportTooLargeError) toast(err.message, undefined, 10000);
+      else toast(`Couldn't export: ${err instanceof Error ? err.message : String(err)}`, undefined, 8000);
     } finally {
+      if (run$.current === controller) run$.current = null;
       setBusy(false);
     }
   };
 
   const about = FORMATS.find((f) => f.id === format)!.about;
-  const zipped = (format === 'markdown' || format === 'html') && (includeMedia || (format === 'markdown' && layout === 'per-entry'));
+  // A zip only when there's more than one file to put in it: media to go with the documents, or a
+  // Markdown file for each of several entries.
+  const withMedia = (format === 'markdown' || format === 'html') && includeMedia && chosen.some((e) => referencedMediaIds(e).length > 0);
+  const severalFiles = format === 'markdown' && layout === 'per-entry' && chosen.length > 1;
 
   return (
     <section className="panel" aria-labelledby="export-h">
@@ -117,9 +134,11 @@ export function ExportPanel() {
           ? 'No entries between those dates.'
           : format === 'pdf'
             ? `${chosen.length} ${chosen.length === 1 ? 'entry' : 'entries'}. In the print window, pick “Save as PDF” (on Windows, “Microsoft Print to PDF”) as the printer.`
-            : zipped
+            : withMedia
               ? 'A .zip file: unzip it to get the documents and a media folder they link to.'
-              : 'A single file.'}
+              : severalFiles
+                ? 'A .zip file with a Markdown file for each entry.'
+                : 'A single file.'}
         {journal.isEncrypted && ' Exported files aren’t protected by your passcode: anyone with the file can read it.'}
       </p>
     </section>

@@ -42,7 +42,7 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
     if (entry.tags.length) fm.push(`tags: ${JSON.stringify(entry.tags)}`);
     out.push(`---\n${fm.join('\n')}\n---`);
   }
-  out.push(`${'#'.repeat(level)} ${escapeLine(escapeMd(entry.title || 'Untitled'))}`);
+  out.push(`${'#'.repeat(level)} ${keepClosingHashes(escapeLine(escapeMd(entry.title || 'Untitled')))}`);
   out.push(`*${metaLine(entry, opts).map(escapeMd).join(' · ')}*`);
   if (entry.cover.kind === 'photo') out.push(mediaMd(media(entry.cover.mediaId), 'Cover photo', ''));
   for (const b of entry.blocks) {
@@ -74,11 +74,11 @@ function blockMd(b: Block, media: MediaLookup, ctx: Ctx): string {
     case 'file':
       return mediaMd(media(b.mediaId), mediaLabel(media(b.mediaId)?.kind ?? kindOf(b.type)), b.caption);
     case 'gallery':
-      return [...b.items.map((i) => mediaMd(media(i.mediaId), 'Photo', i.caption)), b.caption ? `*${escapeMd(b.caption)}*` : ''].filter(Boolean).join('\n\n');
+      return [...b.items.map((i) => mediaMd(media(i.mediaId), 'Photo', i.caption)), captionMd(b.caption)].filter(Boolean).join('\n\n');
     case 'link':
-      return withCaption(`[${escapeMd(b.title || shortUrl(b.url))}](${mdUrl(b.url)})`, b.caption);
+      return withCaption(linkMd(b.title || shortUrl(b.url), b.url), b.caption);
     case 'embed':
-      return withCaption(`[▶ ${escapeMd(b.title || `${b.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`)}](${mdUrl(b.url)})`, b.caption);
+      return withCaption(linkMd(`▶ ${b.title || `${b.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`}`, b.url), b.caption);
   }
 }
 
@@ -103,9 +103,9 @@ function blockText(b: Block, media: MediaLookup, ctx: Ctx): string {
 const kindOf = (t: 'photo' | 'video' | 'audio' | 'file') => (t === 'photo' ? 'image' : t);
 
 function mediaMd(m: ReturnType<MediaLookup>, label: string, caption: string): string {
-  const cap = caption ? `\n*${escapeMd(caption)}*` : '';
+  const cap = caption.trim() ? `\n${captionMd(caption)}` : '';
   if (!m?.src) return `*\\[${label}${m?.name ? `: ${escapeMd(m.name)}` : ''}\\]*${cap}`;
-  if (m.kind === 'image') return `![${escapeMd(caption || m.name)}](${mdUrl(m.src)})${cap}`;
+  if (m.kind === 'image') return `![${escapeMd(caption.trim() || m.name)}](${mdUrl(m.src)})${cap}`;
   const icon = m.kind === 'video' ? '▶' : m.kind === 'audio' ? '🔊' : '📎';
   return `[${icon} ${escapeMd(m.name)}](${mdUrl(m.src)})${cap}`;
 }
@@ -115,7 +115,22 @@ function mediaText(m: ReturnType<MediaLookup>, kind: 'image' | 'video' | 'audio'
   return caption ? `${what} ${caption}` : what;
 }
 
-const withCaption = (md: string, caption: string) => (caption ? `${md}\n*${escapeMd(caption)}*` : md);
+/**
+ * A caption in italics. Trimmed first: "*Sunset *" isn't italic in Markdown, and "* Sunset*" on a
+ * line of its own is a list item.
+ */
+function captionMd(caption: string): string {
+  const c = caption.trim();
+  return c ? `*${escapeMd(c)}*` : '';
+}
+
+const withCaption = (md: string, caption: string) => (caption.trim() ? `${md}\n${captionMd(caption)}` : md);
+
+/** A link block: clickable only for web and email addresses (D89); anything else is written out. */
+function linkMd(label: string, url: string): string {
+  const href = safeHref(url);
+  return href ? `[${escapeMd(label)}](${mdUrl(href)})` : escapeMd(label === url ? url : `${label} (${url})`);
+}
 
 // ── rich text ────────────────────────────────────────────────────────────────────────────────────
 
@@ -131,11 +146,12 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
     case 'paragraph':
       return paragraph(n.content ?? [], ctx);
     case 'heading': {
-      const text = paragraph(n.content ?? [], ctx);
+      // A heading is one line: a line break inside one becomes a space.
+      const text = paragraph((n.content ?? []).map((c) => (c.type === 'hardBreak' ? { type: 'text', text: ' ' } : c)), ctx);
       if (!text) return '';
       if (ctx.mode === 'text') return text;
       const level = Math.min(6, (n.attrs?.['level'] === 3 ? 3 : 2) + ctx.shift - 1);
-      return `${'#'.repeat(level)} ${text}`;
+      return `${'#'.repeat(level)} ${keepClosingHashes(text)}`;
     }
     case 'bulletList':
       return (n.content ?? []).map((li) => listItem(li, '- ', ctx)).join('\n');
@@ -145,7 +161,7 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
       return (n.content ?? []).map((li, i) => listItem(li, `${first + i}. `, ctx)).join('\n');
     }
     case 'listItem':
-      return kids('\n');
+      return listItemBody(n, ctx);
     case 'blockquote':
       return kids()
         .split('\n')
@@ -162,8 +178,25 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
   }
 }
 
+/**
+ * A list item's blocks: a blank line between paragraphs (or they'd merge, and text after a nested
+ * list would join the sub-item), but a paragraph followed by its own sub-list stays tight.
+ */
+function listItemBody(li: RichNode, ctx: Ctx): string {
+  let out = '';
+  let prev: RichNode | undefined;
+  for (const c of li.content ?? []) {
+    const md = block(c, ctx);
+    if (!md) continue;
+    if (out) out += prev?.type === 'paragraph' && (c.type === 'bulletList' || c.type === 'orderedList') ? '\n' : '\n\n';
+    out += md;
+    prev = c;
+  }
+  return out;
+}
+
 function listItem(li: RichNode, marker: string, ctx: Ctx): string {
-  const body = block(li, ctx, '\n') || '';
+  const body = listItemBody(li, ctx);
   const [first = '', ...rest] = body.split('\n');
   const pad = ' '.repeat(marker.length);
   return [marker + first, ...rest.map((l) => (l ? pad + l : l))].join('\n');
@@ -171,7 +204,11 @@ function listItem(li: RichNode, marker: string, ctx: Ctx): string {
 
 /** A paragraph's inline content; a line that would start a list or heading is escaped. */
 function paragraph(nodes: RichNode[], ctx: Ctx): string {
-  const text = inline(nodes, ctx).trim();
+  // A line break at either end of a paragraph would leave a stray backslash.
+  const text = inline(nodes, ctx)
+    .replace(/^(?:\s*\\\n)+/, '')
+    .replace(/(?:\\\n\s*)+$/, '')
+    .trim();
   return ctx.mode === 'md' ? text.split('\n').map(escapeLine).join('\n') : text;
 }
 
@@ -197,6 +234,9 @@ function inline(nodes: RichNode[], ctx: Ctx): string {
 }
 
 const MD_MARKS: Record<string, [string, string]> = { bold: ['**', '**'], italic: ['*', '*'], strike: ['~~', '~~'], underline: ['<u>', '</u>'] };
+/** The same marks as HTML, which Markdown readers render wherever they appear. */
+const HTML_MARKS: Record<string, [string, string]> = { bold: ['<strong>', '</strong>'], italic: ['<em>', '</em>'], strike: ['<s>', '</s>'], underline: ['<u>', '</u>'] };
+const EDGE_PUNCTUATION = /^[\p{P}\p{S}]|[\p{P}\p{S}]$/u;
 
 function leaf(n: RichNode, ctx: Ctx): string {
   if (n.type === 'hardBreak') return ctx.mode === 'md' ? '\\\n' : '\n';
@@ -207,8 +247,11 @@ function leaf(n: RichNode, ctx: Ctx): string {
   const [, lead = '', core = '', trail = ''] = /^(\s*)([\s\S]*?)(\s*)$/.exec(raw) ?? [];
   if (!core) return raw;
   let md = escapeMd(core);
+  // `**"quote"**word` isn't bold in Markdown (a marker next to punctuation must also have a space
+  // or punctuation on its outside), and Chinese and Japanese have no spaces: HTML tags then.
+  const marks = EDGE_PUNCTUATION.test(core) ? HTML_MARKS : MD_MARKS;
   for (const m of n.marks ?? []) {
-    const wrap = MD_MARKS[m.type];
+    const wrap = marks[m.type];
     if (wrap) md = `${wrap[0]}${md}${wrap[1]}`;
   }
   return lead + md + trail;
@@ -221,6 +264,11 @@ function linkOf(n: RichNode): string | undefined {
 /** Characters that are Markdown syntax anywhere in a line. */
 export function escapeMd(s: string): string {
   return s.replace(/[\\`*_[\]<>~|]/g, '\\$&').replace(/&(?=#?[a-z0-9]+;)/gi, '&amp;');
+}
+
+/** A `#` at the end of a heading would be read as its closing sequence and dropped. */
+function keepClosingHashes(heading: string): string {
+  return heading.replace(/(^|\s)(#+)(\s*)$/, '$1\\$2$3');
 }
 
 /** A line that would start a heading, quote, list or rule. */

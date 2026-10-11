@@ -298,12 +298,17 @@ fn open_url(url: String) -> Result<(), String> {
 // ── updates (M5 slice F, D88) ────────────────────────────────────────────────────────────────
 //
 // The updater reads `latest.json` from the newest GitHub release and accepts only files signed
-// with our updater key (tauri.conf.json holds the public half). The page saves everything before
-// it asks for the install, because on Windows the installer ends the app straight away.
+// with our updater key (tauri.conf.json holds the public half). Downloading and installing are two
+// steps so the page can save once more in between, with the window blocked, right before the
+// install: on Windows the installer ends the app straight away, and elsewhere the app restarts.
 
-/// An update found by the last check, kept until it's installed.
+/// An update found by the last check, kept until it's downloaded.
 #[derive(Default)]
 struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
+
+/// An update downloaded and its signature checked, waiting to be installed.
+#[derive(Default)]
+struct DownloadedUpdate(Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>);
 
 #[derive(serde::Serialize)]
 struct UpdateInfo {
@@ -320,16 +325,16 @@ async fn update_check(app: AppHandle, pending: State<'_, PendingUpdate>) -> Resu
     Ok(info)
 }
 
-/// Downloads and installs the update found by `update_check`, then starts the new version. A try
-/// that fails needs a fresh check: the release may have been fixed in the meantime.
-/// Reports progress as `logbook://update-progress` events: [bytes so far, total if known].
+/// Downloads the update found by `update_check` and checks its signature. Reports progress as
+/// `logbook://update-progress` events: [bytes so far, total if known]. A download that fails
+/// needs a fresh check: the release may have been fixed in the meantime.
 #[tauri::command]
-async fn update_install(app: AppHandle, pending: State<'_, PendingUpdate>) -> Result<(), String> {
+async fn update_download(app: AppHandle, pending: State<'_, PendingUpdate>, downloaded: State<'_, DownloadedUpdate>) -> Result<(), String> {
     let update = pending.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update waiting.")?;
     let progress = app.clone();
     let mut received: u64 = 0;
-    update
-        .download_and_install(
+    let bytes = update
+        .download(
             move |chunk, total| {
                 received += chunk as u64;
                 let _ = progress.emit("logbook://update-progress", (received, total));
@@ -338,8 +343,18 @@ async fn update_install(app: AppHandle, pending: State<'_, PendingUpdate>) -> Re
         )
         .await
         .map_err(|e| e.to_string())?;
+    *downloaded.0.lock().map_err(|_| "busy".to_string())? = Some((update, bytes));
+    Ok(())
+}
+
+/// Installs the downloaded update and starts the new version. The page has saved everything and
+/// blocked the window first.
+#[tauri::command]
+async fn update_apply(app: AppHandle, downloaded: State<'_, DownloadedUpdate>) -> Result<(), String> {
+    let (update, bytes) = downloaded.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update downloaded.")?;
+    update.install(&bytes).map_err(|e| e.to_string())?;
     // Windows never gets here: its installer has already ended the app and will start it again.
-    // The page saved before asking, so the restart goes straight through the close hold (D86).
+    // The restart goes straight through the close hold (D86): the page saved just before.
     CLOSED.store(true, Ordering::SeqCst);
     app.restart()
 }
@@ -366,6 +381,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PendingUpdate::default())
+        .manage(DownloadedUpdate::default())
         .setup(|app| {
             let config_file = app.path().app_config_dir()?.join("config.json");
             let config = folder::load(&config_file);
@@ -414,7 +430,8 @@ pub fn run() {
             close_ready,
             close_cancel,
             update_check,
-            update_install,
+            update_download,
+            update_apply,
             print_page,
         ])
         .run(tauri::generate_context!())

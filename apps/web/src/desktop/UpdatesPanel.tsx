@@ -54,3 +54,29 @@ export function UpdatesPanel() {
     </section>
   );
 }
+
+/**
+ * The update offer on the screens shown before a journal is open (choosing a folder, a folder
+ * that won't open, which may say "Update the app first"), where there's no Settings and no toast.
+ */
+export function UpdateOffer() {
+  const update = useUpdateState();
+  if (update.phase === 'installing') {
+    return (
+      <p className="hint" role="status">
+        Updating to Logbook {update.version}…
+      </p>
+    );
+  }
+  const version = update.phase === 'available' || update.phase === 'failed' ? update.version : null;
+  if (!version) return null;
+  return (
+    <p className="hint" role="status">
+      Logbook {version} is available.{' '}
+      <button type="button" className="btn btn-small" onClick={() => void installUpdate()}>
+        {update.phase === 'failed' ? 'Try the update again' : 'Update and restart'}
+      </button>
+      {update.phase === 'failed' && <span className="error"> {update.error}</span>}
+    </p>
+  );
+}
