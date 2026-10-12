@@ -6,9 +6,9 @@ name: Desktop installers
 # Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
 #
 # Automatic updates (D88): every build makes the files the updater installs, signed with a
-# throwaway key. Only a release replaces those signatures with the real ones, in a step of its own
-# that runs nothing from the project (a fresh copy of Tauri's CLI, outside the checkout), so no
-# build script, dependency or branch ever sees TAURI_SIGNING_PRIVATE_KEY or its password. The
+# throwaway key, and never mentions the real one. Only a release runs the `sign` job, on a fresh
+# machine where no dependency or build script has run, which re-signs them with
+# TAURI_SIGNING_PRIVATE_KEY (a secret of the repository or of its `release` environment). The
 # release carries latest.json, which the app reads from the newest release.
 
 on:
@@ -119,48 +119,17 @@ jobs:
             -exec cp {} installers/ \;
           ls -l installers
           test -n "$(ls installers)"
-      # A release signs with the real key here; a branch build runs the same steps with the
-      # throwaway key, so they're tried on every push without the real key going anywhere.
-      - name: Sign the update files
+      # Branch builds try the signing script and the check with the throwaway key, then drop those
+      # signatures. A release keeps them until the `sign` job replaces them.
+      - name: Try the signing script with the throwaway key
+        if: ${{ !(startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}
         shell: bash
-        env:
-          PUBLISHING: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-          RELEASE_KEY: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          RELEASE_KEY_PASSWORD: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
-          if [ "$PUBLISHING" = true ]; then
-            if [ -z "$RELEASE_KEY" ]; then
-              echo "::error::A release needs the updater signing key: add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secrets (docs/DEVELOPING.md)."
-              exit 1
-            fi
-            export TAURI_SIGNING_PRIVATE_KEY="$RELEASE_KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
-          else
-            export TAURI_SIGNING_PRIVATE_KEY="$THROWAWAY_SIGNING_KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=throwaway
-          fi
-          # A path Windows programs read too (pwd -W in Git Bash), then out of the checkout, so npx
-          # fetches Tauri's CLI afresh instead of running the project's copy.
-          installers="$(pwd -W 2>/dev/null || pwd)/installers"
-          cd "$RUNNER_TEMP"
-          signed=0
-          for f in "$installers"/*-setup.exe "$installers"/*.app.tar.gz "$installers"/*.AppImage "$installers"/*.deb "$installers"/*.rpm; do
-            [ -e "$f" ] || continue
-            npx --yes @tauri-apps/cli@2.12.0 signer sign "$f" > /dev/null
-            signed=$((signed + 1))
-          done
-          echo "Signed $signed update files."
-          test "$signed" -gt 0
-      - name: The update files are signed with the key the app expects
-        shell: bash
-        env:
-          PUBLISHING: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-        run: |
-          if [ "$PUBLISHING" = true ]; then
-            node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers
-          else
-            node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers "$RUNNER_TEMP/throwaway.conf.json"
-            # Throwaway signatures are no use to anyone: a branch build's files carry none.
-            rm -f installers/*.sig
-          fi
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          TAURI_SIGNING_PRIVATE_KEY="$THROWAWAY_SIGNING_KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=throwaway \
+            bash apps/desktop/scripts/sign-updates.sh installers "$version"
+          node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers "$RUNNER_TEMP/throwaway.conf.json" "$version"
+          rm -f installers/*.sig
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.name }}
@@ -168,10 +137,49 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # The only job that's given the real updater key: a release only (decided before a machine is
+  # assigned), a fresh machine, nothing installed from npm or crates, no npm cache.
+  sign:
+    name: Sign the update files
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: installers
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Sign with the release key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: bash apps/desktop/scripts/sign-updates.sh installers "${TAG#v}"
+      - name: Every update file is signed with the key the app expects, for this version
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers apps/desktop/src-tauri/tauri.conf.json "${TAG#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-installers
+          path: installers/*
+          retention-days: 14
+          if-no-files-found: error
+
   release:
     name: Publish the release
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: sign
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -179,8 +187,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: installers-*
-          merge-multiple: true
+          name: signed-installers
           path: installers
       - uses: actions/setup-node@v4
         with:

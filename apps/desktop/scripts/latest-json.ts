@@ -2,15 +2,18 @@
 // D88), from the installers and their `.sig` files in one folder. The release workflow runs it.
 //
 //   node --experimental-transform-types apps/desktop/scripts/latest-json.ts <folder> <tag> <owner/repo> [tauri config]
-//   node --experimental-transform-types apps/desktop/scripts/latest-json.ts --verify <folder> [tauri config]
+//   node --experimental-transform-types apps/desktop/scripts/latest-json.ts --verify <folder> [tauri config] [version]
 //
-// `--verify` only checks the signatures of whatever is in the folder (one platform's build).
+// `--verify` only checks the signatures of whatever is in the folder (one platform's build), and
+// with a version, that each signature is bound to it.
 //
 // Each platform points at the file the updater installs: the NSIS setup on Windows, the zipped
 // app on macOS (one universal build for both chips), and on Linux the same kind of package the
 // person installed (AppImage, deb or rpm). Every one of them must be there, signed, and its
 // signature must check out against the public key the app carries (src-tauri/tauri.conf.json, or
 // the config given): a release signed with another key would be refused by every copy out there.
+// Each signature must also be bound to the release's version (`--app-version`), so a feed can't
+// pair a file with another version number to make installed copies downgrade.
 
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
@@ -20,9 +23,10 @@ import { fileURLToPath } from 'node:url';
 const verifyOnly = process.argv[2] === '--verify';
 const args = process.argv.slice(verifyOnly ? 3 : 2);
 const [folder, tag, repo] = verifyOnly ? [args[0], '', ''] : args;
-const configPath = args[verifyOnly ? 1 : 3] ?? fileURLToPath(new URL('../src-tauri/tauri.conf.json', import.meta.url));
+const configPath = args[verifyOnly ? 1 : 3] || fileURLToPath(new URL('../src-tauri/tauri.conf.json', import.meta.url));
+const expectedVersion = verifyOnly ? args[2] : tag?.replace(/^v/, '');
 if (!folder || (!verifyOnly && (!tag || !repo))) {
-  console.error('usage: latest-json.ts <folder> <tag> <owner/repo> [tauri config]  |  latest-json.ts --verify <folder> [tauri config]');
+  console.error('usage: latest-json.ts <folder> <tag> <owner/repo> [tauri config]  |  latest-json.ts --verify <folder> [tauri config] [version]');
   process.exit(2);
 }
 
@@ -46,6 +50,9 @@ async function signatureProblem(file: string, sigFile: string): Promise<string |
   // The trusted comment is signed too, together with the signature.
   const trusted = line(encoded, 2).replace(/^trusted comment: /, '');
   if (!verify(null, Buffer.concat([sig.subarray(10, 74), Buffer.from(trusted)]), publicKey, Buffer.from(line(encoded, 3), 'base64'))) return "the signature's comment doesn't match";
+  // "timestamp:…<tab>file:…<tab>version:0.2.0": the version the file was signed for.
+  const signedVersion = /(?:^|\t)version:([^\t]+)/.exec(trusted)?.[1];
+  if (expectedVersion && signedVersion !== expectedVersion) return signedVersion ? `signed for version ${signedVersion}, not ${expectedVersion}` : `not bound to a version (sign with --app-version ${expectedVersion})`;
   return null;
 }
 
