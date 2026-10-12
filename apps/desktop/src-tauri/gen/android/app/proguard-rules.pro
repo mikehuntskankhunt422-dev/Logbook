@@ -27,3 +27,4 @@
   @app.tauri.annotation.Command public <methods>;
 }
 -keep class app.logbookjournal.android.DocumentArgs { *; }
+-keep class app.logbookjournal.android.CloseArgs { *; }

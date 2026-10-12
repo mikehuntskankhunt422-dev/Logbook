@@ -36,24 +36,41 @@ pub fn print<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     plugin(app).run_mobile_plugin::<()>("print", ()).map_err(|e| e.to_string())
 }
 
-/// The document, emptied and open for writing from its start.
-pub fn open_for_writing<R: Runtime>(app: &AppHandle<R>, uri: &str) -> Result<std::fs::File, String> {
+/// The document, emptied and open for writing from its start, and the id that `close_document`
+/// takes once writing is over.
+pub fn open_for_writing<R: Runtime>(app: &AppHandle<R>, uri: &str) -> Result<(std::fs::File, i32), String> {
     #[derive(serde::Deserialize)]
     struct Opened {
         fd: i32,
+        id: i32,
     }
     let opened: Opened = plugin(app).run_mobile_plugin("openForWriting", Document { uri }).map_err(|e| e.to_string())?;
-    // Kotlin detached the descriptor from its ParcelFileDescriptor: it's ours to close.
-    Ok(unsafe { std::fs::File::from_raw_fd(opened.fd) })
+    // A copy of the descriptor Kotlin keeps open, detached for us: ours to close.
+    Ok((unsafe { std::fs::File::from_raw_fd(opened.fd) }, opened.id))
 }
 
-/// The document's name as the person sees it, if the provider says.
-pub fn display_name<R: Runtime>(app: &AppHandle<R>, uri: &str) -> Option<String> {
-    #[derive(serde::Deserialize)]
-    struct Named {
-        name: Option<String>,
+/// After Rust has closed its copy: tells the provider the document is complete, or that writing
+/// it failed. Until then the provider (Google Drive) holds off.
+pub fn close_document<R: Runtime>(app: &AppHandle<R>, id: i32, ok: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Close {
+        id: i32,
+        ok: bool,
     }
-    plugin(app).run_mobile_plugin::<Named>("displayName", Document { uri }).ok()?.name
+    plugin(app).run_mobile_plugin::<()>("closeDocument", Close { id, ok }).map_err(|e| e.to_string())
+}
+
+/// The document's name as the person sees it, and its size, when the provider says.
+pub fn describe<R: Runtime>(app: &AppHandle<R>, uri: &str) -> (Option<String>, Option<u64>) {
+    #[derive(serde::Deserialize)]
+    struct Described {
+        name: Option<String>,
+        size: Option<u64>,
+    }
+    match plugin(app).run_mobile_plugin::<Described>("describe", Document { uri }) {
+        Ok(d) => (d.name, d.size),
+        Err(_) => (None, None),
+    }
 }
 
 /// Deletes the document; false when the provider can't (it's then left empty).

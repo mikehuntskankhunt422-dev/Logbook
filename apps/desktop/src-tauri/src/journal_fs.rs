@@ -234,6 +234,30 @@ impl Pieces {
     }
 }
 
+/// Deletes the temporary files of writes that never finished (the app was ended part-way through
+/// a big one). Only where nothing else writes to the folder: the Android app's own, at startup
+/// (D90). A synced desktop folder may hold another computer's write in progress.
+#[cfg_attr(desktop, allow(dead_code))]
+pub fn remove_unfinished_writes(root: &Path) -> usize {
+    let mut removed = 0;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else if kind.is_file()
+                && entry.file_name().to_string_lossy().contains(".logbook-tmp-")
+                && fs::remove_file(entry.path()).is_ok()
+            {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
     let (a, b) = (resolve(root, from)?, resolve(root, to)?);
     materialize(&a, &icloud_download, icloud_wait()).map_err(|e| describe(from, e))?;
@@ -353,6 +377,11 @@ mod tests {
         pieces.write(root, "media/ab/a.mp4", "w3", Part::Last, b"B").unwrap();
         assert_eq!(read(root, "media/ab/a.mp4").unwrap().as_deref(), Some(&b"AB"[..]));
         assert!(pieces.write(root, "../escape", "w4", Part::First, b"x").is_err());
+        assert_eq!(list(root, "media").unwrap(), vec!["media/ab/a.mp4", "media/ab/v.mp4"]);
+        // A write the app never finished leaves its temporary file, cleared at the next start.
+        pieces.write(root, "media/cd/big.mp4", "w5", Part::First, b"part").unwrap();
+        assert_eq!(list(root, "media").unwrap().len(), 3);
+        assert_eq!(remove_unfinished_writes(root), 1);
         assert_eq!(list(root, "media").unwrap(), vec!["media/ab/a.mp4", "media/ab/v.mp4"]);
     }
 

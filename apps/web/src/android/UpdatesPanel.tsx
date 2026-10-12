@@ -10,8 +10,8 @@ export function UpdatesPanel() {
       <section className="panel" aria-labelledby="updates-h">
         <h2 id="updates-h">Updates</h2>
         <p>
-          This is a test build of Logbook {version}, made from work in progress. It's a separate app from Logbook, with a journal of its own, and it doesn't look for updates. Install the next test build
-          over it, or Logbook itself from its releases on GitHub.
+          This is a test build of Logbook {version}, made from work in progress. It's a separate app from Logbook, with a journal of its own, and it doesn't look for updates. Each test build has a
+          signature of its own, so the next one installs only after this one is uninstalled, which deletes its journal: save a backup first and restore it there.
         </p>
       </section>
     );

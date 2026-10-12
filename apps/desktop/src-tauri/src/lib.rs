@@ -177,10 +177,12 @@ enum SaveDest {
     /// until the last one puts it in place.
     #[cfg_attr(target_os = "android", allow(dead_code))]
     File { path: PathBuf, tmp: PathBuf },
-    /// On Android: the document the save dialog created (a content:// address, D90), written
-    /// directly, since there's no folder beside it for a temporary file; `name` is what it's called.
+    /// On Android: the document the save dialog gave (a content:// address, D90), written
+    /// directly, since there's no folder beside it for a temporary file. `name` is what it's
+    /// called; `existed` when the person picked a file that already had content, to replace;
+    /// `id` once it's open, until the provider is told it's complete.
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-    Document { uri: String, name: String },
+    Document { uri: String, name: String, existed: bool, id: Option<i32> },
 }
 
 struct SaveTarget {
@@ -198,8 +200,8 @@ impl SaveTarget {
     }
 
     /// Opens what the pieces are written into.
-    fn open(&self, _app: &AppHandle) -> Result<std::fs::File, String> {
-        match &self.dest {
+    fn open(&mut self, _app: &AppHandle) -> Result<std::fs::File, String> {
+        match &mut self.dest {
             SaveDest::File { path, tmp } => (|| {
                 if let Some(dir) = path.parent() {
                     std::fs::create_dir_all(dir)?;
@@ -208,31 +210,45 @@ impl SaveTarget {
             })()
             .map_err(|e| e.to_string()),
             #[cfg(target_os = "android")]
-            SaveDest::Document { uri, .. } => android::open_for_writing(_app, uri),
+            SaveDest::Document { uri, id, .. } => {
+                let (file, opened) = android::open_for_writing(_app, uri)?;
+                *id = Some(opened);
+                Ok(file)
+            }
             #[cfg(not(target_os = "android"))]
             SaveDest::Document { .. } => unreachable!("only Android's save dialog gives documents"),
         }
     }
 
     /// After the last piece: the file is complete and in place.
-    fn finish(&mut self) -> std::io::Result<()> {
+    fn finish(&mut self, _app: &AppHandle) -> Result<(), String> {
         let Some(file) = self.file.take() else { return Ok(()) };
-        match &self.dest {
-            SaveDest::File { path, tmp } => {
+        match &mut self.dest {
+            SaveDest::File { path, tmp } => (|| {
                 file.sync_all()?;
                 drop(file);
-                std::fs::rename(tmp, path)
-            }
-            SaveDest::Document { .. } => {
-                // Cloud storage may hand over a pipe, which can't be synced; closing it hands the
-                // file over.
+                std::fs::rename(&*tmp, &*path)
+            })()
+            .map_err(|e| e.to_string()),
+            SaveDest::Document { id, .. } => {
+                // Cloud storage may hand over a pipe, which can't be synced.
                 let _ = file.sync_all();
+                drop(file);
+                // Now the provider may take it (Google Drive uploads it).
+                #[cfg(target_os = "android")]
+                if let Some(opened) = id.take() {
+                    android::close_document(_app, opened, true)?;
+                }
+                let _ = id;
                 Ok(())
             }
         }
     }
 
-    /// Calls the save off: nothing is left behind (a provider that can't delete keeps it empty).
+    /// Calls the save off. On the desktop nothing is left behind. On Android a document the
+    /// dialog created is deleted (a provider that can't delete keeps it empty), and so is one
+    /// picked to be replaced once writing has started, as its old content is gone by then; one
+    /// picked to be replaced but not yet opened is left as it was.
     fn discard(self, _app: &AppHandle) {
         drop(self.file);
         match self.dest {
@@ -240,8 +256,13 @@ impl SaveTarget {
                 let _ = std::fs::remove_file(tmp);
             }
             #[cfg(target_os = "android")]
-            SaveDest::Document { uri, .. } => {
-                android::delete_document(_app, &uri);
+            SaveDest::Document { uri, existed, id, .. } => {
+                if let Some(opened) = id {
+                    let _ = android::close_document(_app, opened, false);
+                }
+                if !existed || id.is_some() {
+                    android::delete_document(_app, &uri);
+                }
             }
             #[cfg(not(target_os = "android"))]
             SaveDest::Document { .. } => {}
@@ -258,13 +279,14 @@ fn save_target(_app: &AppHandle, picked: tauri_plugin_dialog::FilePath, _name: &
     Ok(SaveTarget { dest: SaveDest::File { path, tmp }, file: None })
 }
 
-/// Android's save dialog has already created the document (D90).
+/// Android's save dialog has created the document, or the person picked one to replace (D90).
 #[cfg(target_os = "android")]
 fn save_target(app: &AppHandle, picked: tauri_plugin_dialog::FilePath, name: &str) -> Result<SaveTarget, String> {
     let tauri_plugin_dialog::FilePath::Url(url) = picked else { return Err("Android's save dialog didn't say where to save.".into()) };
     let uri = url.to_string();
-    let name = android::display_name(app, &uri).unwrap_or_else(|| name.to_string());
-    Ok(SaveTarget { dest: SaveDest::Document { uri, name }, file: None })
+    let (shown, size) = android::describe(app, &uri);
+    let dest = SaveDest::Document { uri, name: shown.unwrap_or_else(|| name.to_string()), existed: size.is_some_and(|s| s > 0), id: None };
+    Ok(SaveTarget { dest, file: None })
 }
 
 #[derive(Default)]
@@ -313,7 +335,7 @@ async fn save_write(request: Request<'_>, app: AppHandle, pending: State<'_, Pen
         }
         target.file.as_mut().expect("opened above").write_all(&data).map_err(|e| e.to_string())?;
         if last {
-            target.finish().map_err(|e| e.to_string())?;
+            target.finish(&app)?;
         }
         Ok(())
     })();
@@ -593,7 +615,10 @@ pub fn run() {
             {
                 let journal = app.path().app_data_dir().map_err(|e| e.to_string()).map(|d| d.join("journal"));
                 let (root, problem) = match journal.and_then(|d| folder::prepare(&d).map(|()| d)) {
-                    Ok(dir) => (Some(dir), None),
+                    Ok(dir) => {
+                        journal_fs::remove_unfinished_writes(&dir);
+                        (Some(dir), None)
+                    }
                     Err(e) => (None, Some(e)),
                 };
                 app.manage(AppState { config_file, root: Mutex::new(root), missing: None, problem });

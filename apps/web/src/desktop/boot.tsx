@@ -38,7 +38,11 @@ export async function bootApp(root: Root, render: (journal: Journal) => void): P
   const choose = (problem: { missing?: string | null; error?: string; folder?: string | null }) =>
     root.render(<FolderSetup key={++attempt} {...problem} onReady={() => void open().catch((err: unknown) => choose({ error: message(err), folder: null }))} />);
   const { folder, missing, problem } = await journalFolder();
-  if (!folder && import.meta.env.VITE_PLATFORM === 'android') throw new Error(problem ?? 'No storage for the journal.');
+  // Android has no folder to choose: any problem goes to the error screen (main.tsx's showError).
+  if (import.meta.env.VITE_PLATFORM === 'android') {
+    if (!folder) throw new Error(problem ?? 'No storage for the journal.');
+    return open();
+  }
   if (!folder) return choose({ missing });
   // A folder that can't be opened (damaged, not a journal) mustn't strand the app: offer another.
   return open().catch((err: unknown) => choose({ error: message(err), folder }));

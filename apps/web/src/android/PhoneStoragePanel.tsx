@@ -9,7 +9,7 @@ export function PhoneStoragePanel({ children }: { children?: ReactNode }) {
       {children}
       <p className="hint">
         Uninstalling Logbook deletes your journal, and so does clearing Logbook's storage in Android's settings: keep backups. To move your journal to another phone or a computer, save a backup and restore it
-        there. Moving to a new phone with Android's own transfer brings it along.
+        there. (On Android 12 and later, a direct phone-to-phone transfer when you set up a new phone brings it along too; a restore from Google's backup doesn't.)
       </p>
     </section>
   );
