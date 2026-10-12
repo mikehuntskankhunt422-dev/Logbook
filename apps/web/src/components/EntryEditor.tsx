@@ -24,7 +24,7 @@ import { useJournal } from '../app/journal-context.tsx';
 import { navigate } from '../app/router.ts';
 import { useToast } from '../app/toasts.tsx';
 import { canCompressVideo, compressVideo, importFile } from '../lib/media-import.ts';
-import { onFlush } from '../lib/pending-saves.ts';
+import { onFlush, trackWork } from '../lib/pending-saves.ts';
 import { celebrate, useReducedMotion } from '../lib/motion.ts';
 import { AudioBlock, BLOCK_LABELS, EmbedBlock, FileBlock, GalleryBlock, LinkBlock, PhotoBlock, RichTextBlock, VideoBlock } from './blocks.tsx';
 import { Dialog, formatLongDate, useCoverStyle } from './common.tsx';
@@ -245,8 +245,9 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
 
   const askAboutBigVideo = (file: File) => new Promise<'compress' | 'keep' | 'skip'>((resolve) => setBigVideo({ file, resolve }));
 
-  /** Imports files and appends blocks: several photos at once become a gallery. */
-  const addFiles = async (files: File[], target?: { galleryId: string }) => {
+  /** Imports files and appends blocks: several photos at once become a gallery. An update waits for it. */
+  const addFiles = (files: File[], target?: { galleryId: string }) => trackWork(addFilesNow(files, target));
+  const addFilesNow = async (files: File[], target?: { galleryId: string }) => {
     if (!files.length) return;
     const images: string[] = [];
     const others: Block[] = [];
@@ -326,7 +327,8 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
     toast('Moved to trash.', { label: 'Undo', run: () => void journal.restoreEntry(entry.id) }, 8000);
   };
 
-  const setCoverPhoto = async (file: File | undefined) => {
+  const setCoverPhoto = (file: File | undefined) => trackWork(setCoverPhotoNow(file));
+  const setCoverPhotoNow = async (file: File | undefined) => {
     if (!file) return;
     const { meta, kind } = await importFile(journal, file, { compress: true });
     if (kind === 'image') update((e) => ({ ...e, cover: { kind: 'photo', mediaId: meta.id } }));

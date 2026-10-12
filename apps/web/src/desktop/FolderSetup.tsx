@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { defaultJournalFolder, openJournalFolder, pickFolder } from './bridge.ts';
+import { UpdateOffer } from './UpdatesPanel.tsx';
 
 /**
  * First run of the desktop app (and after the remembered folder went missing): where the journal
@@ -45,6 +46,7 @@ export function FolderSetup({
           📓
         </div>
         <h1>Where should Logbook keep your journal?</h1>
+        <UpdateOffer />
         {missing && <p className="error">Logbook can't find your journal at {missing}. If it's on a drive that isn't connected, connect it and restart Logbook, or choose the folder again.</p>}
         {openError && (
           <p className="error" role="alert">

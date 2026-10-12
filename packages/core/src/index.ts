@@ -10,3 +10,4 @@ export * from './backup.ts';
 export * from './search.ts';
 export * from './media.ts';
 export * from './print/index.ts';
+export * from './export/index.ts';

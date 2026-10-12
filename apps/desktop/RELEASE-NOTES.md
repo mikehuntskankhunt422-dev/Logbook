@@ -1,4 +1,8 @@
-The first preview of Logbook's desktop app: a private journal kept as files in a folder on your computer.
+Logbook now **updates itself**. From this version on, Logbook looks for a new version when it starts and twice a day, and asks before installing it: **Update and restart** saves your writing, installs the update and opens Logbook again. **Settings → Updates** checks at any time. Updates install only if they carry Logbook's signature, and your journal folder isn't touched.
+
+**Export your journal.** **Settings → Export** saves your entries (all of them, a year, or a date range) as **Markdown** (one file, or a file per entry for notes apps such as Obsidian), **plain text**, a **web page** with your photos and videos, or a **PDF**: Logbook opens your computer's print window, where you choose "Save as PDF" (on Windows, "Microsoft Print to PDF"). Exported files aren't protected by the passcode.
+
+**Coming from 0.1.0?** 0.1.0 can't update itself, so install this version over it once, by hand; your journal folder carries over. After that, updates arrive on their own.
 
 **Download** the file for your computer below:
 
@@ -12,7 +16,7 @@ The first preview of Logbook's desktop app: a private journal kept as files in a
 - macOS 15 or later: drag Logbook to Applications and open it. When macOS says it can't check it, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. On earlier versions, Control-click Logbook in Applications and choose **Open**.
 - Linux AppImage: `chmod +x Logbook_*.AppImage`, then run it.
 
-**In this preview**
+**What Logbook does**
 
 - Choose where your journal lives (`Documents/Logbook` is suggested). Each entry is a readable file, and photos, videos and recordings are ordinary files beside them. The folder can sit in OneDrive, Dropbox or iCloud Drive.
 - Write entries with text, photos, galleries and collages, video, audio, files, links and YouTube or Vimeo videos; moods, covers and tags; calendar, "On this day", search and streaks.
@@ -22,7 +26,6 @@ The first preview of Logbook's desktop app: a private journal kept as files in a
 **Not in this preview yet**
 
 - Ordering printed books. The builder says so; ordering opens in an update.
-- Automatic updates. Download the next version from this page; your journal folder carries over.
 - A screen for sorting out conflicting copies made by a sync service. Use the journal on one computer at a time.
 
 This is a preview: keep a backup of anything you'd hate to lose (**Settings → Backups**). Checksums are in `SHA256SUMS.txt`.

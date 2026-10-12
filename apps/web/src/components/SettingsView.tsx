@@ -4,13 +4,17 @@ import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb'
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
+import { trackWork } from '../lib/pending-saves.ts';
 import { isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
+import { ExportPanel } from './ExportPanel.tsx';
 
 /** The desktop app's journal folder (D77); written out so the browser build leaves it out. */
 const JournalFolderPanel =
   import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel }))) : null;
+/** The desktop app's automatic updates (D88). */
+const UpdatesPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel }))) : null;
 
 export function SettingsView() {
   return (
@@ -18,6 +22,7 @@ export function SettingsView() {
       <h1>Settings</h1>
       <AppearancePanel />
       <BackupPanel />
+      <ExportPanel />
       <PasscodePanel />
       {JournalFolderPanel ? (
         <Suspense fallback={null}>
@@ -27,6 +32,11 @@ export function SettingsView() {
         </Suspense>
       ) : (
         <StoragePanel />
+      )}
+      {UpdatesPanel && (
+        <Suspense fallback={null}>
+          <UpdatesPanel />
+        </Suspense>
       )}
       <TrashPanel />
       <DangerPanel />
@@ -96,7 +106,7 @@ function BackupPanel() {
     if (!pending) return;
     setBusy(true);
     try {
-      const r = await importBackup(journal, pending.file, { mode, passcode: pending.encrypted ? passcode : undefined });
+      const r = await trackWork(importBackup(journal, pending.file, { mode, passcode: pending.encrypted ? passcode : undefined }));
       clearMediaUrlCache();
       setPending(null);
       toast(`Imported ${r.entriesAdded} new and ${r.entriesUpdated} updated entries, ${r.mediaAdded} media files.${r.problems.length ? ` ${r.problems.length} problems: see console.` : ''}`, undefined, 8000);
@@ -240,9 +250,9 @@ function PasscodePanel() {
     if (mode !== 'disable' && next.length < MIN_PASSCODE_LENGTH) return setError(`Use at least ${MIN_PASSCODE_LENGTH} characters.`);
     setBusy(true);
     try {
-      if (mode === 'enable') await journal.enableEncryption(next);
-      if (mode === 'change') await journal.changePasscode(current, next);
-      if (mode === 'disable') await journal.disableEncryption(current);
+      if (mode === 'enable') await trackWork(journal.enableEncryption(next));
+      if (mode === 'change') await trackWork(journal.changePasscode(current, next));
+      if (mode === 'disable') await trackWork(journal.disableEncryption(current));
       toast(mode === 'enable' ? 'Passcode set. Your journal is encrypted on this device.' : mode === 'change' ? 'Passcode changed.' : 'Passcode removed. Your journal is no longer encrypted.');
       reset();
     } catch (err) {

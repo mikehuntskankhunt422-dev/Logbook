@@ -33,12 +33,40 @@ export function revealJournalFolder(): Promise<void> {
   return invoke('reveal_journal_folder');
 }
 
-/** Asks where to save, then writes the file. Returns where it went, or null when cancelled. */
-export async function saveFile(blob: Blob, name: string): Promise<string | null> {
-  const data = new Uint8Array(await blob.arrayBuffer());
-  return invoke<string | null>('save_file', data, { headers: { 'x-name': encodeURIComponent(name) } }).catch((err: unknown) => {
+/** Pieces a saved file is sent in, so a big one never crosses over as one block. */
+const SAVE_PIECE = 16 * 1024 * 1024;
+
+/**
+ * Asks where to save, then writes the file there in pieces. Returns where it went, or null when
+ * the dialog was cancelled or `proceed` said no (asked after the dialog and before each piece: a
+ * journal that locked meanwhile, say), in which case nothing is left behind.
+ */
+export async function saveFile(blob: Blob, name: string, proceed: () => boolean = () => true): Promise<string | null> {
+  const fail = (err: unknown) => {
     throw new Error(String(err));
-  });
+  };
+  const where = await invoke<string | null>('save_pick', { name }).catch(fail);
+  if (!where) return null;
+  try {
+    for (let at = 0; ; at += SAVE_PIECE) {
+      if (!proceed()) {
+        await invoke('save_cancel');
+        return null;
+      }
+      const piece = new Uint8Array(await blob.slice(at, at + SAVE_PIECE).arrayBuffer());
+      const last = at + SAVE_PIECE >= blob.size;
+      await invoke('save_write', piece, { headers: { 'x-last': last ? '1' : '0' } });
+      if (last) return where;
+    }
+  } catch (err) {
+    await invoke('save_cancel').catch(() => {});
+    return fail(err);
+  }
+}
+
+/** The system print window (with "Save as PDF") for what the window shows. */
+export function printPage(): Promise<void> {
+  return invoke('print_page');
 }
 
 /** Opens a web or email link in the default browser. */

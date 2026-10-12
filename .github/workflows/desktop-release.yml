@@ -4,6 +4,12 @@ name: Desktop installers
 # touches the app builds them as workflow artifacts to try; a v* tag also publishes them as a
 # GitHub release. So does running it by hand on main ("Run workflow", D87), which creates the tag.
 # Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
+#
+# Automatic updates (D88): every build makes the files the updater installs, signed with a
+# throwaway key, and never mentions the real one. Only a release runs the `sign` job, on a fresh
+# machine where no dependency or build script has run, which re-signs them with
+# TAURI_SIGNING_PRIVATE_KEY (a secret of the repository or of its `release` environment). The
+# release carries latest.json, which the app reads from the newest release.
 
 on:
   push:
@@ -39,7 +45,8 @@ jobs:
             rust-targets: ''
           - name: macOS
             os: macos-latest
-            bundles: dmg
+            # The app bundle too: the updater installs it, zipped (Logbook.app.tar.gz).
+            bundles: app,dmg
             args: --target universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
           - name: Linux
@@ -49,8 +56,12 @@ jobs:
             args: ''
             rust-targets: ''
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: The version asked for matches the app's version
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         shell: bash
@@ -81,21 +92,44 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - run: npm ci
+      - name: A throwaway key for the build's update signatures
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          npx tauri signer generate -w throwaway.key -p throwaway --ci -f > /dev/null
+          echo "THROWAWAY_SIGNING_KEY=$(cat throwaway.key)" >> "$GITHUB_ENV"
+          # Its public half, for checking the branch build's signatures below.
+          node -e "const fs = require('fs'); fs.writeFileSync(process.env.RUNNER_TEMP + '/throwaway.conf.json', JSON.stringify({ plugins: { updater: { pubkey: fs.readFileSync('throwaway.key.pub', 'utf8').trim() } } }))"
+          rm throwaway.key throwaway.key.pub
       - name: Build the installers
-        run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+        run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
         working-directory: apps/desktop
         env:
           # The API's address, once it's deployed (M6). Without it the app can't order books and says so.
           VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.THROWAWAY_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: throwaway
       - name: Collect the installers
         shell: bash
         run: |
           mkdir -p installers
           find apps/desktop/src-tauri/target -path '*/release/bundle/*' -type f \
-            \( -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+            \( -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+               -o -name '*.app.tar.gz' -o -name '*.sig' \) \
             -exec cp {} installers/ \;
           ls -l installers
           test -n "$(ls installers)"
+      # Branch builds try the signing script and the check with the throwaway key, then drop those
+      # signatures. A release keeps them until the `sign` job replaces them.
+      - name: Try the signing script with the throwaway key
+        if: ${{ !(startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          TAURI_SIGNING_PRIVATE_KEY="$THROWAWAY_SIGNING_KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=throwaway \
+            bash apps/desktop/scripts/sign-updates.sh installers "$version"
+          node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers "$RUNNER_TEMP/throwaway.conf.json" "$version"
+          rm -f installers/*.sig
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.name }}
@@ -103,10 +137,49 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # The only job that's given the real updater key: a release only (decided before a machine is
+  # assigned), a fresh machine, nothing installed from npm or crates, no npm cache.
+  sign:
+    name: Sign the update files
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: installers
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Sign with the release key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: bash apps/desktop/scripts/sign-updates.sh installers "${TAG#v}"
+      - name: Every update file is signed with the key the app expects, for this version
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers apps/desktop/src-tauri/tauri.conf.json "${TAG#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-installers
+          path: installers/*
+          retention-days: 14
+          if-no-files-found: error
+
   release:
     name: Publish the release
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: sign
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -114,9 +187,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: installers-*
-          merge-multiple: true
+          name: signed-installers
           path: installers
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The updater's latest.json
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts installers "$TAG" "$GITHUB_REPOSITORY"
       - name: Checksums
         working-directory: installers
         run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
@@ -126,8 +205,9 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: |
           version="${TAG#v}"
-          # 0.x versions are previews.
-          case "$version" in 0.*) pre=--prerelease; title="Logbook $version (preview)" ;; *) pre=; title="Logbook $version" ;; esac
+          # 0.x versions are previews, said in the title. Not GitHub pre-releases: the updater reads
+          # latest.json from the release GitHub calls latest, which is never a pre-release (D88).
+          case "$version" in 0.*) title="Logbook $version (preview)" ;; *) title="Logbook $version" ;; esac
           # Run by hand, the tag is made here, on the commit that was built.
-          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" $pre \
+          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "$title" --notes-file apps/desktop/RELEASE-NOTES.md

@@ -142,19 +142,90 @@ async fn journal_list(dir: String, state: State<'_, AppState>) -> Result<Vec<Str
 
 // ── things a web page can't do ───────────────────────────────────────────────────────────────
 
-/// Asks where to save a file (a backup, an attachment) and writes it. None when cancelled.
+/// A file being saved: where the save dialog said, and the temporary file beside it that the
+/// pieces go into until the last one puts it in place.
+struct SaveTarget {
+    path: PathBuf,
+    tmp: PathBuf,
+    file: Option<std::fs::File>,
+}
+
+#[derive(Default)]
+struct PendingSave(Mutex<Option<SaveTarget>>);
+
+impl PendingSave {
+    /// Calls off a save under way: nothing is left behind.
+    fn cancel(&self) {
+        if let Some(target) = self.0.lock().ok().and_then(|mut t| t.take()) {
+            drop(target.file);
+            let _ = std::fs::remove_file(&target.tmp);
+        }
+    }
+}
+
+/// Asks where to save a file (a backup, an export, an attachment); None when cancelled. The page
+/// then sends the file in pieces (`save_write`), or calls it off (`save_cancel`): if the journal
+/// locked while the dialog was open, nothing is written. Writes go only to the place picked here.
 #[tauri::command]
-async fn save_file(request: Request<'_>, app: AppHandle) -> Result<Option<String>, String> {
-    let name = header(&request, "x-name")?;
-    let data = body(&request)?;
+async fn save_pick(name: String, app: AppHandle, pending: State<'_, PendingSave>) -> Result<Option<String>, String> {
+    pending.cancel();
     let mut dialog = app.dialog().file().set_file_name(&name);
     if let Ok(docs) = app.path().document_dir() {
         dialog = dialog.set_directory(docs);
     }
     let Some(picked) = dialog.blocking_save_file() else { return Ok(None) };
     let path = picked.into_path().map_err(|e| e.to_string())?;
-    journal_fs::write_atomic(&path, data).map_err(|e| format!("Couldn't save {}: {e}", path.display()))?;
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = path.with_file_name(format!("{file_name}.logbook-tmp-{:08x}", journal_fs::random_u32()));
+    *pending.0.lock().map_err(|_| "busy".to_string())? = Some(SaveTarget { path: path.clone(), tmp, file: None });
     Ok(Some(path.display().to_string()))
+}
+
+/// The next piece of the file being saved, in order; with `x-last: 1` the file is complete and
+/// moves into place. A big export never has to cross over as one block.
+#[tauri::command]
+async fn save_write(request: Request<'_>, pending: State<'_, PendingSave>) -> Result<(), String> {
+    use std::io::Write;
+    let last = header(&request, "x-last")? == "1";
+    let data = body(&request)?;
+    let mut slot = pending.0.lock().map_err(|_| "busy".to_string())?;
+    let target = slot.as_mut().ok_or("No file is being saved.")?;
+    let written = (|| -> std::io::Result<()> {
+        if target.file.is_none() {
+            if let Some(dir) = target.path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            target.file = Some(std::fs::File::create(&target.tmp)?);
+        }
+        let file = target.file.as_mut().expect("opened above");
+        file.write_all(data)?;
+        if last {
+            file.sync_all()?;
+            target.file = None;
+            std::fs::rename(&target.tmp, &target.path)?;
+        }
+        Ok(())
+    })();
+    match written {
+        Err(e) => {
+            let target = slot.take().expect("checked above");
+            drop(target.file);
+            let _ = std::fs::remove_file(&target.tmp);
+            Err(format!("Couldn't save {}: {e}", target.path.display()))
+        }
+        Ok(()) => {
+            if last {
+                *slot = None;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Calls off the save under way.
+#[tauri::command]
+fn save_cancel(pending: State<'_, PendingSave>) {
+    pending.cancel();
 }
 
 // ── closing and quitting (D86) ───────────────────────────────────────────────────────────────
@@ -277,6 +348,14 @@ fn mac_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Menu::with_items(app, &[&app_menu, &edit, &window])
 }
 
+/// The system print window for what the page is showing: the PDF export (D89) lays the entries out
+/// for print first. A web page's own `print()` does nothing in macOS's webview, so it goes through
+/// here: Windows and Linux show their print dialog, macOS its print sheet, each with "Save as PDF".
+#[tauri::command]
+fn print_page(window: WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
 /// Opens a web address in the default browser: links in entries, and Stripe's payment page.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -285,6 +364,70 @@ fn open_url(url: String) -> Result<(), String> {
         return Err("Only web and email links can be opened.".into());
     }
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+// ── updates (M5 slice F, D88) ────────────────────────────────────────────────────────────────
+//
+// The updater reads `latest.json` from the newest GitHub release and accepts only files signed
+// with our updater key (tauri.conf.json holds the public half). Downloading and installing are two
+// steps so the page can save once more in between, with the window blocked, right before the
+// install: on Windows the installer ends the app straight away, and elsewhere the app restarts.
+
+/// An update found by the last check, kept until it's downloaded.
+#[derive(Default)]
+struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
+
+/// An update downloaded and its signature checked, waiting to be installed.
+#[derive(Default)]
+struct DownloadedUpdate(Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>);
+
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+}
+
+/// Looks for a newer version; None when this is the newest.
+#[tauri::command]
+async fn update_check(app: AppHandle, pending: State<'_, PendingUpdate>) -> Result<Option<UpdateInfo>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    let info = update.as_ref().map(|u| UpdateInfo { version: u.version.clone() });
+    *pending.0.lock().map_err(|_| "busy".to_string())? = update;
+    Ok(info)
+}
+
+/// Downloads the update found by `update_check` and checks its signature. Reports progress as
+/// `logbook://update-progress` events: [bytes so far, total if known]. A download that fails
+/// needs a fresh check: the release may have been fixed in the meantime.
+#[tauri::command]
+async fn update_download(app: AppHandle, pending: State<'_, PendingUpdate>, downloaded: State<'_, DownloadedUpdate>) -> Result<(), String> {
+    let update = pending.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update waiting.")?;
+    let progress = app.clone();
+    let mut received: u64 = 0;
+    let bytes = update
+        .download(
+            move |chunk, total| {
+                received += chunk as u64;
+                let _ = progress.emit("logbook://update-progress", (received, total));
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    *downloaded.0.lock().map_err(|_| "busy".to_string())? = Some((update, bytes));
+    Ok(())
+}
+
+/// Installs the downloaded update and starts the new version. The page has saved everything and
+/// blocked the window first.
+#[tauri::command]
+async fn update_apply(app: AppHandle, downloaded: State<'_, DownloadedUpdate>) -> Result<(), String> {
+    let (update, bytes) = downloaded.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update downloaded.")?;
+    update.install(&bytes).map_err(|e| e.to_string())?;
+    // Windows never gets here: its installer has already ended the app and will start it again.
+    // The restart goes straight through the close hold (D86): the page saved just before.
+    CLOSED.store(true, Ordering::SeqCst);
+    app.restart()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -307,6 +450,10 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(PendingUpdate::default())
+        .manage(DownloadedUpdate::default())
+        .manage(PendingSave::default())
         .setup(|app| {
             let config_file = app.path().app_config_dir()?.join("config.json");
             let config = folder::load(&config_file);
@@ -350,10 +497,16 @@ pub fn run() {
             journal_rename,
             journal_remove,
             journal_list,
-            save_file,
+            save_pick,
+            save_write,
+            save_cancel,
             open_url,
             close_ready,
             close_cancel,
+            update_check,
+            update_download,
+            update_apply,
+            print_page,
         ])
         .run(tauri::generate_context!())
         .expect("Logbook couldn't start");
