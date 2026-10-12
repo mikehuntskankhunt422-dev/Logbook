@@ -1,5 +1,5 @@
 import { backupFileName, exportBackup, type Journal } from '@logbook/core';
-import { isDesktop } from './platform.ts';
+import { isApp } from './platform.ts';
 
 /**
  * Getting backups out of the browser: a plain download everywhere, or "back up to a folder" through
@@ -13,9 +13,9 @@ type DirHandle = FileSystemDirectoryHandle & {
 };
 
 export function supportsFolderBackup(): boolean {
-  // The desktop app saves through its own dialog; its webview may also offer this API, but the
-  // remembered folder would live in browser storage the app doesn't otherwise use.
-  return !isDesktop && typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  // The apps save through their own dialog; the webview may also offer this API, but the
+  // remembered folder would live in browser storage the apps don't otherwise use.
+  return !isApp && typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
 export function downloadBlob(blob: Blob, name: string): void {
@@ -30,13 +30,13 @@ export function downloadBlob(blob: Blob, name: string): void {
 }
 
 export async function makeBackup(journal: Journal, keepEncrypted: boolean): Promise<Blob> {
-  return exportBackup(journal, { keepEncrypted, app: `logbook-${isDesktop ? 'desktop' : 'web'} ${import.meta.env.VITE_APP_VERSION ?? 'dev'}` });
+  return exportBackup(journal, { keepEncrypted, app: `logbook-${import.meta.env.VITE_PLATFORM} ${import.meta.env.VITE_APP_VERSION ?? 'dev'}` });
 }
 
-/** Downloads a backup zip (the desktop app asks where to save it). False when the person cancelled. */
+/** Downloads a backup zip (the apps ask where to save it). False when the person cancelled. */
 export async function downloadBackup(journal: Journal, keepEncrypted: boolean): Promise<boolean> {
   const blob = await makeBackup(journal, keepEncrypted);
-  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+  if (import.meta.env.VITE_PLATFORM !== 'web') {
     const { saveFile } = await import('../desktop/bridge.ts');
     if (!(await saveFile(blob, backupFileName(), () => !journal.isLocked))) return false;
   } else downloadBlob(blob, backupFileName());
@@ -45,7 +45,7 @@ export async function downloadBackup(journal: Journal, keepEncrypted: boolean): 
 }
 
 /** What the person just did with a backup, for the confirmation. */
-export const BACKUP_DONE = isDesktop ? 'Backup saved.' : 'Backup downloaded.';
+export const BACKUP_DONE = isApp ? 'Backup saved.' : 'Backup downloaded.';
 
 // ── remembered folder ───────────────────────────────────────────────────────────────────────────
 

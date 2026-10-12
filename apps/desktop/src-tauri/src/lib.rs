@@ -2,30 +2,40 @@
 //! browser version, built with `LOGBOOK_PLATFORM=desktop`; this side gives it a journal folder on
 //! disk and a few things a web page can't do (save dialogs, opening the browser for payment).
 
+#[cfg(target_os = "android")]
+mod android;
 mod folder;
 mod journal_fs;
+#[cfg(desktop)]
+mod updates;
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::ipc::{InvokeBody, Request, Response};
+#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 
 struct AppState {
+    #[cfg_attr(mobile, allow(dead_code))]
     config_file: PathBuf,
     /// The open journal folder; None until one is chosen.
     root: Mutex<Option<PathBuf>>,
     /// A remembered folder that wasn't there at startup (an unplugged drive, a moved folder).
     missing: Option<PathBuf>,
+    /// On Android, why the journal's folder inside the app couldn't be made (D90).
+    problem: Option<String>,
 }
 
 #[derive(serde::Serialize)]
 struct FolderStatus {
     folder: Option<String>,
     missing: Option<String>,
+    problem: Option<String>,
 }
 
 impl AppState {
@@ -57,11 +67,17 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// The request's raw bytes, borrowed: a backup can be gigabytes, so it isn't copied again here.
-fn body<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
+/// The request's bytes. The desktop's webviews send them raw, borrowed here (a backup can be
+/// gigabytes, so it isn't copied again). Android's can only send text, so there they come as
+/// base64 in `{ "data": "…" }`, a few megabytes at a time (D90).
+fn body<'a>(request: &'a Request<'_>) -> Result<Cow<'a, [u8]>, String> {
+    use base64::Engine;
     match request.body() {
-        InvokeBody::Raw(data) => Ok(data),
-        InvokeBody::Json(_) => Err("expected raw bytes".into()),
+        InvokeBody::Raw(data) => Ok(Cow::Borrowed(data)),
+        InvokeBody::Json(json) => {
+            let text = json.get("data").and_then(|d| d.as_str()).ok_or("expected bytes")?;
+            base64::engine::general_purpose::STANDARD.decode(text).map(Cow::Owned).map_err(|e| format!("bad bytes: {e}"))
+        }
     }
 }
 
@@ -71,10 +87,11 @@ fn body<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
 #[tauri::command]
 fn journal_folder(state: State<'_, AppState>) -> FolderStatus {
     let folder = state.root.lock().ok().and_then(|r| r.as_ref().map(|p| p.display().to_string()));
-    FolderStatus { folder, missing: state.missing.as_ref().map(|p| p.display().to_string()) }
+    FolderStatus { folder, missing: state.missing.as_ref().map(|p| p.display().to_string()), problem: state.problem.clone() }
 }
 
 /// Where a new journal goes by default: `Documents/Logbook`.
+#[cfg(desktop)]
 #[tauri::command]
 fn default_journal_folder(app: AppHandle) -> Result<String, String> {
     let docs = app.path().document_dir().or_else(|_| app.path().home_dir()).map_err(|e| e.to_string())?;
@@ -82,6 +99,7 @@ fn default_journal_folder(app: AppHandle) -> Result<String, String> {
 }
 
 /// Shows the system's folder picker; None when cancelled.
+#[cfg(desktop)]
 #[tauri::command]
 async fn pick_folder(app: AppHandle) -> Option<String> {
     let picked = app.dialog().file().set_title("Choose where to keep your journal").blocking_pick_folder()?;
@@ -90,6 +108,7 @@ async fn pick_folder(app: AppHandle) -> Option<String> {
 
 /// Opens (or starts) the journal in `path` and remembers it. Returns the folder actually used,
 /// which is a `Logbook` folder inside `path` when `path` holds other files.
+#[cfg(desktop)]
 #[tauri::command]
 async fn use_journal_folder(path: String, state: State<'_, AppState>) -> Result<String, String> {
     let folder = folder::journal_folder_for(&PathBuf::from(path))?;
@@ -102,6 +121,7 @@ async fn use_journal_folder(path: String, state: State<'_, AppState>) -> Result<
 }
 
 /// Shows the journal folder in Explorer, Finder or the file manager.
+#[cfg(desktop)]
 #[tauri::command]
 fn reveal_journal_folder(state: State<'_, AppState>) -> Result<(), String> {
     tauri_plugin_opener::open_path(state.root()?, None::<&str>).map_err(|e| e.to_string())
@@ -120,9 +140,18 @@ async fn journal_read(path: String, state: State<'_, AppState>) -> Result<Respon
     }
 }
 
+/// Writes a file whole, or, with `x-write` (the write's id) and `x-part` (`first`, `more`, `last`),
+/// a piece of one: Android sends big files that way (D90).
 #[tauri::command]
-async fn journal_write(request: Request<'_>, state: State<'_, AppState>) -> Result<(), String> {
-    journal_fs::write(&state.root()?, &header(&request, "x-path")?, body(&request)?)
+async fn journal_write(request: Request<'_>, state: State<'_, AppState>, pieces: State<'_, journal_fs::Pieces>) -> Result<(), String> {
+    let (root, path, data) = (state.root()?, header(&request, "x-path")?, body(&request)?);
+    match request.headers().get("x-part") {
+        None => journal_fs::write(&root, &path, &data),
+        Some(_) => {
+            let part = journal_fs::Part::parse(&header(&request, "x-part")?).ok_or("bad x-part")?;
+            pieces.write(&root, &path, &header(&request, "x-write")?, part, &data)
+        }
+    }
 }
 
 #[tauri::command]
@@ -142,12 +171,100 @@ async fn journal_list(dir: String, state: State<'_, AppState>) -> Result<Vec<Str
 
 // ── things a web page can't do ───────────────────────────────────────────────────────────────
 
-/// A file being saved: where the save dialog said, and the temporary file beside it that the
-/// pieces go into until the last one puts it in place.
+/// Where a file being saved goes.
+enum SaveDest {
+    /// On the desktop: the path picked, and the temporary file beside it that the pieces go into
+    /// until the last one puts it in place.
+    #[cfg_attr(target_os = "android", allow(dead_code))]
+    File { path: PathBuf, tmp: PathBuf },
+    /// On Android: the document the save dialog created (a content:// address, D90), written
+    /// directly, since there's no folder beside it for a temporary file; `name` is what it's called.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    Document { uri: String, name: String },
+}
+
 struct SaveTarget {
-    path: PathBuf,
-    tmp: PathBuf,
+    dest: SaveDest,
     file: Option<std::fs::File>,
+}
+
+impl SaveTarget {
+    /// Where the file went, for the page to say.
+    fn shown(&self) -> String {
+        match &self.dest {
+            SaveDest::File { path, .. } => path.display().to_string(),
+            SaveDest::Document { name, .. } => name.clone(),
+        }
+    }
+
+    /// Opens what the pieces are written into.
+    fn open(&self, _app: &AppHandle) -> Result<std::fs::File, String> {
+        match &self.dest {
+            SaveDest::File { path, tmp } => (|| {
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                std::fs::File::create(tmp)
+            })()
+            .map_err(|e| e.to_string()),
+            #[cfg(target_os = "android")]
+            SaveDest::Document { uri, .. } => android::open_for_writing(_app, uri),
+            #[cfg(not(target_os = "android"))]
+            SaveDest::Document { .. } => unreachable!("only Android's save dialog gives documents"),
+        }
+    }
+
+    /// After the last piece: the file is complete and in place.
+    fn finish(&mut self) -> std::io::Result<()> {
+        let Some(file) = self.file.take() else { return Ok(()) };
+        match &self.dest {
+            SaveDest::File { path, tmp } => {
+                file.sync_all()?;
+                drop(file);
+                std::fs::rename(tmp, path)
+            }
+            SaveDest::Document { .. } => {
+                // Cloud storage may hand over a pipe, which can't be synced; closing it hands the
+                // file over.
+                let _ = file.sync_all();
+                Ok(())
+            }
+        }
+    }
+
+    /// Calls the save off: nothing is left behind (a provider that can't delete keeps it empty).
+    fn discard(self, _app: &AppHandle) {
+        drop(self.file);
+        match self.dest {
+            SaveDest::File { tmp, .. } => {
+                let _ = std::fs::remove_file(tmp);
+            }
+            #[cfg(target_os = "android")]
+            SaveDest::Document { uri, .. } => {
+                android::delete_document(_app, &uri);
+            }
+            #[cfg(not(target_os = "android"))]
+            SaveDest::Document { .. } => {}
+        }
+    }
+}
+
+/// Where the save dialog's answer says to save.
+#[cfg(not(target_os = "android"))]
+fn save_target(_app: &AppHandle, picked: tauri_plugin_dialog::FilePath, _name: &str) -> Result<SaveTarget, String> {
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = path.with_file_name(format!("{file_name}.logbook-tmp-{:08x}", journal_fs::random_u32()));
+    Ok(SaveTarget { dest: SaveDest::File { path, tmp }, file: None })
+}
+
+/// Android's save dialog has already created the document (D90).
+#[cfg(target_os = "android")]
+fn save_target(app: &AppHandle, picked: tauri_plugin_dialog::FilePath, name: &str) -> Result<SaveTarget, String> {
+    let tauri_plugin_dialog::FilePath::Url(url) = picked else { return Err("Android's save dialog didn't say where to save.".into()) };
+    let uri = url.to_string();
+    let name = android::display_name(app, &uri).unwrap_or_else(|| name.to_string());
+    Ok(SaveTarget { dest: SaveDest::Document { uri, name }, file: None })
 }
 
 #[derive(Default)]
@@ -155,10 +272,10 @@ struct PendingSave(Mutex<Option<SaveTarget>>);
 
 impl PendingSave {
     /// Calls off a save under way: nothing is left behind.
-    fn cancel(&self) {
-        if let Some(target) = self.0.lock().ok().and_then(|mut t| t.take()) {
-            drop(target.file);
-            let _ = std::fs::remove_file(&target.tmp);
+    fn cancel(&self, app: &AppHandle) {
+        let target = self.0.lock().ok().and_then(|mut t| t.take());
+        if let Some(target) = target {
+            target.discard(app);
         }
     }
 }
@@ -166,52 +283,47 @@ impl PendingSave {
 /// Asks where to save a file (a backup, an export, an attachment); None when cancelled. The page
 /// then sends the file in pieces (`save_write`), or calls it off (`save_cancel`): if the journal
 /// locked while the dialog was open, nothing is written. Writes go only to the place picked here.
+/// Answers where the file goes: its path, or on Android its name.
 #[tauri::command]
 async fn save_pick(name: String, app: AppHandle, pending: State<'_, PendingSave>) -> Result<Option<String>, String> {
-    pending.cancel();
+    pending.cancel(&app);
     let mut dialog = app.dialog().file().set_file_name(&name);
     if let Ok(docs) = app.path().document_dir() {
         dialog = dialog.set_directory(docs);
     }
     let Some(picked) = dialog.blocking_save_file() else { return Ok(None) };
-    let path = picked.into_path().map_err(|e| e.to_string())?;
-    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = path.with_file_name(format!("{file_name}.logbook-tmp-{:08x}", journal_fs::random_u32()));
-    *pending.0.lock().map_err(|_| "busy".to_string())? = Some(SaveTarget { path: path.clone(), tmp, file: None });
-    Ok(Some(path.display().to_string()))
+    let target = save_target(&app, picked, &name)?;
+    let shown = target.shown();
+    *pending.0.lock().map_err(|_| "busy".to_string())? = Some(target);
+    Ok(Some(shown))
 }
 
 /// The next piece of the file being saved, in order; with `x-last: 1` the file is complete and
 /// moves into place. A big export never has to cross over as one block.
 #[tauri::command]
-async fn save_write(request: Request<'_>, pending: State<'_, PendingSave>) -> Result<(), String> {
+async fn save_write(request: Request<'_>, app: AppHandle, pending: State<'_, PendingSave>) -> Result<(), String> {
     use std::io::Write;
     let last = header(&request, "x-last")? == "1";
     let data = body(&request)?;
     let mut slot = pending.0.lock().map_err(|_| "busy".to_string())?;
     let target = slot.as_mut().ok_or("No file is being saved.")?;
-    let written = (|| -> std::io::Result<()> {
+    let written = (|| -> Result<(), String> {
         if target.file.is_none() {
-            if let Some(dir) = target.path.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
-            target.file = Some(std::fs::File::create(&target.tmp)?);
+            target.file = Some(target.open(&app)?);
         }
-        let file = target.file.as_mut().expect("opened above");
-        file.write_all(data)?;
+        target.file.as_mut().expect("opened above").write_all(&data).map_err(|e| e.to_string())?;
         if last {
-            file.sync_all()?;
-            target.file = None;
-            std::fs::rename(&target.tmp, &target.path)?;
+            target.finish().map_err(|e| e.to_string())?;
         }
         Ok(())
     })();
     match written {
         Err(e) => {
             let target = slot.take().expect("checked above");
-            drop(target.file);
-            let _ = std::fs::remove_file(&target.tmp);
-            Err(format!("Couldn't save {}: {e}", target.path.display()))
+            drop(slot);
+            let shown = target.shown();
+            target.discard(&app);
+            Err(format!("Couldn't save {shown}: {e}"))
         }
         Ok(()) => {
             if last {
@@ -224,8 +336,9 @@ async fn save_write(request: Request<'_>, pending: State<'_, PendingSave>) -> Re
 
 /// Calls off the save under way.
 #[tauri::command]
-fn save_cancel(pending: State<'_, PendingSave>) {
-    pending.cancel();
+async fn save_cancel(app: AppHandle, pending: State<'_, PendingSave>) -> Result<(), String> {
+    pending.cancel(&app);
+    Ok(())
 }
 
 // ── closing and quitting (D86) ───────────────────────────────────────────────────────────────
@@ -299,6 +412,7 @@ fn close_cancel() {
 /// The macOS menu bar: Tauri's usual one, except that Quit goes through `begin_close`. The stock
 /// Quit item ends the app at once (it never reaches Tauri's exit hook), losing the last edit.
 /// Logging out or shutting down with Logbook open still ends it without that chance.
+#[cfg(desktop)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn mac_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Logbook", true, Some("CmdOrCtrl+Q"))?;
@@ -351,83 +465,29 @@ fn mac_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 /// The system print window for what the page is showing: the PDF export (D89) lays the entries out
 /// for print first. A web page's own `print()` does nothing in macOS's webview, so it goes through
 /// here: Windows and Linux show their print dialog, macOS its print sheet, each with "Save as PDF".
+#[cfg(desktop)]
 #[tauri::command]
 fn print_page(window: WebviewWindow) -> Result<(), String> {
     window.print().map_err(|e| e.to_string())
 }
 
+/// Android's print screen, with "Save as PDF" (D90): Android's webview has no print of its own.
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn print_page(app: AppHandle) -> Result<(), String> {
+    android::print(&app)
+}
+
 /// Opens a web address in the default browser: links in entries, and Stripe's payment page.
 #[tauri::command]
-fn open_url(url: String) -> Result<(), String> {
+async fn open_url(url: String, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
     let lower = url.to_ascii_lowercase();
     if !(lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")) {
         return Err("Only web and email links can be opened.".into());
     }
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
-}
-
-// ── updates (M5 slice F, D88) ────────────────────────────────────────────────────────────────
-//
-// The updater reads `latest.json` from the newest GitHub release and accepts only files signed
-// with our updater key (tauri.conf.json holds the public half). Downloading and installing are two
-// steps so the page can save once more in between, with the window blocked, right before the
-// install: on Windows the installer ends the app straight away, and elsewhere the app restarts.
-
-/// An update found by the last check, kept until it's downloaded.
-#[derive(Default)]
-struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
-
-/// An update downloaded and its signature checked, waiting to be installed.
-#[derive(Default)]
-struct DownloadedUpdate(Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>);
-
-#[derive(serde::Serialize)]
-struct UpdateInfo {
-    version: String,
-}
-
-/// Looks for a newer version; None when this is the newest.
-#[tauri::command]
-async fn update_check(app: AppHandle, pending: State<'_, PendingUpdate>) -> Result<Option<UpdateInfo>, String> {
-    use tauri_plugin_updater::UpdaterExt;
-    let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
-    let info = update.as_ref().map(|u| UpdateInfo { version: u.version.clone() });
-    *pending.0.lock().map_err(|_| "busy".to_string())? = update;
-    Ok(info)
-}
-
-/// Downloads the update found by `update_check` and checks its signature. Reports progress as
-/// `logbook://update-progress` events: [bytes so far, total if known]. A download that fails
-/// needs a fresh check: the release may have been fixed in the meantime.
-#[tauri::command]
-async fn update_download(app: AppHandle, pending: State<'_, PendingUpdate>, downloaded: State<'_, DownloadedUpdate>) -> Result<(), String> {
-    let update = pending.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update waiting.")?;
-    let progress = app.clone();
-    let mut received: u64 = 0;
-    let bytes = update
-        .download(
-            move |chunk, total| {
-                received += chunk as u64;
-                let _ = progress.emit("logbook://update-progress", (received, total));
-            },
-            || {},
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    *downloaded.0.lock().map_err(|_| "busy".to_string())? = Some((update, bytes));
-    Ok(())
-}
-
-/// Installs the downloaded update and starts the new version. The page has saved everything and
-/// blocked the window first.
-#[tauri::command]
-async fn update_apply(app: AppHandle, downloaded: State<'_, DownloadedUpdate>) -> Result<(), String> {
-    let (update, bytes) = downloaded.0.lock().map_err(|_| "busy".to_string())?.take().ok_or("There's no update downloaded.")?;
-    update.install(&bytes).map_err(|e| e.to_string())?;
-    // Windows never gets here: its installer has already ended the app and will start it again.
-    // The restart goes straight through the close hold (D86): the page saved just before.
-    CLOSED.store(true, Ordering::SeqCst);
-    app.restart()
+    // Through the plugin rather than its `open_url` function, which can't reach Android's browser.
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -447,34 +507,100 @@ pub fn run() {
             }
         }));
     }
+    // The page's commands: the journal folder's files, saving, links and printing everywhere; on
+    // the desktop also choosing the folder, closing and updates.
+    #[cfg(desktop)]
+    let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+        journal_folder,
+        journal_read,
+        journal_write,
+        journal_rename,
+        journal_remove,
+        journal_list,
+        save_pick,
+        save_write,
+        save_cancel,
+        open_url,
+        print_page,
+        default_journal_folder,
+        pick_folder,
+        use_journal_folder,
+        reveal_journal_folder,
+        close_ready,
+        close_cancel,
+        updates::update_check,
+        updates::update_download,
+        updates::update_apply,
+    ];
+    #[cfg(mobile)]
+    let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+        journal_folder,
+        journal_read,
+        journal_write,
+        journal_rename,
+        journal_remove,
+        journal_list,
+        save_pick,
+        save_write,
+        save_cancel,
+        open_url,
+        print_page,
+        close_ready,
+        close_cancel,
+    ];
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .on_menu_event(|app, event| {
+                if event.id().as_ref() == "quit" {
+                    match app.get_webview_window("main") {
+                        Some(window) => begin_close(&window, true),
+                        None => app.exit(0),
+                    }
+                }
+            })
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .manage(updates::PendingUpdate::default())
+            .manage(updates::DownloadedUpdate::default());
+    }
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.plugin(android::init());
+    }
     builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(PendingUpdate::default())
-        .manage(DownloadedUpdate::default())
+        // Links go through `open_url` (the page routes them, src/desktop/bridge.ts), not the
+        // plugin's own script, which the window isn't allowed to use.
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .manage(PendingSave::default())
+        .manage(journal_fs::Pieces::default())
         .setup(|app| {
             let config_file = app.path().app_config_dir()?.join("config.json");
-            let config = folder::load(&config_file);
-            // A remembered folder that's gone (an unplugged drive) is offered again on the first-run
-            // screen rather than silently started afresh somewhere else.
-            let (root, missing) = match config.journal_folder {
-                Some(p) if p.is_dir() => (Some(p), None),
-                other => (None, other),
-            };
-            app.manage(AppState { config_file, root: Mutex::new(root), missing });
+            #[cfg(desktop)]
+            {
+                let config = folder::load(&config_file);
+                // A remembered folder that's gone (an unplugged drive) is offered again on the
+                // first-run screen rather than silently started afresh somewhere else.
+                let (root, missing) = match config.journal_folder {
+                    Some(p) if p.is_dir() => (Some(p), None),
+                    other => (None, other),
+                };
+                app.manage(AppState { config_file, root: Mutex::new(root), missing, problem: None });
+            }
+            // Phones have no folder to choose (D90): the journal is a folder inside the app's own
+            // storage, which only Logbook can read, and which goes when Logbook is uninstalled.
+            #[cfg(mobile)]
+            {
+                let journal = app.path().app_data_dir().map_err(|e| e.to_string()).map(|d| d.join("journal"));
+                let (root, problem) = match journal.and_then(|d| folder::prepare(&d).map(|()| d)) {
+                    Ok(dir) => (Some(dir), None),
+                    Err(e) => (None, Some(e)),
+                };
+                app.manage(AppState { config_file, root: Mutex::new(root), missing: None, problem });
+            }
             #[cfg(target_os = "macos")]
             app.set_menu(mac_menu(app.handle())?)?;
             Ok(())
-        })
-        .on_menu_event(|app, event| {
-            if event.id().as_ref() == "quit" {
-                match app.get_webview_window("main") {
-                    Some(window) => begin_close(&window, true),
-                    None => app.exit(0),
-                }
-            }
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -486,28 +612,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            journal_folder,
-            default_journal_folder,
-            pick_folder,
-            use_journal_folder,
-            reveal_journal_folder,
-            journal_read,
-            journal_write,
-            journal_rename,
-            journal_remove,
-            journal_list,
-            save_pick,
-            save_write,
-            save_cancel,
-            open_url,
-            close_ready,
-            close_cancel,
-            update_check,
-            update_download,
-            update_apply,
-            print_page,
-        ])
+        .invoke_handler(handler)
         .run(tauri::generate_context!())
         .expect("Logbook couldn't start");
 }

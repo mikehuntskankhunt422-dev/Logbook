@@ -1,10 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
+import { PIECE as TEXT_PIECE, toBase64 } from '@logbook/storage-fs/tauri';
 import { announce } from '../app/toasts.tsx';
 
-/** The desktop app's own commands (apps/desktop/src-tauri/src/lib.rs). Desktop build only. */
+/** The apps' own commands (apps/desktop/src-tauri/src/lib.rs). Desktop and Android builds only. */
 
-/** The open journal folder (null before one is chosen), and a remembered one that has gone missing. */
-export function journalFolder(): Promise<{ folder: string | null; missing: string | null }> {
+/**
+ * The open journal folder (null before one is chosen), a remembered one that has gone missing, and
+ * on Android why the journal's folder inside the app couldn't be made.
+ */
+export function journalFolder(): Promise<{ folder: string | null; missing: string | null; problem: string | null }> {
   return invoke('journal_folder');
 }
 
@@ -33,13 +37,17 @@ export function revealJournalFolder(): Promise<void> {
   return invoke('reveal_journal_folder');
 }
 
-/** Pieces a saved file is sent in, so a big one never crosses over as one block. */
-const SAVE_PIECE = 16 * 1024 * 1024;
+/**
+ * Pieces a saved file is sent in, so a big one never crosses over as one block. Android's webview
+ * sends them as base64 text (D90), so smaller there.
+ */
+const android = import.meta.env.VITE_PLATFORM === 'android';
+const SAVE_PIECE = android ? TEXT_PIECE : 16 * 1024 * 1024;
 
 /**
- * Asks where to save, then writes the file there in pieces. Returns where it went, or null when
- * the dialog was cancelled or `proceed` said no (asked after the dialog and before each piece: a
- * journal that locked meanwhile, say), in which case nothing is left behind.
+ * Asks where to save, then writes the file there in pieces. Returns where it went (on Android the
+ * file's name), or null when the dialog was cancelled or `proceed` said no (asked after the dialog
+ * and before each piece: a journal that locked meanwhile, say), in which case nothing is left behind.
  */
 export async function saveFile(blob: Blob, name: string, proceed: () => boolean = () => true): Promise<string | null> {
   const fail = (err: unknown) => {
@@ -55,7 +63,7 @@ export async function saveFile(blob: Blob, name: string, proceed: () => boolean 
       }
       const piece = new Uint8Array(await blob.slice(at, at + SAVE_PIECE).arrayBuffer());
       const last = at + SAVE_PIECE >= blob.size;
-      await invoke('save_write', piece, { headers: { 'x-last': last ? '1' : '0' } });
+      await invoke('save_write', android ? { data: toBase64(piece) } : piece, { headers: { 'x-last': last ? '1' : '0' } });
       if (last) return where;
     }
   } catch (err) {

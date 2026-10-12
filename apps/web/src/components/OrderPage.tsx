@@ -3,7 +3,7 @@ import { productLabel, SHIP_COUNTRIES, type BookOrderRef } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { ApiError, checkoutDonePage, checkoutOrder, getOrder, quoteOrder, type OrderView, type ShippingChoice } from '../lib/api.ts';
-import { isDesktop } from '../lib/platform.ts';
+import { isApp } from '../lib/platform.ts';
 import { formatUsd } from '../lib/money.ts';
 
 const ProofViewer = lazy(() => import('./ProofViewer.tsx').then((m) => ({ default: m.ProofViewer })));
@@ -28,10 +28,10 @@ const PROGRESS: { label: string; states: string[] }[] = [
 /** After coming back from Stripe, how long to keep asking whether the payment has been confirmed. */
 const CONFIRM_POLLS = 40;
 /**
- * The desktop app can't tell when the customer is done in their browser, so it keeps asking, less
- * often after the first two minutes, until the payment page is paid or expires (60 minutes, D56).
+ * The apps can't tell when the customer is done in their browser, so they keep asking, less often
+ * after the first two minutes, until the payment page is paid or expires (60 minutes, D56).
  */
-const DESKTOP_CONFIRM_SLOW_MS = 10_000;
+const APP_CONFIRM_SLOW_MS = 10_000;
 /** Proof links last an hour (PROOF_TTL_S); the page fetches fresh ones before they run out. */
 const LINK_REFRESH_MS = 50 * 60 * 1000;
 /** Typing in the closed country list changes it per keystroke; price only once it settles. */
@@ -110,9 +110,9 @@ export function OrderPage({ id, cancelled }: { id: string; cancelled: boolean })
         setLoadError(null);
         // Keep asking while the print files are being made, or while a payment is being confirmed;
         // otherwise come back for fresh proof links before these expire.
-        const confirming = view.state === 'awaiting_payment' && !cancelled && (isDesktop || polls < CONFIRM_POLLS);
+        const confirming = view.state === 'awaiting_payment' && !cancelled && (isApp || polls < CONFIRM_POLLS);
         if (confirming) polls++;
-        if (view.state === 'draft' || confirming) later(view.state === 'draft' ? 1500 : polls > CONFIRM_POLLS ? DESKTOP_CONFIRM_SLOW_MS : 3000);
+        if (view.state === 'draft' || confirming) later(view.state === 'draft' ? 1500 : polls > CONFIRM_POLLS ? APP_CONFIRM_SLOW_MS : 3000);
         else if (view.proof) later(LINK_REFRESH_MS);
       } catch (err) {
         if (!alive) return;
@@ -121,12 +121,13 @@ export function OrderPage({ id, cancelled }: { id: string; cancelled: boolean })
         if (!(err instanceof ApiError) || err.status === 0 || err.status === 429 || err.status >= 500) later(Math.min(30_000, 2000 * 2 ** Math.min(++failures, 4)));
       }
     };
-    // A tab left in the background may have missed the refresh (timers are throttled there).
-    const onVisible = () => document.visibilityState === 'visible' && loadedAt && Date.now() - loadedAt > LINK_REFRESH_MS && void load();
+    // A tab left in the background may have missed the refresh (timers are throttled there). In the
+    // apps, coming back from the browser's payment page is the moment to look: on Android the app
+    // comes back as the page becoming visible, on the desktop as the window taking the focus.
+    const onVisible = () => document.visibilityState === 'visible' && loadedAt && (isApp || Date.now() - loadedAt > LINK_REFRESH_MS) && void load();
     document.addEventListener('visibilitychange', onVisible);
-    // Desktop: coming back to the window from the browser's payment page is the moment to look.
     const onFocus = () => loadedAt && void load();
-    if (isDesktop) window.addEventListener('focus', onFocus);
+    if (isApp) window.addEventListener('focus', onFocus);
     void load();
     return () => {
       alive = false;
@@ -283,9 +284,9 @@ function ProofAndPay({ order, orderRef, cancelled, onChange, reload }: OrderBody
     setPaying(true);
     setProblem(null);
     try {
-      const returnUrl = isDesktop ? checkoutDonePage() : `${location.origin}${location.pathname}`;
+      const returnUrl = isApp ? checkoutDonePage() : `${location.origin}${location.pathname}`;
       const { url } = await checkoutOrder(orderRef.id, orderRef.token, { quoteVersion: order.quote.version, returnUrl, checked });
-      if (import.meta.env.VITE_PLATFORM === 'desktop') {
+      if (import.meta.env.VITE_PLATFORM !== 'web') {
         // Stripe's page opens in the browser (PLAN §2); this window follows the order meanwhile.
         const { openExternal } = await import('../desktop/bridge.ts');
         await openExternal(url);
@@ -311,7 +312,7 @@ function ProofAndPay({ order, orderRef, cancelled, onChange, reload }: OrderBody
         <p className="notice" role="status">
           {cancelled
             ? 'You left the payment page, so nothing was charged. You can pay whenever you’re ready.'
-            : isDesktop
+            : isApp
               ? 'Stripe’s payment page is open in your browser. This page updates by itself once Stripe confirms the payment. Closed it by mistake? Continue to payment below.'
               : 'Waiting for Stripe to confirm your payment… If you haven’t paid yet, continue to payment below.'}
         </p>

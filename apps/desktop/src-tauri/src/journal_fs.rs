@@ -8,9 +8,11 @@
 //! downloads on read). The journal would lose sight of those entries and photos, so `list` reports a
 //! placeholder under its real name and `read` asks iCloud for the file and waits for it.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -138,8 +140,7 @@ pub fn write_atomic(target: &Path, data: &[u8]) -> io::Result<()> {
     if let Some(dir) = target.parent() {
         fs::create_dir_all(dir)?;
     }
-    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = target.with_file_name(format!("{name}.logbook-tmp-{:08x}", random_u32()));
+    let tmp = temporary_beside(target);
     let result = (|| {
         let mut f = fs::File::create(&tmp)?;
         f.write_all(data)?;
@@ -151,6 +152,86 @@ pub fn write_atomic(target: &Path, data: &[u8]) -> io::Result<()> {
         let _ = fs::remove_file(&tmp);
     }
     result
+}
+
+/// Where a file is written before it's renamed into place. FolderStore never lists these.
+fn temporary_beside(target: &Path) -> PathBuf {
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    target.with_file_name(format!("{name}.logbook-tmp-{:08x}", random_u32()))
+}
+
+/// Files arriving in pieces, by the id the page gave each write. Android's webview can only send
+/// text, so big files (photos, videos) come in a few megabytes at a time (D90). Like `write`, the
+/// pieces go into a temporary file, renamed over the target only once the last one is on disk.
+#[derive(Default)]
+pub struct Pieces(Mutex<HashMap<String, Piece>>);
+
+pub struct Piece {
+    target: PathBuf,
+    tmp: PathBuf,
+    file: fs::File,
+}
+
+impl Piece {
+    fn discard(self) {
+        drop(self.file);
+        let _ = fs::remove_file(&self.tmp);
+    }
+}
+
+/// Which piece of a file this is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Part {
+    First,
+    More,
+    Last,
+}
+
+impl Part {
+    pub fn parse(s: &str) -> Option<Part> {
+        match s {
+            "first" => Some(Part::First),
+            "more" => Some(Part::More),
+            "last" => Some(Part::Last),
+            _ => None,
+        }
+    }
+}
+
+impl Pieces {
+    /// Adds a piece of write `id` to `rel`: the first starts it afresh, the last puts the file in
+    /// place. A failed piece drops the whole write; the page then reports the save as failed.
+    pub fn write(&self, root: &Path, rel: &str, id: &str, part: Part, data: &[u8]) -> Result<(), String> {
+        let target = resolve(root, rel)?;
+        let mut writes = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if part == Part::First {
+            if let Some(old) = writes.remove(id) {
+                old.discard();
+            }
+            if let Some(dir) = target.parent() {
+                fs::create_dir_all(dir).map_err(|e| describe(rel, e))?;
+            }
+            let tmp = temporary_beside(&target);
+            let file = fs::File::create(&tmp).map_err(|e| describe(rel, e))?;
+            writes.insert(id.to_string(), Piece { target: target.clone(), tmp, file });
+        }
+        let piece =
+            writes.get_mut(id).filter(|p| p.target == target).ok_or_else(|| format!("{rel}: the start of this file never arrived"))?;
+        let written = piece.file.write_all(data).and_then(|()| if part == Part::Last { piece.file.sync_all() } else { Ok(()) });
+        if let Err(e) = written {
+            writes.remove(id).expect("found above").discard();
+            return Err(describe(rel, e));
+        }
+        if part == Part::Last {
+            let piece = writes.remove(id).expect("found above");
+            drop(piece.file);
+            if let Err(e) = fs::rename(&piece.tmp, &piece.target) {
+                let _ = fs::remove_file(&piece.tmp);
+                return Err(describe(rel, e));
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
@@ -248,6 +329,31 @@ mod tests {
         assert_eq!(list(root, "trash").unwrap(), Vec::<String>::new());
         // No temporary files are left behind.
         assert_eq!(fs::read_dir(root.join("media/ab")).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn writes_a_file_in_pieces() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let pieces = Pieces::default();
+        write(root, "media/ab/v.mp4", b"old").unwrap();
+        pieces.write(root, "media/ab/v.mp4", "w1", Part::First, b"one ").unwrap();
+        pieces.write(root, "media/ab/v.mp4", "w1", Part::More, b"two ").unwrap();
+        // Until the last piece the old file is untouched.
+        assert_eq!(read(root, "media/ab/v.mp4").unwrap().as_deref(), Some(&b"old"[..]));
+        pieces.write(root, "media/ab/v.mp4", "w1", Part::Last, b"three").unwrap();
+        assert_eq!(read(root, "media/ab/v.mp4").unwrap().as_deref(), Some(&b"one two three"[..]));
+        assert_eq!(fs::read_dir(root.join("media/ab")).unwrap().count(), 1);
+        // A piece without its start, or for another file, is refused.
+        assert!(pieces.write(root, "media/ab/v.mp4", "w2", Part::More, b"x").is_err());
+        pieces.write(root, "media/ab/a.mp4", "w3", Part::First, b"a").unwrap();
+        assert!(pieces.write(root, "media/ab/b.mp4", "w3", Part::Last, b"b").is_err());
+        // Starting a write again begins it afresh.
+        pieces.write(root, "media/ab/a.mp4", "w3", Part::First, b"A").unwrap();
+        pieces.write(root, "media/ab/a.mp4", "w3", Part::Last, b"B").unwrap();
+        assert_eq!(read(root, "media/ab/a.mp4").unwrap().as_deref(), Some(&b"AB"[..]));
+        assert!(pieces.write(root, "../escape", "w4", Part::First, b"x").is_err());
+        assert_eq!(list(root, "media").unwrap(), vec!["media/ab/a.mp4", "media/ab/v.mp4"]);
     }
 
     #[test]

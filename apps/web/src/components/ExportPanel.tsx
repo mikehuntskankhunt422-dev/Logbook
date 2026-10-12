@@ -3,7 +3,7 @@ import { ExportTooLargeError, LockedError, referencedMediaIds } from '@logbook/c
 import { useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { exportToFile, printEntries, releasePrintView, type ExportChoice } from '../lib/export-io.ts';
-import { isDesktop } from '../lib/platform.ts';
+import { isApp } from '../lib/platform.ts';
 
 const FORMATS: { id: ExportChoice; label: string; about: string }[] = [
   { id: 'markdown', label: 'Markdown', about: 'Text with headings, lists and links, for notes apps such as Obsidian, or any text editor.' },
@@ -126,7 +126,7 @@ export function ExportPanel() {
 
       <div className="row" style={{ marginTop: 12 }}>
         <button type="button" className="btn btn-primary" disabled={busy || !chosen.length} onClick={() => void run()}>
-          {busy ? 'Preparing…' : format === 'pdf' ? '🖨️ Print or save as PDF…' : `${isDesktop ? '💾 Export' : '⬇️ Download'} ${chosen.length} ${chosen.length === 1 ? 'entry' : 'entries'}${isDesktop ? '…' : ''}`}
+          {busy ? 'Preparing…' : format === 'pdf' ? '🖨️ Print or save as PDF…' : `${isApp ? '💾 Export' : '⬇️ Download'} ${chosen.length} ${chosen.length === 1 ? 'entry' : 'entries'}${isApp ? '…' : ''}`}
         </button>
       </div>
       <p className="hint">

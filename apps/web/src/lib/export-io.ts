@@ -4,8 +4,8 @@ import { downloadBlob } from './backup-io.ts';
 
 /**
  * Getting an export out (D89): Markdown, plain text and web pages are saved like a backup (the
- * desktop app asks where); PDF is the entries laid out for print, handed to the system's print
- * window, where "Save as PDF" makes the file.
+ * apps ask where); PDF is the entries laid out for print, handed to the system's print window,
+ * where "Save as PDF" makes the file.
  *
  * Either can take a while on a big journal. If Settings closes meanwhile (`signal`), or the
  * journal locks, the export stops before anything is saved or printed: no save dialog or print
@@ -36,7 +36,7 @@ export async function exportToFile(journal: Journal, entries: Entry[], opts: Omi
   if (journal.isLocked) throw new LockedError();
   if (signal?.aborted) return NOT_SAVED;
   let saved = true;
-  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+  if (import.meta.env.VITE_PLATFORM !== 'web') {
     const { saveFile } = await import('../desktop/bridge.ts');
     // Asked again once the save dialog closes, and before each piece is written.
     saved = (await saveFile(out.blob, out.fileName, () => !journal.isLocked)) !== null;
@@ -127,7 +127,7 @@ export async function printEntries(journal: Journal, chosen: Entry[], signal?: A
     return NOT_SAVED;
   }
 
-  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+  if (import.meta.env.VITE_PLATFORM !== 'web') {
     const { printPage } = await import('../desktop/bridge.ts');
     await printPage();
   } else window.print();

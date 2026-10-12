@@ -23,11 +23,11 @@ async function boot() {
       </StrictMode>,
     );
 
-  // Written out rather than `isDesktop` so the browser build drops the desktop code entirely.
-  if (import.meta.env.VITE_PLATFORM === 'desktop') {
-    // The journal folder on disk (D77).
-    const { bootDesktop, showError } = await import('./desktop/boot.tsx');
-    return bootDesktop(root, render).catch((err: unknown) => showError(root, err));
+  // Written out rather than `isApp` so the browser build drops the apps' code entirely.
+  if (import.meta.env.VITE_PLATFORM !== 'web') {
+    // The journal folder on disk (D77; inside the app on Android, D90).
+    const { bootApp, showError } = await import('./desktop/boot.tsx');
+    return bootApp(root, render).catch((err: unknown) => showError(root, err));
   }
 
   try {

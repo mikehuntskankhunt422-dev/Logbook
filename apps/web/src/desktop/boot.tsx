@@ -16,13 +16,20 @@ const CLOSE_WAIT_MS = 3000;
 /** After a close was stopped by a failed save, closing again within this long closes anyway. */
 const CLOSE_ANYWAY_MS = 15_000;
 
-/** The desktop app's start: the journal folder, chosen on first run, instead of browser storage. */
-export async function bootDesktop(root: Root, render: (journal: Journal) => void): Promise<void> {
+/**
+ * The apps' start: the journal folder instead of browser storage. On the desktop it's chosen on
+ * first run; on Android it's inside the app, set up by the app before the page loads (D90).
+ */
+export async function bootApp(root: Root, render: (journal: Journal) => void): Promise<void> {
   routeLinks();
-  saveBeforeClosing();
-  checkForUpdatesSoon();
+  if (import.meta.env.VITE_PLATFORM === 'desktop') {
+    saveBeforeClosing();
+    checkForUpdatesSoon();
+  } else {
+    void import('../android/updates.ts').then((m) => m.checkForUpdatesSoon());
+  }
   const open = async () => {
-    const journal = await Journal.open(await FolderStore.open(new TauriFsBackend()));
+    const journal = await Journal.open(await FolderStore.open(new TauriFsBackend({ textOnly: import.meta.env.VITE_PLATFORM === 'android' })));
     setOpenJournal(journal);
     render(journal);
   };
@@ -30,7 +37,8 @@ export async function bootDesktop(root: Root, render: (journal: Journal) => void
   // A fresh screen each time (key), so a failed attempt doesn't leave its buttons disabled.
   const choose = (problem: { missing?: string | null; error?: string; folder?: string | null }) =>
     root.render(<FolderSetup key={++attempt} {...problem} onReady={() => void open().catch((err: unknown) => choose({ error: message(err), folder: null }))} />);
-  const { folder, missing } = await journalFolder();
+  const { folder, missing, problem } = await journalFolder();
+  if (!folder && import.meta.env.VITE_PLATFORM === 'android') throw new Error(problem ?? 'No storage for the journal.');
   if (!folder) return choose({ missing });
   // A folder that can't be opened (damaged, not a journal) mustn't strand the app: offer another.
   return open().catch((err: unknown) => choose({ error: message(err), folder }));
@@ -58,10 +66,15 @@ function saveBeforeClosing(): void {
 }
 
 export function showError(root: Root, err: unknown): void {
+  const android = import.meta.env.VITE_PLATFORM === 'android';
   root.render(
     <main className="empty">
-      <h1>Logbook can't open your journal folder</h1>
-      <p>Check that the folder is still there and that Logbook may read and write it, then restart Logbook.</p>
+      <h1>{android ? "Logbook can't open your journal" : "Logbook can't open your journal folder"}</h1>
+      <p>
+        {android
+          ? 'Close Logbook and open it again. If this keeps happening, check that the phone has free space.'
+          : 'Check that the folder is still there and that Logbook may read and write it, then restart Logbook.'}
+      </p>
       <pre className="muted">{String(err)}</pre>
       <UpdateOffer />
     </main>,

@@ -5,16 +5,28 @@ import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { trackWork } from '../lib/pending-saves.ts';
-import { isDesktop } from '../lib/platform.ts';
+import { isAndroid, isApp, isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
 
-/** The desktop app's journal folder (D77); written out so the browser build leaves it out. */
+/**
+ * Where the journal is: the desktop app's journal folder (D77), or the Android app's own storage
+ * (D90). Written out so the other builds leave it out.
+ */
 const JournalFolderPanel =
-  import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel }))) : null;
-/** The desktop app's automatic updates (D88). */
-const UpdatesPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel }))) : null;
+  import.meta.env.VITE_PLATFORM === 'desktop'
+    ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel })))
+    : import.meta.env.VITE_PLATFORM === 'android'
+      ? lazy(() => import('../android/PhoneStoragePanel.tsx').then((m) => ({ default: m.PhoneStoragePanel })))
+      : null;
+/** The desktop app's automatic updates (D88), or the Android app's update check (D90). */
+const UpdatesPanel =
+  import.meta.env.VITE_PLATFORM === 'desktop'
+    ? lazy(() => import('../desktop/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel })))
+    : import.meta.env.VITE_PLATFORM === 'android'
+      ? lazy(() => import('../android/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel })))
+      : null;
 
 export function SettingsView() {
   return (
@@ -124,7 +136,9 @@ function BackupPanel() {
       <p>
         {isDesktop
           ? 'Your journal folder is the journal. A backup zip is a copy of it you can keep somewhere else: another drive, or cloud storage. Back it up regularly.'
-          : 'Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.'}
+          : isAndroid
+            ? 'Your journal lives only on this phone, and uninstalling Logbook deletes it. Back it up regularly, to Google Drive or your computer. The zip holds everything, and the Logbook desktop app can open it too.'
+            : 'Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.'}
         {settings.lastBackupAt ? ` Last backup: ${new Date(settings.lastBackupAt).toLocaleString()}.` : ' You have not made a backup yet.'}
       </p>
       {journal.isEncrypted && (
@@ -134,7 +148,7 @@ function BackupPanel() {
       )}
       <div className="row">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => void ((await downloadBackup(journal, encrypted)) && (celebrate('backup'), toast(BACKUP_DONE))))}>
-          {isDesktop ? '💾 Save a backup (.zip)…' : '⬇️ Download backup (.zip)'}
+          {isApp ? '💾 Save a backup (.zip)…' : '⬇️ Download backup (.zip)'}
         </button>
         {supportsFolderBackup() && (
           <button

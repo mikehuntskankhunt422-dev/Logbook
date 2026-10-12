@@ -1,5 +1,7 @@
 //! Which folder holds the journal: chosen on first run, remembered in the app's config file
-//! (`config.json` in the OS's app config folder), changeable in Settings.
+//! (`config.json` in the OS's app config folder), changeable in Settings. On phones it's always
+//! the same folder inside the app (D90), so only `prepare` is used there.
+#![cfg_attr(mobile, allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 use std::fs;

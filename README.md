@@ -2,7 +2,7 @@
 
 A private journal for your computer: write about your days with photos, video, voice notes and links, and turn any stretch of it into a printed book.
 
-Logbook is a free desktop app for Windows, macOS and Linux. Your journal is kept as ordinary files in a folder you choose, never on our servers. The only thing that costs money is a printed book, if you order one.
+Logbook is a free app for Windows, macOS, Linux and Android phones. Your journal is kept as ordinary files on your own device, never on our servers. The only thing that costs money is a printed book, if you order one.
 
 > **Status: preview (0.2.0).** Writing, photos and media, search, the calendar, backups, the passcode lock, the book builder with its page-by-page preview, export to Markdown, text, web page or PDF, and automatic updates all work. **Not yet:** ordering a printed book (it opens once Logbook's print service is online) and a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
 
@@ -15,6 +15,7 @@ Get the latest version from the [Releases page](https://github.com/mikehuntskank
 | Windows 10 or 11 | `Logbook_<version>_x64-setup.exe` | Installs for your user account; no administrator needed |
 | macOS 10.15 or later | `Logbook_<version>_universal.dmg` | Apple silicon and Intel |
 | Linux | `.AppImage`, `.deb` or `.rpm` | The AppImage runs on most distributions; `.deb` for Ubuntu and Debian, `.rpm` for Fedora |
+| Android 7 or later | `Logbook-<version>.apk` | From the release after 0.2.0; not on Google Play |
 
 Each release lists the files' SHA-256 checksums in `SHA256SUMS.txt`.
 
@@ -27,6 +28,9 @@ Logbook isn't signed with a paid Apple or Microsoft certificate, so both systems
   - macOS 15 (Sequoia) or later: click **Done**, open **System Settings → Privacy & Security**, scroll down to the message about Logbook, click **Open Anyway** and confirm.
   - Earlier versions: in Applications, Control-click (or right-click) Logbook, choose **Open**, then click **Open** in the message.
 - **Linux:** make the AppImage executable (`chmod +x Logbook_*.AppImage`) and run it. The `.deb` and `.rpm` install like any other package.
+- **Android:** open the release page on your phone and tap the `.apk`. When the download finishes, open it; Android asks you to allow your browser to install apps (**Settings → Install unknown apps**) the first time, then to confirm the install.
+
+**On Android** your journal is kept inside the Logbook app on the phone, where other apps can't read it, and nothing is uploaded, not even to your Google backup. **Uninstalling Logbook deletes it**, so save backups (**Settings → Backups**: choose Google Drive or Downloads). To move your journal between your phone and a computer, save a backup on one and restore it on the other. New versions: **Settings → Updates** tells you when one is out and downloads it; installing it over the old one keeps your journal.
 
 ## Using Logbook
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "app.logbookjournal.android",
+  "build": {
+    "devUrl": "http://localhost:5175",
+    "frontendDist": "../../web/dist-android",
+    "beforeDevCommand": {
+      "script": "npm run dev:android",
+      "cwd": "../../web",
+      "wait": false
+    },
+    "beforeBuildCommand": {
+      "script": "npm run build:android",
+      "cwd": "../../web"
+    }
+  }
+}

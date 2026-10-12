@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-desktop/
+dist-android/
 build/
 coverage/
 .turbo/
@@ -15,7 +16,9 @@ coverage/
 *.sqlite-journal
 *.db
 apps/desktop/src-tauri/target/
-apps/desktop/src-tauri/gen/
+# Tauri's generated files, except the Android project, which is ours to change (D90).
+apps/desktop/src-tauri/gen/*
+!apps/desktop/src-tauri/gen/android/
 playwright-report/
 test-results/
 .lighthouseci/
