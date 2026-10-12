@@ -184,9 +184,13 @@ jobs:
       - name: Build the APK
         working-directory: apps/desktop
         env:
-          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
           VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
-        run: npx tauri android build --apk --target aarch64 armv7 x86_64 --ci
+        run: |
+          # The NDK that comes with the runner (its newest, else the newest under the SDK).
+          NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)}"
+          echo "NDK: $NDK_HOME"
+          export NDK_HOME
+          npx tauri android build --apk --target aarch64 armv7 x86_64 --ci
       - name: Collect the APK
         run: |
           mkdir -p android
