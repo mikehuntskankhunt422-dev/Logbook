@@ -24,6 +24,8 @@ export interface JournalExportOptions extends RenderOptions {
   layout?: 'one-file' | 'per-entry';
   now?: Date;
   onProgress?: (done: number, total: number) => void;
+  /** Stops the export (Settings closed): it rejects with the signal's reason, an AbortError. */
+  signal?: AbortSignal;
   /** Tests only: a smaller ceiling than EXPORT_ZIP_LIMIT. */
   zipLimit?: number;
 }
@@ -60,25 +62,27 @@ export async function exportEntries(journal: Journal, chosen: Entry[], opts: Jou
   const perEntry = opts.format === 'markdown' && opts.layout === 'per-entry';
   const ids = [...new Set(entries.flatMap(referencedMediaIds))];
 
-  // The zip is written as it goes, one media file at a time, so the export holds each file once
-  // (as exportBackup does) rather than all of them plus one more copy of the whole archive.
+  // The zip is written as it goes, one media file at a time, each piece of it moved into a Blob
+  // as it comes out, so the export holds about one copy of itself plus the file being added
+  // (fflate hands media through without copying it; a Blob made of Blobs copies nothing).
   const root = `Logbook export ${day}`;
-  let archive: { zip: Zip; chunks: Uint8Array[]; done: Promise<void> } | undefined;
+  const limit = opts.zipLimit ?? EXPORT_ZIP_LIMIT;
+  let archive: { zip: Zip; parts: Blob[]; done: Promise<void> } | undefined;
   let zipBytes = 0;
   const addToZip = (path: string, data: Uint8Array, compress: boolean) => {
     zipBytes += data.length + 128 + 2 * path.length;
-    if (zipBytes > (opts.zipLimit ?? EXPORT_ZIP_LIMIT)) throw new ExportTooLargeError();
+    if (zipBytes > limit) throw new ExportTooLargeError();
     if (!archive) {
-      const chunks: Uint8Array[] = [];
+      const parts: Blob[] = [];
       let zip!: Zip;
       const done = new Promise<void>((resolve, reject) => {
         zip = new Zip((err, chunk, final) => {
           if (err) return reject(err);
-          chunks.push(chunk);
+          parts.push(new Blob([chunk as BlobPart]));
           if (final) resolve();
         });
       });
-      archive = { zip, chunks, done };
+      archive = { zip, parts, done };
     }
     const f = compress ? new ZipDeflate(`${root}/${path}`, { level: 6 }) : new ZipPassThrough(`${root}/${path}`);
     archive.zip.add(f);
@@ -96,8 +100,17 @@ export async function exportEntries(journal: Journal, chosen: Entry[], opts: Jou
   let missing = 0;
   let mediaFiles = 0;
   let done = 0;
+  // Every record first: an export too big for one zip is refused before any media is read.
+  const metas = new Map<string, MediaMeta>();
   for (const id of ids) {
+    opts.signal?.throwIfAborted();
     const meta = await journal.getMediaMeta(id).catch(unlessLocked);
+    if (meta) metas.set(id, meta);
+  }
+  if (includeMedia && [...metas.values()].reduce((sum, m) => sum + m.bytes + 128 + 2 * (m.name.length + 8), 0) > limit) throw new ExportTooLargeError();
+  for (const id of ids) {
+    opts.signal?.throwIfAborted();
+    const meta = metas.get(id);
     if (!meta) {
       // Without its record the block names itself by its own type ("Photo", "Video").
       if (includeMedia) missing++;
@@ -147,10 +160,10 @@ export async function exportEntries(journal: Journal, chosen: Entry[], opts: Jou
   }
   // A zip opens into one folder, not a scatter of files.
   for (const [path, text] of docs) addToZip(path, strToU8(text), true);
-  const { zip, chunks, done: finished } = archive!;
+  const { zip, parts, done: finished } = archive!;
   zip.end();
   await finished;
-  return { blob: new Blob(chunks as BlobPart[], { type: 'application/zip' }), fileName: `${root} (${EXTENSION[opts.format]}).zip`, entries: entries.length, mediaFiles, mediaMissing: missing };
+  return { blob: new Blob(parts, { type: 'application/zip' }), fileName: `${root} (${EXTENSION[opts.format]}).zip`, entries: entries.length, mediaFiles, mediaMissing: missing };
 }
 
 function dateSpan(entries: Entry[], opts: RenderOptions): string {

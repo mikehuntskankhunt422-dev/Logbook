@@ -26,13 +26,21 @@ const NOT_SAVED: ExportResult = { saved: false, entries: 0, mediaMissing: 0 };
 
 /** Makes the file and saves it. */
 export async function exportToFile(journal: Journal, entries: Entry[], opts: Omit<JournalExportOptions, 'formatDate'>, signal?: AbortSignal): Promise<ExportResult> {
-  const out = await exportEntries(journal, entries, { ...opts, formatDate: (d) => formatLongDate(d) });
+  let out;
+  try {
+    out = await exportEntries(journal, entries, { ...opts, signal, formatDate: (d) => formatLongDate(d) });
+  } catch (err) {
+    if (signal?.aborted) return NOT_SAVED;
+    throw err;
+  }
   if (journal.isLocked) throw new LockedError();
   if (signal?.aborted) return NOT_SAVED;
   let saved = true;
   if (import.meta.env.VITE_PLATFORM === 'desktop') {
     const { saveFile } = await import('../desktop/bridge.ts');
-    saved = (await saveFile(out.blob, out.fileName)) !== null;
+    // Asked again once the save dialog closes, and before each piece is written.
+    saved = (await saveFile(out.blob, out.fileName, () => !journal.isLocked)) !== null;
+    if (!saved && journal.isLocked) throw new LockedError();
   } else downloadBlob(out.blob, out.fileName);
   return { saved, entries: out.entries, mediaMissing: out.mediaMissing };
 }
@@ -128,6 +136,7 @@ export async function printEntries(journal: Journal, chosen: Entry[], signal?: A
 
 /** Takes the print layout away now and frees its pictures. */
 export function clearPrintView(): void {
+  window.removeEventListener('beforeprint', clearPrintView);
   if (shown) {
     clearTimeout(shown.timer);
     shown.unsubscribe();
@@ -138,9 +147,15 @@ export function clearPrintView(): void {
   document.querySelectorAll(`[id="${PRINT_ROOT}"]`).forEach((el) => el.remove());
 }
 
-/** Settings is closing: remove the layout once anything still printing has had time to finish. */
+/**
+ * Settings is closing: remove the layout once anything still printing has had time to finish, or
+ * as soon as anything else is printed (Ctrl+P on another page), which must show that page.
+ */
 export function releasePrintView(): void {
-  if (shown && !shown.timer) shown.timer = setTimeout(clearPrintView, PRINT_HOLD_MS);
+  if (shown && !shown.timer) {
+    shown.timer = setTimeout(clearPrintView, PRINT_HOLD_MS);
+    window.addEventListener('beforeprint', clearPrintView, { once: true });
+  }
 }
 
 const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);

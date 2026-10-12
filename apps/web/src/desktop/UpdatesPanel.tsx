@@ -21,8 +21,9 @@ export function UpdatesPanel() {
       status = `Logbook ${update.version} is ready to install. Logbook saves your writing, updates and opens again.`;
       break;
     case 'installing':
-      status =
-        update.total && update.received < update.total
+      status = update.waiting
+        ? `Logbook ${update.version} is downloaded. It installs as soon as Logbook has finished what it's doing (adding files, restoring a backup).`
+        : update.total && update.received < update.total
           ? `Downloading Logbook ${update.version}: ${formatBytes(update.received)} of ${formatBytes(update.total)}…`
           : `Installing Logbook ${update.version}…`;
       break;

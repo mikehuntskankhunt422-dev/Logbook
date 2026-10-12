@@ -129,7 +129,7 @@ const withCaption = (md: string, caption: string) => (caption.trim() ? `${md}\n$
 /** A link block: clickable only for web and email addresses (D89); anything else is written out. */
 function linkMd(label: string, url: string): string {
   const href = safeHref(url);
-  return href ? `[${escapeMd(label)}](${mdUrl(href)})` : escapeMd(label === url ? url : `${label} (${url})`);
+  return href ? `[${escapeMd(label)}](${mdUrl(href)})` : escapeLine(escapeMd(label === url ? url : `${label} (${url})`));
 }
 
 // ── rich text ────────────────────────────────────────────────────────────────────────────────────
@@ -180,7 +180,9 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
 
 /**
  * A list item's blocks: a blank line between paragraphs (or they'd merge, and text after a nested
- * list would join the sub-item), but a paragraph followed by its own sub-list stays tight.
+ * list would join the sub-item). A paragraph followed by its own sub-list stays tight only where
+ * Markdown lets a list start straight after a paragraph: a bullet or a list from 1, with a first
+ * item that isn't empty (an empty "-" under a line would underline it into a heading).
  */
 function listItemBody(li: RichNode, ctx: Ctx): string {
   let out = '';
@@ -188,7 +190,8 @@ function listItemBody(li: RichNode, ctx: Ctx): string {
   for (const c of li.content ?? []) {
     const md = block(c, ctx);
     if (!md) continue;
-    if (out) out += prev?.type === 'paragraph' && (c.type === 'bulletList' || c.type === 'orderedList') ? '\n' : '\n\n';
+    const tight = prev?.type === 'paragraph' && /^(?:- |1\. )\S/.test(md);
+    if (out) out += tight ? '\n' : '\n\n';
     out += md;
     prev = c;
   }

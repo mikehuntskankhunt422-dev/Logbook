@@ -142,19 +142,90 @@ async fn journal_list(dir: String, state: State<'_, AppState>) -> Result<Vec<Str
 
 // ── things a web page can't do ───────────────────────────────────────────────────────────────
 
-/// Asks where to save a file (a backup, an attachment) and writes it. None when cancelled.
+/// A file being saved: where the save dialog said, and the temporary file beside it that the
+/// pieces go into until the last one puts it in place.
+struct SaveTarget {
+    path: PathBuf,
+    tmp: PathBuf,
+    file: Option<std::fs::File>,
+}
+
+#[derive(Default)]
+struct PendingSave(Mutex<Option<SaveTarget>>);
+
+impl PendingSave {
+    /// Calls off a save under way: nothing is left behind.
+    fn cancel(&self) {
+        if let Some(target) = self.0.lock().ok().and_then(|mut t| t.take()) {
+            drop(target.file);
+            let _ = std::fs::remove_file(&target.tmp);
+        }
+    }
+}
+
+/// Asks where to save a file (a backup, an export, an attachment); None when cancelled. The page
+/// then sends the file in pieces (`save_write`), or calls it off (`save_cancel`): if the journal
+/// locked while the dialog was open, nothing is written. Writes go only to the place picked here.
 #[tauri::command]
-async fn save_file(request: Request<'_>, app: AppHandle) -> Result<Option<String>, String> {
-    let name = header(&request, "x-name")?;
-    let data = body(&request)?;
+async fn save_pick(name: String, app: AppHandle, pending: State<'_, PendingSave>) -> Result<Option<String>, String> {
+    pending.cancel();
     let mut dialog = app.dialog().file().set_file_name(&name);
     if let Ok(docs) = app.path().document_dir() {
         dialog = dialog.set_directory(docs);
     }
     let Some(picked) = dialog.blocking_save_file() else { return Ok(None) };
     let path = picked.into_path().map_err(|e| e.to_string())?;
-    journal_fs::write_atomic(&path, data).map_err(|e| format!("Couldn't save {}: {e}", path.display()))?;
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = path.with_file_name(format!("{file_name}.logbook-tmp-{:08x}", journal_fs::random_u32()));
+    *pending.0.lock().map_err(|_| "busy".to_string())? = Some(SaveTarget { path: path.clone(), tmp, file: None });
     Ok(Some(path.display().to_string()))
+}
+
+/// The next piece of the file being saved, in order; with `x-last: 1` the file is complete and
+/// moves into place. A big export never has to cross over as one block.
+#[tauri::command]
+async fn save_write(request: Request<'_>, pending: State<'_, PendingSave>) -> Result<(), String> {
+    use std::io::Write;
+    let last = header(&request, "x-last")? == "1";
+    let data = body(&request)?;
+    let mut slot = pending.0.lock().map_err(|_| "busy".to_string())?;
+    let target = slot.as_mut().ok_or("No file is being saved.")?;
+    let written = (|| -> std::io::Result<()> {
+        if target.file.is_none() {
+            if let Some(dir) = target.path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            target.file = Some(std::fs::File::create(&target.tmp)?);
+        }
+        let file = target.file.as_mut().expect("opened above");
+        file.write_all(data)?;
+        if last {
+            file.sync_all()?;
+            target.file = None;
+            std::fs::rename(&target.tmp, &target.path)?;
+        }
+        Ok(())
+    })();
+    match written {
+        Err(e) => {
+            let target = slot.take().expect("checked above");
+            drop(target.file);
+            let _ = std::fs::remove_file(&target.tmp);
+            Err(format!("Couldn't save {}: {e}", target.path.display()))
+        }
+        Ok(()) => {
+            if last {
+                *slot = None;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Calls off the save under way.
+#[tauri::command]
+fn save_cancel(pending: State<'_, PendingSave>) {
+    pending.cancel();
 }
 
 // ── closing and quitting (D86) ───────────────────────────────────────────────────────────────
@@ -382,6 +453,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PendingUpdate::default())
         .manage(DownloadedUpdate::default())
+        .manage(PendingSave::default())
         .setup(|app| {
             let config_file = app.path().app_config_dir()?.join("config.json");
             let config = folder::load(&config_file);
@@ -425,7 +497,9 @@ pub fn run() {
             journal_rename,
             journal_remove,
             journal_list,
-            save_file,
+            save_pick,
+            save_write,
+            save_cancel,
             open_url,
             close_ready,
             close_cancel,

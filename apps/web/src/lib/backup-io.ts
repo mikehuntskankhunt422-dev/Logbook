@@ -38,7 +38,7 @@ export async function downloadBackup(journal: Journal, keepEncrypted: boolean): 
   const blob = await makeBackup(journal, keepEncrypted);
   if (import.meta.env.VITE_PLATFORM === 'desktop') {
     const { saveFile } = await import('../desktop/bridge.ts');
-    if (!(await saveFile(blob, backupFileName()))) return false;
+    if (!(await saveFile(blob, backupFileName(), () => !journal.isLocked))) return false;
   } else downloadBlob(blob, backupFileName());
   await journal.markBackedUp();
   return true;

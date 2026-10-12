@@ -208,7 +208,7 @@ fn describe(rel: &str, e: io::Error) -> String {
     format!("{rel}: {e}")
 }
 
-fn random_u32() -> u32 {
+pub(crate) fn random_u32() -> u32 {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
     let mut h = RandomState::new().build_hasher();

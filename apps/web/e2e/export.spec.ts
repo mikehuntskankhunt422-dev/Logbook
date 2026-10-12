@@ -105,6 +105,16 @@ test('PDF: lays the entries out for print and opens the print window', async ({ 
   await expect(layout).toHaveCount(1);
   await page.clock.fastForward(61_000);
   await expect(layout).toHaveCount(0);
+
+  // Printing something else within that minute shows that page, not the old export.
+  await page.goto('/#/settings');
+  await panel.getByRole('button', { name: 'PDF' }).click();
+  await panel.getByRole('button', { name: /Print or save as PDF/ }).click();
+  await expect(layout).toHaveCount(1);
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Journal' }).click();
+  await expect(layout).toHaveCount(1);
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+  await expect(layout).toHaveCount(0);
 });
 
 test('PDF: locking takes the decrypted layout away at once, and an export stopped by a lock prints nothing', async ({ page }) => {

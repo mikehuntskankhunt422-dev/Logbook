@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { announce } from '../app/toasts.tsx';
+import { workDone, workInProgress } from '../lib/pending-saves.ts';
 import { saveEverything } from './saving.ts';
 
 /**
@@ -13,7 +14,7 @@ import { saveEverything } from './saving.ts';
 export type UpdateState =
   | { phase: 'idle' | 'checking' | 'current' }
   | { phase: 'available'; version: string }
-  | { phase: 'installing'; version: string; received: number; total: number | null }
+  | { phase: 'installing'; version: string; received: number; total: number | null; waiting?: boolean }
   | { phase: 'failed'; version: string | null; error: string };
 
 const FIRST_CHECK_MS = 10_000;
@@ -80,8 +81,17 @@ export async function installUpdate(): Promise<void> {
   } finally {
     stop();
   }
+  // Photos still being added, a restore, a passcode change: let them finish, or the restart would
+  // cut them off. Nothing new can start once the window is blocked, straight after.
+  if (workInProgress()) {
+    set({ phase: 'installing', version: v, received: 0, total: null, waiting: true });
+    await workDone();
+  }
   const unblock = blockWindow(`Installing Logbook ${v}…`, 'Logbook will open again by itself in a moment.');
   try {
+    // Blocking moved the focus away, which may have changed something (a tag box keeps its tag on
+    // blur): let React apply that before the last save reads the entry.
+    await new Promise((r) => setTimeout(r, 0));
     if (!(await saveEverything(SAVE_WAIT_MS))) {
       unblock();
       return fail(notSaved);
@@ -95,19 +105,18 @@ export async function installUpdate(): Promise<void> {
 }
 
 /**
- * Covers the window and stops all input (the app underneath is inert), so nothing new is written
- * between the last save and the install. Returns the function that lifts it.
+ * Covers the window and stops all input, so nothing new is written between the last save and the
+ * install. The cover is a modal dialog, so it sits above (and blocks) any dialog already open;
+ * Escape doesn't close it. Returns the function that lifts it.
  */
 function blockWindow(title: string, detail: string): () => void {
-  const others = [...document.body.children].filter((el) => !el.hasAttribute('inert'));
-  others.forEach((el) => el.setAttribute('inert', ''));
   (document.activeElement as HTMLElement | null)?.blur?.();
-  const cover = document.createElement('div');
-  cover.setAttribute('role', 'alertdialog');
-  cover.setAttribute('aria-modal', 'true');
+  const cover = document.createElement('dialog');
   cover.setAttribute('aria-live', 'assertive');
   cover.style.cssText =
-    'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:16px;background:color-mix(in srgb, var(--bg, #fff) 88%, transparent);color:var(--ink, #111);font:inherit;text-align:center';
+    'position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;padding:16px;box-sizing:border-box;display:grid;place-items:center;background:color-mix(in srgb, var(--bg, #fff) 88%, transparent);color:var(--ink, #111);font:inherit;text-align:center';
+  const preventCancel = (e: Event) => e.preventDefault();
+  cover.addEventListener('cancel', preventCancel);
   const box = document.createElement('div');
   const h = document.createElement('h2');
   h.textContent = title;
@@ -118,9 +127,11 @@ function blockWindow(title: string, detail: string): () => void {
   box.append(h, p);
   cover.append(box);
   document.body.append(cover);
+  cover.showModal();
   return () => {
+    cover.removeEventListener('cancel', preventCancel);
+    cover.close();
     cover.remove();
-    others.forEach((el) => el.removeAttribute('inert'));
   };
 }
 

@@ -92,6 +92,13 @@ describe('Markdown that reads back as written (pre-merge review)', () => {
     expect(md(p(t('A '), t('bold', [{ type: 'bold' }]), t(' word')))).toBe('A **bold** word');
   });
 
+  it('keeps a sub-list tight only where Markdown lets it follow a paragraph (second review)', () => {
+    const ol = (start: number, ...content: RichNode[]): RichNode => ({ type: 'orderedList', attrs: { start }, content });
+    expect(md(ul(li(p(t('a')), ul(li(p()), li(p(t('b')))))))).toBe('- a\n\n  - \n  - b');
+    expect(md(ul(li(p(t('a')), ol(3, li(p(t('three')))))))).toBe('- a\n\n  3. three');
+    expect(md(ul(li(p(t('a')), ol(1, li(p(t('one')))))))).toBe('- a\n  1. one');
+  });
+
   it('drops a line break at the end of a paragraph, and turns one in a heading into a space', () => {
     expect(md(p(t('one'), br), p(t('two')))).toBe('one\n\ntwo');
     expect(md({ type: 'heading', attrs: { level: 2 }, content: [t('H'), br, t('second')] })).toBe('## H second');
@@ -136,6 +143,9 @@ describe('entries as documents', () => {
     const out = entryToMarkdown(bad, () => undefined);
     expect(out).toContain('click me (javascript:alert(1))');
     expect(out).not.toContain('](');
+    // Written out at the start of a line, it mustn't turn into a heading or list.
+    const titled = { ...entry, blocks: [{ id: 'l', type: 'link' as const, url: 'tel:+15551234', title: '# Call mum', caption: '' }] };
+    expect(entryToMarkdown(titled, () => undefined)).toContain('\n\\# Call mum (tel:+15551234)\n');
   });
 
   it('names a photo that isn’t in the export', () => {
@@ -260,9 +270,20 @@ describe('exportEntries when things go wrong (pre-merge review)', () => {
     expect(await out.blob.text()).toContain('*\\[Photo\\]*\n*Sunset*');
   });
 
-  it('refuses before a zip would pass the 4 GB a zip without Zip64 can hold', async () => {
+  it('refuses before a zip would pass the 4 GB a zip without Zip64 can hold, without reading any media', async () => {
     const { journal, entries } = await journalWithPhoto();
+    let read = 0;
+    const getMediaBlob = journal.getMediaBlob.bind(journal);
+    journal.getMediaBlob = (id) => (read++, getMediaBlob(id));
     await expect(exportEntries(journal, entries, { format: 'html', includeMedia: true, now, zipLimit: 100 })).rejects.toBeInstanceOf(ExportTooLargeError);
+    expect(read).toBe(0);
+  });
+
+  it('stops when its signal is aborted (Settings closed)', async () => {
+    const { journal, entries } = await journalWithPhoto();
+    const controller = new AbortController();
+    const run = exportEntries(journal, entries, { format: 'markdown', includeMedia: true, now, signal: controller.signal, onProgress: () => controller.abort() });
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 
