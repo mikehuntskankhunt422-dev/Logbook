@@ -23,13 +23,17 @@ alias="${ANDROID_KEY_ALIAS:-logbook}"
 
 # The newest build-tools on the machine (zipalign -P needs 35 or later).
 tools="$(ls -d "${ANDROID_HOME:?ANDROID_HOME is not set}"/build-tools/* | sort -V | tail -1)"
+echo "Using $tools"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$work/key.p12"
 
 # Native libraries on 16 KB page boundaries, which Android 15 and later phones need.
+echo "Aligning $unsigned"
 "$tools/zipalign" -f -P 16 4 "$unsigned" "$work/aligned.apk"
+echo "Signing"
 "$tools/apksigner" sign --ks "$work/key.p12" --ks-type PKCS12 --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
   --ks-key-alias "$alias" --out "$signed" "$work/aligned.apk"
-"$tools/apksigner" verify --print-certs "$signed" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+echo "Checking"
+"$tools/apksigner" verify --print-certs "$signed"
 echo "Signed $signed."

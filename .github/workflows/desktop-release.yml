@@ -203,7 +203,7 @@ jobs:
         run: |
           version=$(node -p "require('./apps/desktop/package.json').version")
           keytool -genkeypair -keystore "$RUNNER_TEMP/throwaway.p12" -storetype PKCS12 -storepass throwaway \
-            -alias logbook -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Logbook Preview" 2> /dev/null
+            -alias logbook -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Logbook Preview"
           ANDROID_KEYSTORE_BASE64=$(base64 -w0 "$RUNNER_TEMP/throwaway.p12") ANDROID_KEYSTORE_PASSWORD=throwaway \
             bash apps/desktop/scripts/sign-android.sh android/Logbook-unsigned.apk "android/Logbook-Preview-$version.apk"
           rm "$RUNNER_TEMP/throwaway.p12" android/Logbook-unsigned.apk
