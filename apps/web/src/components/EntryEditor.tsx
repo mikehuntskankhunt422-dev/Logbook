@@ -393,7 +393,7 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} entries={[entry]} title="Export this entry" />
 
       {coverOpen && (
-        <div className="panel" style={{ marginTop: 12 }}>
+        <div className="panel pop-in" style={{ marginTop: 12 }}>
           <div className="cover-picker" role="group" aria-label="Cover gradient">
             {GRADIENT_IDS.map((g) => (
               <button

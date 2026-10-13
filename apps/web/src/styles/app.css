@@ -99,6 +99,10 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
+  /* A theme change fades rather than flashes. */
+  transition:
+    background-color 0.3s,
+    color 0.3s;
   font-family: var(--font-ui);
   font-size: 1rem;
   line-height: 1.5;
@@ -231,9 +235,21 @@ textarea {
   font-weight: 600;
   font-size: 0.95rem;
 }
+.nav a {
+  position: relative;
+  isolation: isolate;
+  transition: color 0.2s;
+}
 .nav a[aria-current='page'] {
-  background: var(--ink);
   color: var(--bg);
+}
+/* The highlight behind the current page's item (it glides between items, D91). */
+.nav-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--ink);
 }
 .nav a:hover:not([aria-current='page']) {
   background: var(--bg-sunk);
@@ -281,8 +297,11 @@ h2 {
     background: var(--bg);
   }
   .nav a[aria-current='page'] {
-    background: var(--accent-soft);
     color: var(--ink);
+  }
+  .nav-pill {
+    background: var(--accent-soft);
+    border-radius: 14px;
   }
   .mood-picker button {
     width: 31px;
@@ -879,9 +898,20 @@ button.tag[aria-pressed='true'] {
   flex: 1;
   min-width: 0;
 }
+.rt ul[data-type='taskList'] li > div {
+  transition: color 0.25s;
+}
 .rt ul[data-type='taskList'] li[data-checked='true'] > div {
   text-decoration: line-through;
   color: var(--ink-faint);
+}
+.rt ul[data-type='taskList'] li > label input:checked {
+  animation: tick 0.3s var(--spring);
+}
+@keyframes tick {
+  50% {
+    transform: scale(1.25);
+  }
 }
 /* Tables */
 .rt .tableWrapper {
@@ -2379,6 +2409,66 @@ mark {
   .ringer[open],
   .ringer-bell,
   .timer-ring[data-paused='true'] .timer-ring-bar {
+    animation: none;
+  }
+}
+
+/* ── Motion (D91): pages, dialogs, toasts and panels come in; all of it off with reduced motion
+   (the rule near the top of this file). ─────────────────────────────────────────────────────── */
+.page {
+  animation: page-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+dialog[open] {
+  animation: dialog-in 0.3s var(--spring);
+}
+dialog[open]::backdrop {
+  animation: backdrop-in 0.25s ease-out;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+.toast {
+  animation: toast-in 0.35s var(--spring);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.95);
+  }
+}
+.pop-in,
+.expiry-panel,
+.music-bar,
+.alarm-editor {
+  animation: pop-in 0.28s var(--spring);
+  transform-origin: top center;
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+.btn-primary:hover {
+  box-shadow: 0 6px 18px rgb(201 58 22 / 0.28);
+}
+@media print {
+  .page,
+  dialog[open] {
     animation: none;
   }
 }

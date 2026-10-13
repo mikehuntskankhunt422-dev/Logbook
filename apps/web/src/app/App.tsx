@@ -11,6 +11,8 @@ import { ClockView } from '../components/ClockView.tsx';
 import { Ringer } from './clock.tsx';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
+import { spring, useReducedMotion } from '../lib/motion.ts';
+import { motion } from 'motion/react';
 
 /** Print layout and Paged.js load only when someone opens the book builder. */
 const BookBuilder = lazy(() => import('../components/BookBuilder.tsx').then((m) => ({ default: m.BookBuilder })));
@@ -29,6 +31,7 @@ const NAV: { route: Route; label: string; icon: string }[] = [
 export function App() {
   const { journal, locked, settings } = useJournal();
   const route = useRoute();
+  const reduced = useReducedMotion();
   useTheme(settings.theme);
   useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
@@ -90,6 +93,8 @@ export function App() {
         <nav className="nav" aria-label="Main">
           {NAV.map((n) => (
             <a key={n.label} href={href(n.route)} title={n.label} aria-current={section === n.route.name ? 'page' : undefined}>
+              {/* One highlight that glides from item to item. */}
+              {section === n.route.name && <motion.span layoutId="nav-pill" className="nav-pill" transition={spring(reduced)} aria-hidden="true" />}
               <span className="nav-icon" aria-hidden="true">
                 {n.icon}
               </span>
@@ -100,23 +105,27 @@ export function App() {
       </header>
       <main id="main" tabIndex={-1}>
         <BackupBanner />
-        {route.name === 'home' && <Timeline />}
-        {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}
-        {route.name === 'calendar' && <CalendarView month={route.month} />}
-        {route.name === 'memories' && <Memories />}
-        {route.name === 'search' && <SearchView tag={route.tag} />}
-        {route.name === 'book' && (
-          <Suspense fallback={<p className="muted">Opening the book builder…</p>}>
-            <BookBuilder />
-          </Suspense>
-        )}
-        {route.name === 'order' && (
-          <Suspense fallback={<p className="muted">Opening your order…</p>}>
-            <OrderPage key={route.id} id={route.id} cancelled={route.cancelled ?? false} />
-          </Suspense>
-        )}
-        {route.name === 'clock' && <ClockView />}
-        {route.name === 'settings' && <SettingsView />}
+        {/* Keyed by page, so each page comes in with its animation; a new entry and the same entry
+            once saved are one page (the URL changes on the first save, the editor stays). */}
+        <div className="page" key={route.name === 'new' ? 'entry' : route.name}>
+          {route.name === 'home' && <Timeline />}
+          {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}
+          {route.name === 'calendar' && <CalendarView month={route.month} />}
+          {route.name === 'memories' && <Memories />}
+          {route.name === 'search' && <SearchView tag={route.tag} />}
+          {route.name === 'book' && (
+            <Suspense fallback={<p className="muted">Opening the book builder…</p>}>
+              <BookBuilder />
+            </Suspense>
+          )}
+          {route.name === 'order' && (
+            <Suspense fallback={<p className="muted">Opening your order…</p>}>
+              <OrderPage key={route.id} id={route.id} cancelled={route.cancelled ?? false} />
+            </Suspense>
+          )}
+          {route.name === 'clock' && <ClockView />}
+          {route.name === 'settings' && <SettingsView />}
+        </div>
       </main>
       {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && (
         <a className="btn btn-primary fab" href={href({ name: 'new' })}>
