@@ -1,13 +1,9 @@
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 import desktopPkg from '../desktop/package.json' with { type: 'json' };
-
-const require = createRequire(import.meta.url);
 
 /**
  * Three builds from one source: the website (default), the bundle the desktop app loads
@@ -21,8 +17,6 @@ export default defineConfig(({ mode }) => {
   return {
     resolve: {
       alias: [
-        // Paged.js 0.4.3 (D34) runs inside the book preview iframe; its package exports hide dist/.
-        { find: /^pagedjs-polyfill(?=\?|$)/, replacement: join(dirname(dirname(require.resolve('pagedjs'))), 'dist', 'paged.polyfill.min.js') },
         ...(app ? [{ find: /^virtual:pwa-register\/react$/, replacement: fileURLToPath(new URL('src/desktop/no-service-worker.ts', import.meta.url)) }] : []),
       ],
     },
@@ -60,26 +54,18 @@ export default defineConfig(({ mode }) => {
           },
           workbox: {
             globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,webmanifest}'],
-            // pdf.js shows proofs on the order page, which needs a connection anyway: not worth every install's offline cache.
-            globIgnores: ['**/pdf-*.js', '**/pdf.worker*'],
             navigateFallback: 'index.html',
             maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
             cleanupOutdatedCaches: true,
           },
         }),
     ],
-    // `npm run dev -w @logbook/server` serves the API (cover sizes, quotes, orders) on port 4242; the
-    // e2e tests start it too. Without it the builder falls back to its estimates.
     // The desktop app's dev window loads port 5174 (apps/desktop/src-tauri/tauri.conf.json), the
     // Android app's port 5175 (tauri.android.conf.json).
     server: {
       ...(platform === 'desktop' ? { port: 5174, strictPort: true } : {}),
       // `npx tauri android dev` loads it from the phone, over the network (TAURI_DEV_HOST).
       ...(platform === 'android' ? { port: 5175, strictPort: true, host: process.env.TAURI_DEV_HOST || false } : {}),
-      proxy: { '/api': 'http://127.0.0.1:4242' },
-    },
-    preview: {
-      proxy: { '/api': 'http://127.0.0.1:4242' },
     },
     build: {
       target: 'es2022',

@@ -209,11 +209,14 @@ try {
   await writeFile(join(OUT, 'screen.xml'), await screen().catch(() => ''));
 } finally {
   await writeFile(join(OUT, 'logcat.txt'), await shell('logcat -d').catch(() => ''));
-  const crashes = await shell('logcat -d -b crash').catch(() => '');
-  if (crashes.trim()) {
-    console.log(crashes.slice(-4000));
+  // Only Logbook's own crashes count: Android's tools crash now and then too (uiautomator's
+  // accessibility client, reading the screen while it changes).
+  const crashLog = await shell('logcat -d -b crash').catch(() => '');
+  const ours = crashLog.split(/(?=FATAL EXCEPTION)/).filter((c) => c.includes(`Process: ${PKG}`));
+  if (ours.length) {
+    console.log(ours.join('\n').slice(-4000));
     check(false, 'the app crashed (logcat above)');
-  }
+  } else if (crashLog.trim()) console.log(`(Another process crashed, not Logbook: ${/Process: ([\w.:]+)/.exec(crashLog)?.[1] ?? 'unknown'})`);
   await device.close();
 }
 

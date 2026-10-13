@@ -110,8 +110,6 @@ jobs:
         run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
         working-directory: apps/desktop
         env:
-          # The API's address, once it's deployed (M6). Without it the app can't order books and says so.
-          VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.THROWAWAY_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: throwaway
       - name: Collect the installers
@@ -183,8 +181,6 @@ jobs:
       # Phones with 64-bit and 32-bit ARM chips, and x86-64 for emulators and Chromebooks.
       - name: Build the APK
         working-directory: apps/desktop
-        env:
-          VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
         run: |
           # The NDK that comes with the runner (its newest, else the newest under the SDK).
           NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)}"

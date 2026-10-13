@@ -1,5 +1,5 @@
 import type { Block, Entry, RichNode } from '../model.ts';
-import { esc, shortUrl } from '../print/html.ts';
+import { esc, shortUrl } from '../html-text.ts';
 import { alignStyle, codeBlockHtml, isChecked, tableHtml, wrapMark } from '../rich-html.ts';
 import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
 import { mediaLabel, metaLine, safeHref, type ExportMedia, type MediaLookup, type RenderOptions } from './common.ts';

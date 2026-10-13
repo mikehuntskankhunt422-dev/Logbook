@@ -1,5 +1,5 @@
 import type { Block, Entry, RichNode } from '../model.ts';
-import { shortUrl } from '../print/html.ts';
+import { shortUrl } from '../html-text.ts';
 import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
 import { mediaLabel, metaLine, safeHref, type MediaLookup, type RenderOptions } from './common.ts';
 

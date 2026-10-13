@@ -11,7 +11,7 @@ async function expectNoSeriousViolations(page: Page, label: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   test(`no serious accessibility violations across views (${theme})`, async ({ page }) => {
-    // Nine axe scans plus a full book layout: more than the default 60 s on a CI runner.
+    // Nine axe scans: more than the default 60 s on a CI runner.
     test.slow();
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await page.goto('/');
@@ -22,14 +22,12 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('img', { name: 'a.png' })).toBeVisible();
     await expectNoSeriousViolations(page, 'entry editor');
 
-    // Wait for each view's own heading, not 'networkidle': the book builder's preview iframes keep
-    // Playwright from ever reporting the page idle, and idle can also come before a lazy view renders.
+    // Wait for each view's own heading: 'networkidle' can come before a view renders.
     const views: [string, string | RegExp][] = [
       ['/', /Nice work today|How was today/],
       ['/#/calendar', 'Calendar'],
       ['/#/memories', 'On this day'],
       ['/#/search', 'Search'],
-      ['/#/book', 'Make a book'],
       ['/#/clock', 'Clock'],
       ['/#/settings', 'Settings'],
     ];
@@ -38,12 +36,6 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
       await expectNoSeriousViolations(page, path);
     }
-
-    await page.goto('/#/book');
-    await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await page.getByRole('button', { name: 'Make preview' }).click();
-    await expect(page.getByText(/Preview ready/)).toBeVisible({ timeout: 60_000 });
-    await expectNoSeriousViolations(page, 'book preview');
   });
 }
 
