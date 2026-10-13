@@ -1,4 +1,4 @@
-**0.3.1 fixes the flag picker**, which listed some countries twice (Germany, France, the United Kingdom, Russia and ten more), the second time with a flag that showed as two letters. Each country is listed once now.
+**0.3.2 finishes the flag picker fix.** It lists only the flags Logbook can draw, each once: no more doubled countries, and no more "Eurozone" or "Sark" entries showing as two letters (Sark's flag is newer than Logbook's flag font).
 
 What came in 0.3.0:
 
