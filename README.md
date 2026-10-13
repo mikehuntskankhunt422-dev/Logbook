@@ -56,6 +56,8 @@ Logbook/
 
 **Updates.** Logbook looks for a new version when it starts and twice a day, and asks before installing it: **Update and restart** saves your writing, installs the update and opens Logbook again. **Settings → Updates** checks at any time. Updates come from this repository's releases and install only if they carry Logbook's signature.
 
+**Clock.** **⏰ Clock** has alarms (once or on chosen days), a timer and a stopwatch. They ring on any page with Logbook open, with Snooze and Stop; on Android they ring even when Logbook is closed, as notifications. They're kept on each device, not in the journal.
+
 **Export.** **⬇️ Export** on an entry, on the journal page or on search results, or **Settings → Export**, turns your entries (all of them, a year, or a date range) into documents for other apps or for keeping: **Markdown** (one file, or a file per entry for notes apps such as Obsidian), **plain text**, a **web page**, or a **PDF** (Logbook opens your computer's print window: choose "Save as PDF" there). With photos included, you get a .zip holding the documents and a `media` folder. Exported files aren't protected by the passcode. To keep a copy you can restore into Logbook, make a backup instead.
 
 **Passcode lock.** **Settings → Passcode lock** encrypts your entries, photos and other media in the folder, so they can't be read without your passcode, and locks Logbook after a few idle minutes. A forgotten passcode can't be recovered. Conflict copies (made by a sync service, or by Logbook when two computers changed the same entry) are kept as they were, unencrypted.

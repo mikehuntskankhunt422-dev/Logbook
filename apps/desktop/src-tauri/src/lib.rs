@@ -4,6 +4,7 @@
 
 #[cfg(target_os = "android")]
 mod android;
+mod clock;
 mod folder;
 mod journal_fs;
 #[cfg(desktop)]
@@ -553,6 +554,8 @@ pub fn run() {
         updates::update_check,
         updates::update_download,
         updates::update_apply,
+        clock::clock_schedule,
+        clock::clock_permission,
     ];
     #[cfg(mobile)]
     let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
@@ -569,6 +572,8 @@ pub fn run() {
         print_page,
         close_ready,
         close_cancel,
+        clock::clock_schedule,
+        clock::clock_permission,
     ];
     #[cfg(desktop)]
     {
@@ -583,7 +588,8 @@ pub fn run() {
             })
             .plugin(tauri_plugin_updater::Builder::new().build())
             .manage(updates::PendingUpdate::default())
-            .manage(updates::DownloadedUpdate::default());
+            .manage(updates::DownloadedUpdate::default())
+            .manage(clock::Watcher::default());
     }
     #[cfg(target_os = "android")]
     {
@@ -591,6 +597,7 @@ pub fn run() {
     }
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         // Links go through `open_url` (the page routes them, src/desktop/bridge.ts), not the
         // plugin's own script, which the window isn't allowed to use.
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())

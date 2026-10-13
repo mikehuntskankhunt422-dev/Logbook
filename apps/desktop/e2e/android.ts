@@ -2,7 +2,8 @@
 // WebView over adb (preview builds turn WebView debugging on), and Android's own screens (the file
 // picker, the print screen) are read and tapped through uiautomator. First start, an entry saved
 // to the app's storage, writing saved as the app goes to the background, the journal after a
-// restart, a backup saved through Android's file picker, and the PDF export's print screen.
+// restart, a backup saved through Android's file picker, the PDF export's print screen, and a
+// timer ringing as a notification.
 //
 //   adb install Logbook-preview.apk
 //   node --experimental-transform-types --no-warnings e2e/android.ts [folder for screenshots and logs]
@@ -167,6 +168,25 @@ try {
   check(true, 'the PDF export opens the print screen');
   await screenshot('print');
   await shell('input keyevent KEYCODE_BACK');
+
+  // ── The clock (D92): a timer rings in the app, and as Android's own notification ──
+  await shell(`pm grant ${PKG} android.permission.POST_NOTIFICATIONS`).catch(() => '');
+  await until('back in Logbook', async () => !/com\.android\.printspooler/.test(await screen()), 20_000);
+  await open(page, '#/clock');
+  await page.getByRole('tab', { name: /Timer/ }).dispatchEvent('click');
+  await page.getByLabel('Minutes').fill('0');
+  await page.getByLabel('Seconds').fill('5');
+  await page.getByRole('button', { name: /Start/ }).dispatchEvent('click');
+  const ringer = page.getByRole('dialog', { name: /Time.s up/ });
+  await ringer.waitFor({ timeout: 30_000 });
+  check(true, 'the timer rings in the app');
+  await screenshot('timer');
+  const notified = await until("the timer's notification", async () => /Time.s up/.test(await shell('dumpsys notification --noredact')), 20_000).then(
+    () => true,
+    () => false,
+  );
+  check(notified, "the timer's notification is in Android's list");
+  await ringer.getByRole('button', { name: 'Stop' }).dispatchEvent('click');
 } catch (err) {
   check(false, String(err instanceof Error ? (err.stack ?? err.message) : err));
   await screenshot('failure');

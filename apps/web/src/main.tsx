@@ -10,6 +10,7 @@ import { IndexedDbStore } from '@logbook/storage-idb';
 import { JournalProvider } from './app/journal-context.tsx';
 import { ToastProvider } from './app/toasts.tsx';
 import { App } from './app/App.tsx';
+import { ClockProvider } from './app/clock.tsx';
 
 loadFlagFont();
 
@@ -20,7 +21,9 @@ async function boot() {
       <StrictMode>
         <ToastProvider>
           <JournalProvider journal={journal}>
-            <App />
+            <ClockProvider>
+              <App />
+            </ClockProvider>
           </JournalProvider>
         </ToastProvider>
       </StrictMode>,

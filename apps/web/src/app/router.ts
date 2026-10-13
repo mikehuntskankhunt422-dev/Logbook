@@ -9,6 +9,7 @@ export type Route =
   | { name: 'search'; tag?: string }
   | { name: 'book' }
   | { name: 'order'; id: string; cancelled?: boolean }
+  | { name: 'clock' }
   | { name: 'settings' };
 
 export function parseHash(hash: string): Route {
@@ -31,6 +32,8 @@ export function parseHash(hash: string): Route {
     case 'order':
       // Stripe sends the customer back here (?cancelled=1 when they left the payment page).
       return seg[1] ? { name: 'order', id: decodeURIComponent(seg[1]), ...(q.get('cancelled') ? { cancelled: true } : {}) } : { name: 'book' };
+    case 'clock':
+      return { name: 'clock' };
     case 'settings':
       return { name: 'settings' };
     default:
@@ -56,6 +59,8 @@ export function href(route: Route): string {
       return '#/book';
     case 'order':
       return `#/order/${encodeURIComponent(route.id)}${route.cancelled ? '?cancelled=1' : ''}`;
+    case 'clock':
+      return '#/clock';
     case 'settings':
       return '#/settings';
   }

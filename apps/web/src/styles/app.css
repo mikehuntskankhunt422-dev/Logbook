@@ -301,7 +301,7 @@ h2 {
     background: var(--bg-elev);
     border-top: 1px solid var(--line);
   }
-  /* Six items on one row: the layout above (e.g. .fab) assumes a single-row bar about 76px tall. */
+  /* Seven items on one row: the layout above (e.g. .fab) assumes a single-row bar about 76px tall. */
   .nav a {
     display: flex;
     flex-direction: column;
@@ -316,10 +316,31 @@ h2 {
   .nav-icon {
     font-size: 1.2rem;
   }
+  .nav .nav-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
-@media (min-width: 641px) {
+@media (min-width: 1001px) {
   .nav-icon {
     display: none;
+  }
+}
+/* Between phone and wide: seven words don't fit beside the logo, so icons (the words stay for
+   screen readers, and show on hover). */
+@media (min-width: 641px) and (max-width: 1000px) {
+  .nav a {
+    font-size: 1.15rem;
+    padding: 6px 10px;
+  }
+  .nav .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
@@ -1976,4 +1997,388 @@ mark {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* ── The clock (D92) ─────────────────────────────────────────────────────────────────────────── */
+.clock-page {
+  max-width: 560px;
+  margin: 0 auto;
+}
+.clock-now {
+  text-align: center;
+  margin: 8px 0 14px;
+}
+.clock-now-time {
+  font-family: var(--font-ui);
+  font-size: clamp(2.6rem, 9vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.clock-notice {
+  text-align: center;
+}
+.clock-tabs {
+  display: flex;
+  background: var(--bg-sunk);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 2px;
+  margin: 12px 0 18px;
+}
+.clock-tabs button {
+  flex: 1;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 8px 10px;
+  min-height: 42px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+@media (max-width: 400px) {
+  .clock-tabs button > span[aria-hidden] {
+    display: none;
+  }
+}
+.clock-tabs button[aria-selected='true'] {
+  background: var(--bg-elev);
+  box-shadow: var(--shadow);
+}
+.clock-panel {
+  animation: clock-in 0.28s var(--spring);
+}
+@keyframes clock-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.clock-next {
+  font-weight: 650;
+  color: var(--ink-soft);
+}
+.alarm-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: grid;
+  gap: 10px;
+}
+.alarm-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+  transition: opacity 0.2s;
+  animation: clock-in 0.28s var(--spring);
+}
+.alarm-card[data-on='false'] {
+  opacity: 0.62;
+}
+.alarm-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+}
+.alarm-time {
+  font-family: var(--font-ui);
+  font-size: 1.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.alarm-meta {
+  font-size: 0.9rem;
+}
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.switch-track {
+  width: 50px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  transition: background 0.2s;
+}
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  transition: transform 0.25s var(--spring);
+}
+.switch input:checked + .switch-track {
+  background: var(--accent);
+}
+.switch input:checked + .switch-track::after {
+  transform: translateX(20px);
+}
+.switch input:focus-visible + .switch-track {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.alarm-editor {
+  margin-bottom: 16px;
+}
+.alarm-time-input {
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+.day-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.day-picker button,
+.chip {
+  min-width: 42px;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-elev);
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0 12px;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.15s;
+}
+.day-picker button[aria-pressed='true'],
+.chip[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.day-picker button:active,
+.chip:active {
+  transform: scale(0.94);
+}
+.timer-setup {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+}
+.timer-fields {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.timer-field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.timer-field input {
+  width: 4.2ch;
+  font-family: var(--font-ui);
+  font-size: 2.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  color: inherit;
+  padding: 6px 4px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.timer-field input::-webkit-inner-spin-button,
+.timer-field input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.timer-field label {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.timer-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.btn-big {
+  min-width: 10rem;
+  min-height: 48px;
+  font-size: 1.05rem;
+}
+.timer-running {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+.timer-ring {
+  position: relative;
+  width: min(72vw, 260px);
+  aspect-ratio: 1;
+}
+.timer-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.timer-ring circle {
+  fill: none;
+  stroke-width: 8;
+}
+.timer-ring-track {
+  stroke: var(--bg-sunk);
+}
+.timer-ring-bar {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  transition: stroke-dashoffset 0.25s linear;
+}
+.timer-ring[data-paused='true'] .timer-ring-bar {
+  animation: clock-blink 1.4s ease-in-out infinite;
+}
+@keyframes clock-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.timer-left {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-ui);
+  font-size: clamp(2.2rem, 10vw, 3.2rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.clock-buttons {
+  justify-content: center;
+}
+.stopwatch {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+.stopwatch-time {
+  font-family: var(--font-ui);
+  font-size: clamp(2.6rem, 12vw, 4rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 12px;
+}
+.laps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.laps li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+  animation: clock-in 0.25s var(--spring);
+}
+.laps li[data-best='true'] {
+  color: var(--ok);
+  font-weight: 650;
+}
+.laps li[data-worst='true'] {
+  color: var(--danger);
+  font-weight: 650;
+}
+.ringer {
+  text-align: center;
+  min-width: min(90vw, 340px);
+}
+.ringer[open] {
+  animation: ringer-in 0.35s var(--spring);
+}
+@keyframes ringer-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+.ringer-bell {
+  font-size: 3.4rem;
+  display: inline-block;
+  animation: ringer-wiggle 0.9s ease-in-out infinite;
+  transform-origin: 50% 10%;
+}
+@keyframes ringer-wiggle {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0);
+  }
+  10%,
+  30% {
+    transform: rotate(-14deg);
+  }
+  20%,
+  40% {
+    transform: rotate(14deg);
+  }
+}
+.ringer h2 {
+  margin: 6px 0;
+}
+.ringer-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .clock-panel,
+  .alarm-card,
+  .laps li,
+  .ringer[open],
+  .ringer-bell,
+  .timer-ring[data-paused='true'] .timer-ring-bar {
+    animation: none;
+  }
 }

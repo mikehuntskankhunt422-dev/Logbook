@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The clock's alarms and timers ring on time (D92): exact alarms, granted with the app from
+         Android 13, and asked for with this older permission on Android 12. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <!-- Backups (D90): the journal never goes to Google's cloud backup, which would upload it, but
          moves with Android's transfer to a new phone (Android 12 and later). -->

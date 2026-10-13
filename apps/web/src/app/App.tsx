@@ -7,6 +7,8 @@ import { useToast } from './toasts.tsx';
 import { EntryEditor } from '../components/EntryEditor.tsx';
 import { CalendarView, Memories, SearchView, Timeline } from '../components/views.tsx';
 import { SettingsView } from '../components/SettingsView.tsx';
+import { ClockView } from '../components/ClockView.tsx';
+import { Ringer } from './clock.tsx';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 
@@ -19,6 +21,7 @@ const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'calendar' }, label: 'Calendar', icon: '🗓️' },
   { route: { name: 'memories' }, label: 'On this day', icon: '🕰️' },
   { route: { name: 'search' }, label: 'Search', icon: '🔍' },
+  { route: { name: 'clock' }, label: 'Clock', icon: '⏰' },
   { route: { name: 'book' }, label: 'Book', icon: '📖' },
   { route: { name: 'settings' }, label: 'Settings', icon: '⚙️' },
 ];
@@ -50,7 +53,7 @@ export function App() {
   const firstRoute = useRef(true);
   const routeKey = route.name === 'entry' || route.name === 'order' ? route.id : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', book: 'Make a book · Logbook', order: 'Your book order · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', book: 'Make a book · Logbook', order: 'Your book order · Logbook', clock: 'Clock · Logbook', settings: 'Settings · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -62,7 +65,13 @@ export function App() {
     window.scrollTo({ top: 0 });
   }, [route.name, routeKey]);
 
-  if (locked) return <LockScreen />;
+  if (locked)
+    return (
+      <>
+        <LockScreen />
+        <Ringer />
+      </>
+    );
 
   const section = route.name === 'entry' || route.name === 'new' ? 'home' : route.name === 'order' ? 'book' : route.name;
   return (
@@ -80,7 +89,7 @@ export function App() {
         <StreakBadge />
         <nav className="nav" aria-label="Main">
           {NAV.map((n) => (
-            <a key={n.label} href={href(n.route)} aria-current={section === n.route.name ? 'page' : undefined}>
+            <a key={n.label} href={href(n.route)} title={n.label} aria-current={section === n.route.name ? 'page' : undefined}>
               <span className="nav-icon" aria-hidden="true">
                 {n.icon}
               </span>
@@ -106,13 +115,15 @@ export function App() {
             <OrderPage key={route.id} id={route.id} cancelled={route.cancelled ?? false} />
           </Suspense>
         )}
+        {route.name === 'clock' && <ClockView />}
         {route.name === 'settings' && <SettingsView />}
       </main>
-      {route.name !== 'entry' && route.name !== 'new' && (
+      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && (
         <a className="btn btn-primary fab" href={href({ name: 'new' })}>
           ✍️ New entry
         </a>
       )}
+      <Ringer />
     </div>
   );
 }

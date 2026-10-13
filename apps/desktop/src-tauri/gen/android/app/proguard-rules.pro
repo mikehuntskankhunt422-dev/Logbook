@@ -28,3 +28,6 @@
 }
 -keep class app.logbookjournal.android.DocumentArgs { *; }
 -keep class app.logbookjournal.android.CloseArgs { *; }
+# The notification plugin (D92) stores scheduled notifications as JSON through Jackson, with its
+# own (de)serializers that only Jackson creates, by reflection: keep the plugin whole (it's small).
+-keep class app.tauri.notification.** { *; }
