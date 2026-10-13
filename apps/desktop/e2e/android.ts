@@ -97,7 +97,9 @@ try {
   await screenshot('first-start');
 
   // The page sits between the status bar and the navigation bar, not under them (D90).
-  const webviewNode = nodes(await screen()).find((n) => n.cls === 'android.webkit.WebView');
+  // (A dump can come back empty while the page is still drawing: try a few.)
+  const webviewNode = await until('the web view on screen', async () => nodes(await screen()).find((n) => /WebView$/.test(n.cls)), 20_000).catch(() => undefined);
+  if (!webviewNode) await writeFile(join(OUT, 'first-start.xml'), await screen().catch(() => ''));
   const [, displayHeight] = (/(\d+)x(\d+)/.exec(await shell('wm size')) ?? []).slice(1).map(Number);
   check(Boolean(webviewNode && webviewNode.bounds[1] > 0), `the page starts below the status bar (web view at ${webviewNode?.bounds.join(',')})`);
   check(Boolean(webviewNode && displayHeight && webviewNode.bounds[3] < displayHeight), `the page ends above the navigation bar (screen height ${displayHeight})`);
@@ -156,8 +158,11 @@ try {
   check((await page.getByText('Backup saved.').count()) <= 1, 'cancelling the file picker saves nothing');
 
   // ── PDF: Android's print screen ──
-  await page.getByRole('region', { name: 'Export' }).getByRole('button', { name: 'PDF' }).click();
-  await page.getByRole('button', { name: /Print or save as PDF/ }).click();
+  // Clicked directly: on the emulator's 320-pixel screen, Playwright's check of what is under the
+  // pointer over adb reports the top bar, the New entry button or the panel itself in the way, a
+  // different one each time it scrolls. What's tested here is the print screen.
+  await page.getByRole('region', { name: 'Export' }).getByRole('button', { name: 'PDF' }).dispatchEvent('click');
+  await page.getByRole('button', { name: /Print or save as PDF/ }).dispatchEvent('click');
   await until("Android's print screen", async () => /com\.android\.printspooler/.test(await screen()), 30_000);
   check(true, 'the PDF export opens the print screen');
   await screenshot('print');
