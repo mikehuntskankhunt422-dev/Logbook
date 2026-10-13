@@ -187,6 +187,22 @@ try {
   );
   check(notified, "the timer's notification is in Android's list");
   await ringer.getByRole('button', { name: 'Stop' }).dispatchEvent('click');
+  if (!notified) {
+    // What went wrong: the command itself, then Android's side.
+    const direct = await page.evaluate(async () => {
+      const invoke = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke;
+      const tryIt = (cmd: string, args: unknown) => invoke(cmd, args).then((r) => `ok ${JSON.stringify(r)}`, (e: unknown) => `error ${String(e)}`);
+      return [await tryIt('clock_permission', { ask: false }), await tryIt('clock_schedule', { rings: [{ id: 4242, at: Date.now() + 3000, title: 'Probe', body: 'probe' }] })];
+    });
+    console.log(`  clock_permission: ${direct[0]}\n  clock_schedule: ${direct[1]}`);
+    await sleep(8000);
+    const alarms = (await shell('dumpsys alarm')).split('\n').filter((l) => l.includes(PKG)).slice(0, 10);
+    console.log(`  alarms:\n${alarms.join('\n')}`);
+    const posted = (await shell('dumpsys notification --noredact')).split('\n').filter((l) => /logbook|Probe|Time.s up/i.test(l)).slice(0, 20);
+    console.log(`  notifications:\n${posted.join('\n')}`);
+    const log = (await shell('logcat -d')).split('\n').filter((l) => /Tauri|Notification|Clock|AlarmManager|logbook/i.test(l)).slice(-60);
+    console.log(`  logcat:\n${log.join('\n')}`);
+  }
 } catch (err) {
   check(false, String(err instanceof Error ? (err.stack ?? err.message) : err));
   await screenshot('failure');

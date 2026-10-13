@@ -85,13 +85,25 @@ mod desktop {
     }
 }
 
+/// The whole second a ring is scheduled for (rounded up). The notification plugin's Android side
+/// reads the time with a millisecond pattern (`ss.SSS`) that takes all nine digits Rust writes as
+/// milliseconds: "05.123000000" would be 123,000,000 ms, 34 hours late. Whole seconds write as
+/// "05.000000000", which it reads right.
+#[cfg_attr(desktop, allow(dead_code))]
+fn whole_second(at_ms: i64) -> i64 {
+    at_ms.div_euclid(1000) + i64::from(at_ms.rem_euclid(1000) != 0)
+}
+
 #[cfg(mobile)]
 mod mobile {
-    use super::Ring;
-    use tauri::AppHandle;
+    use super::{whole_second, Ring};
+    use tauri::{AppHandle, Manager};
     use tauri_plugin_notification::{Channel, Importance, NotificationExt, Schedule};
 
     const CHANNEL: &str = "clock";
+    /// The rings scheduled last time, `[id, at]`: the plugin's own "cancel all" only knows
+    /// notifications sent in a batch, so these are cancelled one by one before scheduling anew.
+    const SCHEDULED: &str = "clock-scheduled.json";
 
     pub fn schedule(app: &AppHandle, rings: Vec<Ring>) -> Result<(), String> {
         let n = app.notification();
@@ -103,9 +115,17 @@ mod mobile {
                 .vibration(true)
                 .build(),
         );
-        n.cancel_all().map_err(|e| e.to_string())?;
+        let file = app.path().app_data_dir().map_err(|e| e.to_string())?.join(SCHEDULED);
+        let before: Vec<(i32, i64)> = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        // Only those still to come: one that has rung keeps its notification on screen.
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+        let pending: Vec<i32> = before.iter().filter(|(_, at)| *at > now).map(|(id, _)| *id).collect();
+        if !pending.is_empty() {
+            n.cancel(pending).map_err(|e| e.to_string())?;
+        }
+        let mut scheduled = Vec::with_capacity(rings.len());
         for ring in rings {
-            let date = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(ring.at) * 1_000_000).map_err(|e| e.to_string())?;
+            let date = time::OffsetDateTime::from_unix_timestamp(whole_second(ring.at)).map_err(|e| e.to_string())?;
             n.builder()
                 .id(ring.id)
                 .channel_id(CHANNEL)
@@ -115,7 +135,23 @@ mod mobile {
                 .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
                 .show()
                 .map_err(|e| e.to_string())?;
+            scheduled.push((ring.id, ring.at));
         }
-        Ok(())
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        std::fs::write(&file, serde_json::to_vec(&scheduled).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::whole_second;
+
+    #[test]
+    fn rings_are_scheduled_on_whole_seconds() {
+        assert_eq!(whole_second(1_760_000_000_000), 1_760_000_000);
+        assert_eq!(whole_second(1_760_000_000_001), 1_760_000_001);
+        assert_eq!(whole_second(1_760_000_000_999), 1_760_000_001);
     }
 }

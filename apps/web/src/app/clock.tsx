@@ -107,7 +107,7 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   // closed). Half a second after the last change.
   const plan = useMemo(() => JSON.stringify(upcoming(clock, new Date()).map((r) => [r.id, r.at, r.title])), [clock]);
   useEffect(() => {
-    const t = setTimeout(() => void scheduleRings(upcoming(latest.current, new Date())).catch(() => {}), 500);
+    const t = setTimeout(() => void scheduleRings(upcoming(latest.current, new Date())).catch((err: unknown) => console.warn('Clock: the system could not take the rings:', err)), 500);
     return () => clearTimeout(t);
   }, [plan]);
 
