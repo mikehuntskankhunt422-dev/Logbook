@@ -13,6 +13,7 @@ import {
   formatBytes,
   mediaKind,
   newId,
+  richTextToPlain,
   normalizeTag,
   parseEmbedUrl,
   sizeAdvice,
@@ -21,14 +22,15 @@ import {
   type Entry,
 } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
-import { navigate } from '../app/router.ts';
+import { navigate, parseHash } from '../app/router.ts';
 import { useToast } from '../app/toasts.tsx';
 import { canCompressVideo, compressVideo, importFile } from '../lib/media-import.ts';
 import { onFlush, trackWork } from '../lib/pending-saves.ts';
 import { celebrate, useReducedMotion } from '../lib/motion.ts';
 import { AudioBlock, BLOCK_LABELS, EmbedBlock, FileBlock, GalleryBlock, LinkBlock, PhotoBlock, RichTextBlock, VideoBlock } from './blocks.tsx';
 import { Dialog, formatLongDate, useCoverStyle } from './common.tsx';
-import { ExpiryPanel, MusicBar } from './EntryExtras.tsx';
+import { ExpiryPanel, MusicBar, PromptCard } from './EntryExtras.tsx';
+import { promptsOn } from '../lib/prompts.ts';
 import { formatExpiry } from '../lib/expiry.ts';
 import { ExportDialog } from './ExportPanel.tsx';
 
@@ -101,7 +103,9 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
       setEntry((e) => (e ? { ...e, rev: saved.rev, updatedAt: saved.updatedAt, tags: saved.tags } : e));
       setSaveState('saved');
       if (isFirstSave) {
-        navigate({ name: 'entry', id: saved.id }, { replace: true });
+        // The new entry's own address, unless the person has already gone elsewhere (a save on
+        // leaving the page must not bring them back).
+        if (parseHash(location.hash).name === 'new') navigate({ name: 'entry', id: saved.id }, { replace: true });
         celebrateFirstSave(datesBefore, saved.date);
       }
     } catch (err) {
@@ -180,6 +184,9 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [focusBlock, setFocusBlock] = useState<string | null>(null);
+  // A writing prompt while the entry has no words yet (D94).
+  const first = entry.blocks[0];
+  const showPrompt = promptsOn() && entry.blocks.length === 1 && first?.type === 'text' && !richTextToPlain(first.doc).trim();
   const [linkDialog, setLinkDialog] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
   const [extra, setExtra] = useState<'music' | 'expiry' | null>(null);
@@ -433,6 +440,18 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
         {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved on this device' : saveState === 'error' ? 'Not saved yet. Retrying when you edit again.' : ''}
         {busy && <span> · {busy}</span>}
       </div>
+
+      {showPrompt && (
+        <PromptCard
+          date={entry.date}
+          onUse={(prompt) => {
+            // A fresh text block, so the editor starts with the question and the cursor below it.
+            const id = newId();
+            setBlocks(() => [{ id, type: 'text', doc: { type: 'doc', content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: prompt }] }, { type: 'paragraph' }] } }]);
+            setFocusBlock(id);
+          }}
+        />
+      )}
 
       <DndContext
         sensors={sensors}

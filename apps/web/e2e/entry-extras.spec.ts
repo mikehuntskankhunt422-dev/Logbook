@@ -124,6 +124,29 @@ test('background music from a link: a site’s player, a stream, and saying when
   await expect(bar).toBeHidden();
 });
 
+test('a writing prompt on a new entry: another, write about it, or turn them off (D94)', async ({ page }) => {
+  await page.goto('/#/new');
+  const card = page.getByRole('group', { name: 'Writing prompt' });
+  const first = await card.locator('.prompt-text').innerText();
+  await card.getByRole('button', { name: /Another/ }).click();
+  await expect(card.locator('.prompt-text')).not.toHaveText(first);
+  const question = (await card.locator('.prompt-text').innerText()).replace(/^💭\s*/u, '');
+  await card.getByRole('button', { name: 'Write about this' }).click();
+  // The question heads the text, the cursor below it, and the card goes.
+  const editor = page.getByRole('textbox', { name: 'Entry text' });
+  await expect(editor.locator('h2')).toHaveText(question);
+  await expect(card).toBeHidden();
+  await page.keyboard.type('Mostly the sunshine.');
+  await expect(editor.locator('p').last()).toHaveText('Mostly the sunshine.');
+
+  // Off in Settings: new entries start blank.
+  await page.goto('/#/settings');
+  await page.getByRole('checkbox', { name: /writing prompt/ }).uncheck();
+  await page.goto('/#/new');
+  await expect(page.getByRole('textbox', { name: 'Entry text' })).toBeVisible();
+  await expect(card).toHaveCount(0);
+});
+
 /** A quarter of a second of silence, as a WAV file. */
 function wav(): Buffer {
   const rate = 8000;
