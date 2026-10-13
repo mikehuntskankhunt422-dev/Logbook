@@ -1,13 +1,9 @@
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 import desktopPkg from '../desktop/package.json' with { type: 'json' };
-
-const require = createRequire(import.meta.url);
 
 /**
  * Three builds from one source: the website (default), the bundle the desktop app loads
@@ -21,8 +17,6 @@ export default defineConfig(({ mode }) => {
   return {
     resolve: {
       alias: [
-        // Paged.js 0.4.3 (D34) runs inside the book preview iframe; its package exports hide dist/.
-        { find: /^pagedjs-polyfill(?=\?|$)/, replacement: join(dirname(dirname(require.resolve('pagedjs'))), 'dist', 'paged.polyfill.min.js') },
         ...(app ? [{ find: /^virtual:pwa-register\/react$/, replacement: fileURLToPath(new URL('src/desktop/no-service-worker.ts', import.meta.url)) }] : []),
       ],
     },
