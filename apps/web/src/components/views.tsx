@@ -3,12 +3,14 @@ import { addDays, entryWordCount, heatLevel, monthGrid, onThisDayDates, parseIso
 import { useJournal } from '../app/journal-context.tsx';
 import { href, navigate } from '../app/router.ts';
 import { EntryCard, formatLongDate, useStreak } from './common.tsx';
+import { ExportDialog } from './ExportPanel.tsx';
 
 // ── timeline ─────────────────────────────────────────────────────────────────────────────────────
 
 export function Timeline() {
   const { entries, loaded } = useJournal();
   const streak = useStreak();
+  const [exporting, setExporting] = useState(false);
   const groups = useMemo(() => {
     const m = new Map<string, Entry[]>();
     for (const e of entries) {
@@ -35,7 +37,13 @@ export function Timeline() {
   }
   return (
     <>
-      <h1>{streak.wroteToday ? 'Nice work today ✨' : 'How was today?'}</h1>
+      <div className="page-head">
+        <h1>{streak.wroteToday ? 'Nice work today ✨' : 'How was today?'}</h1>
+        <button type="button" className="btn btn-small" onClick={() => setExporting(true)}>
+          ⬇️ Export
+        </button>
+      </div>
+      <ExportDialog open={exporting} onClose={() => setExporting(false)} entries={entries} title="Export your journal" />
       <p className="muted">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'} · current streak {streak.current} {streak.current === 1 ? 'day' : 'days'} · longest {streak.longest}
       </p>
@@ -296,6 +304,7 @@ export function SearchView({ tag }: { tag?: string }) {
     return list;
   }, [q, activeTag, entries, search]);
   const filtering = q.trim() || activeTag;
+  const [exporting, setExporting] = useState(false);
 
   return (
     <>
@@ -316,9 +325,17 @@ export function SearchView({ tag }: { tag?: string }) {
           ))}
         </div>
       )}
-      <p className="muted" aria-live="polite">
-        {filtering ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : `${entries.length} entries`}
-      </p>
+      <div className="page-head">
+        <p className="muted" aria-live="polite">
+          {filtering ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : `${entries.length} entries`}
+        </p>
+        {filtering && results.length > 0 && (
+          <button type="button" className="btn btn-small" onClick={() => setExporting(true)}>
+            ⬇️ Export {results.length === 1 ? 'this entry' : `these ${results.length}`}
+          </button>
+        )}
+      </div>
+      <ExportDialog open={exporting} onClose={() => setExporting(false)} entries={results.map((r) => r.entry)} title={activeTag && !q.trim() ? `Export #${activeTag}` : 'Export these entries'} />
       <div className="timeline">
         {(filtering ? results : results.slice(0, 30)).map((r) => (
           <EntryCard key={r.entry.id} entry={r.entry} highlight={r.terms} />

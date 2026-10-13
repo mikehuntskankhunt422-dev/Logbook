@@ -29,7 +29,11 @@ import { assertRelativePath, type FsBackend } from './backend.ts';
 
 export const LOGBOOK_FILE = 'logbook.json';
 export const FOLDER_FORMAT = 'logbook';
-export const FOLDER_VERSION = 1;
+/**
+ * 2: entries can carry fields and formatting that version 1 apps would drop when saving (D91), so
+ * a folder this version opens is marked 2, and those apps then ask to be updated instead.
+ */
+export const FOLDER_VERSION = 2;
 
 const KEY_FILES: Record<'bookDraft' | 'bookOrders', string> = {
   bookDraft: '.logbook/book-draft.json',
@@ -100,6 +104,7 @@ export class FolderStore implements RecordStore {
     const lb = await store.readLogbook();
     if (lb && lb.format !== FOLDER_FORMAT) throw new Error(`${LOGBOOK_FILE} in this folder isn't a Logbook journal.`);
     if (lb && lb.version > FOLDER_VERSION) throw new Error('This journal was saved by a newer version of Logbook. Update the app first.');
+    if (lb && !(lb.version >= FOLDER_VERSION)) await fs.write(LOGBOOK_FILE, jsonBytes({ ...lb, version: FOLDER_VERSION }));
     await store.rescan();
     const mirror = await store.readJson<StoreKeys['vault']>(VAULT_MIRROR);
     if (lb?.vault) {

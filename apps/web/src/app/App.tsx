@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { WrongPasscodeError } from '@logbook/core';
+import { WrongPasscodeError, fontFor, fontStack, type Settings } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
 import { consumeReplaceFlag, href, useRoute, type Route } from './router.ts';
@@ -7,8 +7,12 @@ import { useToast } from './toasts.tsx';
 import { EntryEditor } from '../components/EntryEditor.tsx';
 import { CalendarView, Memories, SearchView, Timeline } from '../components/views.tsx';
 import { SettingsView } from '../components/SettingsView.tsx';
+import { ClockView } from '../components/ClockView.tsx';
+import { Ringer } from './clock.tsx';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
+import { spring, useReducedMotion } from '../lib/motion.ts';
+import { motion } from 'motion/react';
 
 /** Print layout and Paged.js load only when someone opens the book builder. */
 const BookBuilder = lazy(() => import('../components/BookBuilder.tsx').then((m) => ({ default: m.BookBuilder })));
@@ -19,6 +23,7 @@ const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'calendar' }, label: 'Calendar', icon: '🗓️' },
   { route: { name: 'memories' }, label: 'On this day', icon: '🕰️' },
   { route: { name: 'search' }, label: 'Search', icon: '🔍' },
+  { route: { name: 'clock' }, label: 'Clock', icon: '⏰' },
   { route: { name: 'book' }, label: 'Book', icon: '📖' },
   { route: { name: 'settings' }, label: 'Settings', icon: '⚙️' },
 ];
@@ -26,7 +31,9 @@ const NAV: { route: Route; label: string; icon: string }[] = [
 export function App() {
   const { journal, locked, settings } = useJournal();
   const route = useRoute();
+  const reduced = useReducedMotion();
   useTheme(settings.theme);
+  useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
   usePwaUpdates();
 
@@ -35,10 +42,21 @@ export function App() {
     if (!locked) void journal.purgeExpiredTrash().then(() => journal.collectGarbage());
   }, [journal, locked]);
 
+  // Entries that were set to expire go to the trash when their time comes (D91), checked every
+  // minute; the one open in the editor waits until it's closed.
+  const openEntry = route.name === 'entry' ? route.id : undefined;
+  useEffect(() => {
+    if (locked) return;
+    const sweep = () => void journal.trashExpired(new Date(), openEntry).catch(() => {});
+    sweep();
+    const timer = setInterval(sweep, 60_000);
+    return () => clearInterval(timer);
+  }, [journal, locked, openEntry]);
+
   const firstRoute = useRef(true);
   const routeKey = route.name === 'entry' || route.name === 'order' ? route.id : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', book: 'Make a book · Logbook', order: 'Your book order · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', book: 'Make a book · Logbook', order: 'Your book order · Logbook', clock: 'Clock · Logbook', settings: 'Settings · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -50,7 +68,13 @@ export function App() {
     window.scrollTo({ top: 0 });
   }, [route.name, routeKey]);
 
-  if (locked) return <LockScreen />;
+  if (locked)
+    return (
+      <>
+        <LockScreen />
+        <Ringer />
+      </>
+    );
 
   const section = route.name === 'entry' || route.name === 'new' ? 'home' : route.name === 'order' ? 'book' : route.name;
   return (
@@ -68,7 +92,9 @@ export function App() {
         <StreakBadge />
         <nav className="nav" aria-label="Main">
           {NAV.map((n) => (
-            <a key={n.label} href={href(n.route)} aria-current={section === n.route.name ? 'page' : undefined}>
+            <a key={n.label} href={href(n.route)} title={n.label} aria-current={section === n.route.name ? 'page' : undefined}>
+              {/* One highlight that glides from item to item. */}
+              {section === n.route.name && <motion.span layoutId="nav-pill" className="nav-pill" transition={spring(reduced)} aria-hidden="true" />}
               <span className="nav-icon" aria-hidden="true">
                 {n.icon}
               </span>
@@ -79,28 +105,34 @@ export function App() {
       </header>
       <main id="main" tabIndex={-1}>
         <BackupBanner />
-        {route.name === 'home' && <Timeline />}
-        {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}
-        {route.name === 'calendar' && <CalendarView month={route.month} />}
-        {route.name === 'memories' && <Memories />}
-        {route.name === 'search' && <SearchView tag={route.tag} />}
-        {route.name === 'book' && (
-          <Suspense fallback={<p className="muted">Opening the book builder…</p>}>
-            <BookBuilder />
-          </Suspense>
-        )}
-        {route.name === 'order' && (
-          <Suspense fallback={<p className="muted">Opening your order…</p>}>
-            <OrderPage key={route.id} id={route.id} cancelled={route.cancelled ?? false} />
-          </Suspense>
-        )}
-        {route.name === 'settings' && <SettingsView />}
+        {/* Keyed by page, so each page comes in with its animation; a new entry and the same entry
+            once saved are one page (the URL changes on the first save, the editor stays). */}
+        <div className="page" key={route.name === 'new' ? 'entry' : route.name}>
+          {route.name === 'home' && <Timeline />}
+          {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}
+          {route.name === 'calendar' && <CalendarView month={route.month} />}
+          {route.name === 'memories' && <Memories />}
+          {route.name === 'search' && <SearchView tag={route.tag} />}
+          {route.name === 'book' && (
+            <Suspense fallback={<p className="muted">Opening the book builder…</p>}>
+              <BookBuilder />
+            </Suspense>
+          )}
+          {route.name === 'order' && (
+            <Suspense fallback={<p className="muted">Opening your order…</p>}>
+              <OrderPage key={route.id} id={route.id} cancelled={route.cancelled ?? false} />
+            </Suspense>
+          )}
+          {route.name === 'clock' && <ClockView />}
+          {route.name === 'settings' && <SettingsView />}
+        </div>
       </main>
-      {route.name !== 'entry' && route.name !== 'new' && (
+      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && (
         <a className="btn btn-primary fab" href={href({ name: 'new' })}>
           ✍️ New entry
         </a>
       )}
+      <Ringer />
     </div>
   );
 }
@@ -111,6 +143,20 @@ function useTheme(theme: 'system' | 'light' | 'dark') {
     if (theme === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', theme);
   }, [theme]);
+}
+
+/** Text size, line spacing and the writing font (Settings → Appearance, D91), on the whole app. */
+function useReadability({ textSize, lineSpacing, writingFont }: Pick<Settings, 'textSize' | 'lineSpacing' | 'writingFont'>) {
+  useEffect(() => {
+    const root = document.documentElement;
+    if (textSize === 'normal') root.removeAttribute('data-text-size');
+    else root.setAttribute('data-text-size', textSize);
+    if (lineSpacing === 'normal') root.removeAttribute('data-line-spacing');
+    else root.setAttribute('data-line-spacing', lineSpacing);
+    const font = fontFor(writingFont);
+    if (font) root.style.setProperty('--font-body', fontStack(font));
+    else root.style.removeProperty('--font-body');
+  }, [textSize, lineSpacing, writingFont]);
 }
 
 function useAutoLock(minutes: number, lock: () => void) {

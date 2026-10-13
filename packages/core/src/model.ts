@@ -95,6 +95,10 @@ export const entrySchema = z.object({
   updatedAt: z.string(),
   rev: z.number().int().nonnegative(),
   deletedAt: z.string().nullable().default(null),
+  /** When the entry moves to the trash by itself (an ISO time), if it should (D91). */
+  expiresAt: z.string().max(40).nullable().default(null),
+  /** An audio file that plays while the entry is open (D91). */
+  musicId: id.nullable().default(null),
 });
 export type Entry = z.infer<typeof entrySchema>;
 
@@ -125,6 +129,11 @@ export const settingsSchema = z.object({
   backupSnoozedUntil: z.string().nullable().default(null),
   autoLockMinutes: z.number().int().min(0).max(240).default(5),
   compressLargeMedia: z.boolean().default(true),
+  /** Easier reading (D91): text size and line spacing across the app, and the writing font. */
+  textSize: z.enum(['normal', 'large', 'larger', 'largest']).default('normal'),
+  lineSpacing: z.enum(['normal', 'relaxed', 'loose']).default('normal'),
+  /** One of FONTS' families (richtext.ts), or '' for the journal font. */
+  writingFont: z.string().max(60).default(''),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});
@@ -140,6 +149,7 @@ export function mediaKind(mime: string): 'image' | 'video' | 'audio' | 'file' {
 export function referencedMediaIds(entry: Entry): string[] {
   const ids = new Set<string>();
   if (entry.cover.kind === 'photo') ids.add(entry.cover.mediaId);
+  if (entry.musicId) ids.add(entry.musicId);
   for (const b of entry.blocks) {
     if ('mediaId' in b) ids.add(b.mediaId);
     if (b.type === 'gallery') for (const item of b.items) ids.add(item.mediaId);

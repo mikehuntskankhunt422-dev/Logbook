@@ -28,6 +28,9 @@ import { onFlush, trackWork } from '../lib/pending-saves.ts';
 import { celebrate, useReducedMotion } from '../lib/motion.ts';
 import { AudioBlock, BLOCK_LABELS, EmbedBlock, FileBlock, GalleryBlock, LinkBlock, PhotoBlock, RichTextBlock, VideoBlock } from './blocks.tsx';
 import { Dialog, formatLongDate, useCoverStyle } from './common.tsx';
+import { ExpiryPanel, MusicBar } from './EntryExtras.tsx';
+import { formatExpiry } from '../lib/expiry.ts';
+import { ExportDialog } from './ExportPanel.tsx';
 
 const SAVE_DELAY_MS = 700;
 
@@ -179,6 +182,9 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
   const [focusBlock, setFocusBlock] = useState<string | null>(null);
   const [linkDialog, setLinkDialog] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
+  const [extra, setExtra] = useState<'music' | 'expiry' | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const toggle = (which: 'music' | 'expiry') => setExtra((x) => (x === which ? null : which));
   const [bigVideo, setBigVideo] = useState<{ file: File; resolve: (choice: 'compress' | 'keep' | 'skip') => void } | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const mediaInput = useRef<HTMLInputElement>(null);
@@ -354,6 +360,15 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
           <button type="button" className="btn btn-small" aria-expanded={coverOpen} onClick={() => setCoverOpen((o) => !o)}>
             🎨 Cover
           </button>
+          <button type="button" className="btn btn-small" aria-expanded={extra === 'music'} onClick={() => toggle('music')}>
+            🎵 Music
+          </button>
+          <button type="button" className="btn btn-small" aria-expanded={extra === 'expiry'} onClick={() => toggle('expiry')}>
+            ⏳ Expiry
+          </button>
+          <button type="button" className="btn btn-small" onClick={() => setExportOpen(true)}>
+            ⬇️ Export
+          </button>
           <button type="button" className="btn btn-small" onClick={() => void trash()}>
             🗑 {isNew ? 'Discard' : 'Delete'}
           </button>
@@ -370,10 +385,15 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
           onChange={(e) => update((x) => ({ ...x, title: e.target.value }))}
         />
         <div style={{ fontWeight: 650 }}>{formatLongDate(entry.date)}</div>
+        {entry.expiresAt && <div className="hero-expiry">⏳ Expires {formatExpiry(entry.expiresAt)}</div>}
       </header>
 
+      {(entry.musicId || extra === 'music') && <MusicBar entry={entry} onChange={(musicId) => update((e) => ({ ...e, musicId }))} />}
+      {extra === 'expiry' && <ExpiryPanel entry={entry} onChange={(expiresAt) => update((e) => ({ ...e, expiresAt }))} />}
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} entries={[entry]} title="Export this entry" />
+
       {coverOpen && (
-        <div className="panel" style={{ marginTop: 12 }}>
+        <div className="panel pop-in" style={{ marginTop: 12 }}>
           <div className="cover-picker" role="group" aria-label="Cover gradient">
             {GRADIENT_IDS.map((g) => (
               <button

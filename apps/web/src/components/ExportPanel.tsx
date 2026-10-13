@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ExportTooLargeError, LockedError, referencedMediaIds } from '@logbook/core';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ExportTooLargeError, LockedError, referencedMediaIds, type Entry } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { exportToFile, printEntries, releasePrintView, type ExportChoice } from '../lib/export-io.ts';
-import { isDesktop } from '../lib/platform.ts';
+import { isApp } from '../lib/platform.ts';
+import { Dialog } from './common.tsx';
 
 const FORMATS: { id: ExportChoice; label: string; about: string }[] = [
   { id: 'markdown', label: 'Markdown', about: 'Text with headings, lists and links, for notes apps such as Obsidian, or any text editor.' },
@@ -14,8 +15,50 @@ const FORMATS: { id: ExportChoice; label: string; about: string }[] = [
 
 /** Settings → Export: entries as documents to read or keep elsewhere (D89). Not a backup. */
 export function ExportPanel() {
-  const { journal, entries } = useJournal();
+  const { entries } = useJournal();
+  if (!entries.length) {
+    return (
+      <section className="panel" aria-labelledby="export-h">
+        <h2 id="export-h">Export</h2>
+        <p>Once you've written something, you can export it here as Markdown, plain text, a web page or a PDF.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="panel" aria-labelledby="export-h">
+      <h2 id="export-h">Export</h2>
+      <p>Your entries as documents to read, print or use in other apps. To keep a copy you can restore into Logbook, make a backup instead.</p>
+      <ExportForm entries={entries} pickRange />
+    </section>
+  );
+}
+
+/**
+ * Export from where the entries are (D91): one entry, the journal page, a search or a tag. The
+ * same choices as Settings → Export, for the entries given.
+ */
+export function ExportDialog({ open, onClose, entries, title }: { open: boolean; onClose: () => void; entries: Entry[]; title: string }) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      actions={
+        <button type="button" className="btn" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      {/* Only while open: closing stops an export still being prepared. */}
+      {open && <ExportForm entries={entries} pickRange={entries.length > 1} />}
+    </Dialog>
+  );
+}
+
+function ExportForm({ entries, pickRange }: { entries: Entry[]; pickRange: boolean }) {
+  const { journal } = useJournal();
   const toast = useToast();
+  const id = useId();
   const [format, setFormat] = useState<ExportChoice>('markdown');
   const [layout, setLayout] = useState<'one-file' | 'per-entry'>('one-file');
   const [includeMedia, setIncludeMedia] = useState(true);
@@ -37,15 +80,6 @@ export function ExportPanel() {
     },
     [],
   );
-
-  if (!entries.length) {
-    return (
-      <section className="panel" aria-labelledby="export-h">
-        <h2 id="export-h">Export</h2>
-        <p>Once you've written something, you can export it here as Markdown, plain text, a web page or a PDF.</p>
-      </section>
-    );
-  }
 
   const run = async () => {
     const controller = new AbortController();
@@ -74,10 +108,7 @@ export function ExportPanel() {
   const severalFiles = format === 'markdown' && layout === 'per-entry' && chosen.length > 1;
 
   return (
-    <section className="panel" aria-labelledby="export-h">
-      <h2 id="export-h">Export</h2>
-      <p>Your entries as documents to read, print or use in other apps. To keep a copy you can restore into Logbook, make a backup instead.</p>
-
+    <>
       <div className="segmented" role="group" aria-label="Export format">
         {FORMATS.map((f) => (
           <button key={f.id} type="button" aria-pressed={format === f.id} onClick={() => setFormat(f.id)}>
@@ -87,26 +118,30 @@ export function ExportPanel() {
       </div>
       <p className="hint">{about}</p>
 
-      <div className="row presets" role="group" aria-label="Which entries">
-        <button type="button" className="btn btn-small" aria-pressed={!range} onClick={() => setRange(null)}>
-          Everything
-        </button>
-        {years.map((y) => (
-          <button key={y} type="button" className="btn btn-small" aria-pressed={range?.from === `${y}-01-01` && range.to === `${y}-12-31`} onClick={() => setRange({ from: `${y}-01-01`, to: `${y}-12-31` })}>
-            {y}
-          </button>
-        ))}
-      </div>
-      <div className="row">
-        <div className="field">
-          <label htmlFor="export-from">From</label>
-          <input id="export-from" type="date" className="date-input" value={from} max={to} onChange={(e) => e.target.value && setRange({ from: e.target.value, to })} />
-        </div>
-        <div className="field">
-          <label htmlFor="export-to">To</label>
-          <input id="export-to" type="date" className="date-input" value={to} min={from} onChange={(e) => e.target.value && setRange({ from, to: e.target.value })} />
-        </div>
-      </div>
+      {pickRange && (
+        <>
+          <div className="row presets" role="group" aria-label="Which entries">
+            <button type="button" className="btn btn-small" aria-pressed={!range} onClick={() => setRange(null)}>
+              Everything
+            </button>
+            {years.map((y) => (
+              <button key={y} type="button" className="btn btn-small" aria-pressed={range?.from === `${y}-01-01` && range.to === `${y}-12-31`} onClick={() => setRange({ from: `${y}-01-01`, to: `${y}-12-31` })}>
+                {y}
+              </button>
+            ))}
+          </div>
+          <div className="row">
+            <div className="field">
+              <label htmlFor={`${id}-from`}>From</label>
+              <input id={`${id}-from`} type="date" className="date-input" value={from} max={to} onChange={(e) => e.target.value && setRange({ from: e.target.value, to })} />
+            </div>
+            <div className="field">
+              <label htmlFor={`${id}-to`}>To</label>
+              <input id={`${id}-to`} type="date" className="date-input" value={to} min={from} onChange={(e) => e.target.value && setRange({ from, to: e.target.value })} />
+            </div>
+          </div>
+        </>
+      )}
 
       {format === 'markdown' && (
         <div className="segmented" role="group" aria-label="Markdown files" style={{ marginTop: 10 }}>
@@ -126,7 +161,7 @@ export function ExportPanel() {
 
       <div className="row" style={{ marginTop: 12 }}>
         <button type="button" className="btn btn-primary" disabled={busy || !chosen.length} onClick={() => void run()}>
-          {busy ? 'Preparing…' : format === 'pdf' ? '🖨️ Print or save as PDF…' : `${isDesktop ? '💾 Export' : '⬇️ Download'} ${chosen.length} ${chosen.length === 1 ? 'entry' : 'entries'}${isDesktop ? '…' : ''}`}
+          {busy ? 'Preparing…' : format === 'pdf' ? '🖨️ Print or save as PDF…' : `${isApp ? '💾 Export' : '⬇️ Download'} ${chosen.length} ${chosen.length === 1 ? 'entry' : 'entries'}${isApp ? '…' : ''}`}
         </button>
       </div>
       <p className="hint">
@@ -141,6 +176,6 @@ export function ExportPanel() {
                 : 'A single file.'}
         {journal.isEncrypted && ' Exported files aren’t protected by your passcode: anyone with the file can read it.'}
       </p>
-    </section>
+    </>
   );
 }

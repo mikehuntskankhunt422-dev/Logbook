@@ -11,7 +11,7 @@ async function expectNoSeriousViolations(page: Page, label: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   test(`no serious accessibility violations across views (${theme})`, async ({ page }) => {
-    // Eight axe scans plus a full book layout: more than the default 60 s on a CI runner.
+    // Nine axe scans plus a full book layout: more than the default 60 s on a CI runner.
     test.slow();
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await page.goto('/');
@@ -30,6 +30,7 @@ for (const theme of ['light', 'dark'] as const) {
       ['/#/memories', 'On this day'],
       ['/#/search', 'Search'],
       ['/#/book', 'Make a book'],
+      ['/#/clock', 'Clock'],
       ['/#/settings', 'Settings'],
     ];
     for (const [path, heading] of views) {

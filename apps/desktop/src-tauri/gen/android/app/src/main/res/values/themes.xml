@@ -1,0 +1,6 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme: the page's paper colour behind the system bars and while it loads. -->
+    <style name="Theme.logbook" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
+</resources>

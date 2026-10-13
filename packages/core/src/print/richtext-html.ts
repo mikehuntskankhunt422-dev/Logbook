@@ -1,32 +1,44 @@
 import type { RichNode } from '../model.ts';
+import { alignStyle, codeBlockHtml, isChecked, tableHtml, wrapMark } from '../rich-html.ts';
+import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
 import { esc, shortUrl } from './html.ts';
 
 /**
- * Print HTML for a TipTap document (D41). Covers the editor's node set (paragraphs, H2/H3, lists,
- * quotes, rules, hard breaks; bold, italic, strike, underline, links). Unknown nodes print their
- * text so nothing written is ever lost. Everything is escaped; nothing from the entry becomes markup.
+ * Print HTML for a TipTap document (D41, D91). Covers the editor's node set: paragraphs, H1–H6,
+ * lists, checklists, quotes, code, tables, rules, hard breaks; bold, italic, strike, underline,
+ * highlight, colour, fonts, sub- and superscript, code, links. Unknown nodes print their text so
+ * nothing written is ever lost. Everything is escaped; nothing from the entry becomes markup beyond
+ * checked colours, fonts and alignments (rich-html.ts).
  *
  * Links never become `<a href>` (D38): linked text gets a note number, and the entry ends with the
  * numbered addresses. Text that already is the address prints as-is without a note.
  */
 export function richTextToHtml(doc: RichNode | undefined, links: string[] = []): string {
-  return doc ? node(doc, links) : '';
+  return doc ? node(doc, links, hasTopHeading(doc)) : '';
 }
 
-const MARK_TAGS: Record<string, string> = { bold: 'strong', italic: 'em', strike: 's', underline: 'u' };
-
-function node(n: RichNode, links: string[]): string {
+/** `topHeading`: the document has an H1, which goes just below the entry title (`h2`). */
+function node(n: RichNode, links: string[], topHeading: boolean): string {
   const kids = () => inline(n.content ?? [], links);
-  const blocks = () => (n.content ?? []).map((c) => node(c, links)).join('');
+  const blocks = (of: RichNode = n) => (of.content ?? []).map((c) => node(c, links, topHeading)).join('');
   switch (n.type) {
     case 'doc':
       return blocks();
     case 'paragraph':
-      return n.content?.length ? `<p>${kids()}</p>` : '<p class="blank"></p>';
+      return n.content?.length ? `<p${alignStyle(n)}>${kids()}</p>` : '<p class="blank"></p>';
     case 'heading': {
-      const tag = n.attrs?.['level'] === 3 ? 'h4' : 'h3';
-      return `<${tag}>${kids()}</${tag}>`;
+      const tag = `h${outputHeadingLevel(n, 2, topHeading)}`;
+      return `<${tag}${alignStyle(n)}>${kids()}</${tag}>`;
     }
+    case 'taskList':
+      return `<ul class="tasks">${blocks()}</ul>`;
+    case 'taskItem':
+      // A box drawn in CSS: a tick glyph would fall back to a colour emoji font (blocks-html.ts).
+      return `<li class="task${isChecked(n) ? ' done' : ''}"><span class="box"></span><div>${blocks()}</div></li>`;
+    case 'codeBlock':
+      return codeBlockHtml(n);
+    case 'table':
+      return tableHtml(n, (c) => blocks(c));
     case 'bulletList':
       return `<ul>${blocks()}</ul>`;
     case 'orderedList': {
@@ -74,10 +86,7 @@ function inline(nodes: RichNode[], links: string[]): string {
 function leaf(n: RichNode): string {
   if (n.type === 'hardBreak') return '<br>';
   let html = n.type === 'text' ? esc(n.text ?? '') : inline(n.content ?? [], []);
-  for (const m of n.marks ?? []) {
-    const tag = MARK_TAGS[m.type];
-    if (tag) html = `<${tag}>${html}</${tag}>`;
-  }
+  for (const m of n.marks ?? []) html = wrapMark(m, html);
   return html;
 }
 

@@ -1,9 +1,14 @@
 name: Desktop installers
 
-# Logbook's installers on Windows, macOS and Linux (M5 slice E, D84). A push to a work branch that
-# touches the app builds them as workflow artifacts to try; a v* tag also publishes them as a
-# GitHub release. So does running it by hand on main ("Run workflow", D87), which creates the tag.
-# Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md has the steps.
+# Logbook's installers on Windows, macOS and Linux (M5 slice E, D84), and its Android app (D90). A
+# push to a work branch that touches the app builds them as workflow artifacts to try; a v* tag
+# also publishes them as a GitHub release. So does running it by hand on main ("Run workflow",
+# D87), which creates the tag. Unsigned (D77); macOS builds are signed ad hoc. docs/DEVELOPING.md
+# has the steps.
+#
+# Android (D90): a branch build is "Logbook Preview", a separate app signed with a throwaway key,
+# tried in an emulator. A release's APK is signed in the `sign` job with ANDROID_KEYSTORE_BASE64,
+# the key every Logbook APK must carry for Android to install it over the last one.
 #
 # Automatic updates (D88): every build makes the files the updater installs, signed with a
 # throwaway key, and never mentions the real one. Only a release runs the `sign` job, on a fresh
@@ -137,12 +142,128 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  # The only job that's given the real updater key: a release only (decided before a machine is
-  # assigned), a fresh machine, nothing installed from npm or crates, no npm cache.
+  android:
+    name: Android app
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # A branch build is the preview app (src-tauri/gen/android/app/build.gradle.kts).
+      VITE_ANDROID_PREVIEW: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && '0' || '1' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: The version asked for matches the app's version
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        env:
+          WANTED: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$WANTED" != "v$version" ]; then
+            echo "::error::$WANTED doesn't match the app's version $version (apps/desktop/package.json)."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          key: Android
+      - run: npm ci
+      # Phones with 64-bit and 32-bit ARM chips, and x86-64 for emulators and Chromebooks.
+      - name: Build the APK
+        working-directory: apps/desktop
+        env:
+          VITE_API_URL: ${{ vars.LOGBOOK_API_URL }}
+        run: |
+          # The NDK that comes with the runner (its newest, else the newest under the SDK).
+          NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)}"
+          echo "NDK: $NDK_HOME"
+          export NDK_HOME
+          npx tauri android build --apk --target aarch64 armv7 x86_64 --ci
+      - name: Collect the APK
+        run: |
+          mkdir -p android
+          find apps/desktop/src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -exec ls -l {} \;
+          apk=$(find apps/desktop/src-tauri/gen/android/app/build/outputs/apk -name '*release-unsigned.apk' | head -1)
+          test -n "$apk"
+          cp "$apk" android/Logbook-unsigned.apk
+      - name: Sign the preview with a throwaway key
+        if: env.VITE_ANDROID_PREVIEW == '1'
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          keytool -genkeypair -keystore "$RUNNER_TEMP/throwaway.p12" -storetype PKCS12 -storepass throwaway \
+            -alias logbook -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Logbook Preview"
+          ANDROID_KEYSTORE_BASE64=$(base64 -w0 "$RUNNER_TEMP/throwaway.p12") ANDROID_KEYSTORE_PASSWORD=throwaway \
+            bash apps/desktop/scripts/sign-android.sh android/Logbook-unsigned.apk "android/Logbook-Preview-$version.apk"
+          rm "$RUNNER_TEMP/throwaway.p12" android/Logbook-unsigned.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.VITE_ANDROID_PREVIEW == '1' && 'android-preview' || 'android-unsigned' }}
+          path: android/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+  # The preview APK in an Android emulator (apps/desktop/e2e/android.ts): branch builds only.
+  android-test:
+    name: Android app in an emulator
+    if: ${{ !(startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}
+    needs: android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-preview
+          path: android
+      - name: Let the emulator use the processor's virtualisation
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install android/*.apk
+            node --experimental-transform-types --no-warnings apps/desktop/e2e/android.ts android-e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-e2e
+          path: android-e2e
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The only job that's given the real updater key and the Android key: a release only (decided
+  # before a machine is assigned), a fresh machine, nothing installed from npm or crates, no npm
+  # cache.
   sign:
-    name: Sign the update files
+    name: Sign the update files and the Android app
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -169,6 +290,17 @@ jobs:
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers apps/desktop/src-tauri/tauri.conf.json "${TAG#v}"
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-unsigned
+          path: android
+      - name: Sign the Android app with the release key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: bash apps/desktop/scripts/sign-android.sh android/Logbook-unsigned.apk "installers/Logbook-${TAG#v}.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: signed-installers

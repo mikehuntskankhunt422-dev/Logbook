@@ -1,20 +1,32 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
+import { FONTS, fontFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { trackWork } from '../lib/pending-saves.ts';
-import { isDesktop } from '../lib/platform.ts';
+import { isAndroid, isApp, isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
 
-/** The desktop app's journal folder (D77); written out so the browser build leaves it out. */
+/**
+ * Where the journal is: the desktop app's journal folder (D77), or the Android app's own storage
+ * (D90). Written out so the other builds leave it out.
+ */
 const JournalFolderPanel =
-  import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel }))) : null;
-/** The desktop app's automatic updates (D88). */
-const UpdatesPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel }))) : null;
+  import.meta.env.VITE_PLATFORM === 'desktop'
+    ? lazy(() => import('../desktop/JournalFolderPanel.tsx').then((m) => ({ default: m.JournalFolderPanel })))
+    : import.meta.env.VITE_PLATFORM === 'android'
+      ? lazy(() => import('../android/PhoneStoragePanel.tsx').then((m) => ({ default: m.PhoneStoragePanel })))
+      : null;
+/** The desktop app's automatic updates (D88), or the Android app's update check (D90). */
+const UpdatesPanel =
+  import.meta.env.VITE_PLATFORM === 'desktop'
+    ? lazy(() => import('../desktop/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel })))
+    : import.meta.env.VITE_PLATFORM === 'android'
+      ? lazy(() => import('../android/UpdatesPanel.tsx').then((m) => ({ default: m.UpdatesPanel })))
+      : null;
 
 export function SettingsView() {
   return (
@@ -44,6 +56,18 @@ export function SettingsView() {
   );
 }
 
+const TEXT_SIZES = [
+  ['normal', 'Normal'],
+  ['large', 'Large'],
+  ['larger', 'Larger'],
+  ['largest', 'Largest'],
+] as const;
+const LINE_SPACINGS = [
+  ['normal', 'Normal'],
+  ['relaxed', 'Relaxed'],
+  ['loose', 'Loose'],
+] as const;
+
 function AppearancePanel() {
   const { journal, settings } = useJournal();
   return (
@@ -56,7 +80,40 @@ function AppearancePanel() {
           </button>
         ))}
       </div>
-      <p className="hint">Animations follow your device's reduce-motion setting.</p>
+      <h3 className="settings-sub">Easier reading</h3>
+      <p className="settings-label" id="text-size-l">
+        Text size
+      </p>
+      <div className="segmented" role="group" aria-labelledby="text-size-l">
+        {TEXT_SIZES.map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={settings.textSize === value} onClick={() => void journal.updateSettings({ textSize: value })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="settings-label" id="line-spacing-l">
+        Line spacing
+      </p>
+      <div className="segmented" role="group" aria-labelledby="line-spacing-l">
+        {LINE_SPACINGS.map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={settings.lineSpacing === value} onClick={() => void journal.updateSettings({ lineSpacing: value })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="field">
+        <label htmlFor="writing-font">Writing font</label>
+        <select id="writing-font" className="text-input" value={fontFor(settings.writingFont)?.family ?? ''} onChange={(e) => void journal.updateSettings({ writingFont: e.target.value })}>
+          <option value="">Newsreader (the journal font)</option>
+          {FONTS.filter((f) => f.family !== 'Newsreader').map((f) => (
+            <option key={f.family} value={f.family}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="reading-sample">The quick brown fox wrote about its day in the forest. 🦊 🇯🇵 🇧🇷</p>
+      <p className="hint">The writing font is how your entries look on this device; to set words in a font of their own, pick it in the text toolbar. Animations follow your device's reduce-motion setting.</p>
     </section>
   );
 }
@@ -124,7 +181,9 @@ function BackupPanel() {
       <p>
         {isDesktop
           ? 'Your journal folder is the journal. A backup zip is a copy of it you can keep somewhere else: another drive, or cloud storage. Back it up regularly.'
-          : 'Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.'}
+          : isAndroid
+            ? 'Your journal lives only on this phone, and uninstalling Logbook deletes it. Back it up regularly, to Google Drive or your computer. The zip holds everything, and the Logbook desktop app can open it too.'
+            : 'Your journal lives only on this device. Back it up regularly. The zip holds everything, and the Logbook desktop app can open it too.'}
         {settings.lastBackupAt ? ` Last backup: ${new Date(settings.lastBackupAt).toLocaleString()}.` : ' You have not made a backup yet.'}
       </p>
       {journal.isEncrypted && (
@@ -134,7 +193,7 @@ function BackupPanel() {
       )}
       <div className="row">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => void ((await downloadBackup(journal, encrypted)) && (celebrate('backup'), toast(BACKUP_DONE))))}>
-          {isDesktop ? '💾 Save a backup (.zip)…' : '⬇️ Download backup (.zip)'}
+          {isApp ? '💾 Save a backup (.zip)…' : '⬇️ Download backup (.zip)'}
         </button>
         {supportsFolderBackup() && (
           <button
@@ -422,7 +481,7 @@ function TrashPanel() {
   return (
     <section className="panel" aria-labelledby="trash-h">
       <h2 id="trash-h">Recently deleted</h2>
-      <p className="hint">Deleted entries stay here for 30 days.</p>
+      <p className="hint">Deleted and expired entries stay here for 30 days.</p>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
         {trash.map((e) => (
           <li key={e.id} className="row" style={{ justifyContent: 'space-between' }}>

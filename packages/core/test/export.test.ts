@@ -4,7 +4,7 @@ import { Journal } from '../src/journal.ts';
 import { MemoryStore } from '../src/storage.ts';
 import { emptyDoc } from '../src/richtext.ts';
 import type { RichNode } from '../src/model.ts';
-import { ExportTooLargeError, entriesHtml, entryToMarkdown, entryToText, exportEntries, richTextToExportHtml, richTextToMarkdown, richTextToText, safeName } from '../src/export/index.ts';
+import { ExportTooLargeError, entriesHtml, entryHtml, entryToMarkdown, entryToText, exportEntries, richTextToExportHtml, richTextToMarkdown, richTextToText, safeName } from '../src/export/index.ts';
 import { LockedError } from '../src/journal.ts';
 import { FAST_KDF, pngBytes } from './helpers.ts';
 
@@ -124,6 +124,8 @@ describe('entries as documents', () => {
     updatedAt: '2026-10-07T00:00:00Z',
     rev: 1,
     deletedAt: null,
+    expiresAt: null,
+    musicId: null,
   };
 
   it('Markdown with front matter, the photo and the link', () => {
@@ -131,6 +133,14 @@ describe('entries as documents', () => {
     expect(md).toMatch(/^---\ntitle: "A good day"\ndate: 2026-10-07\nmood: "😄"\ntags: \["beach","swim"\]\n---\n\n# A good day\n\n\*2026-10-07 · Mood: 😄 · Tags: beach, swim\*\n\nSwam at Glenelg\n\n/);
     expect(md).toContain('![Sunset](media/beach%20day.png)\n*Sunset*');
     expect(md).toContain('[Tide times](https://example.com)');
+  });
+
+  it('names the background music, and plays it in a saved web page but not on paper (D91)', () => {
+    const withMusic = { ...entry, musicId: 'song' };
+    const lookup = (id: string) => (id === 'song' ? { kind: 'audio' as const, name: 'waves.mp3', src: 'media/waves.mp3' } : undefined);
+    expect(entryToMarkdown(withMusic, lookup)).toContain('[🔊 waves.mp3](media/waves.mp3)\n*Background music*');
+    expect(entryHtml(withMusic, lookup)).toContain('<audio src="media/waves.mp3" controls preload="metadata"></audio><figcaption>Background music</figcaption>');
+    expect(entryHtml(withMusic, lookup, { mode: 'print' })).not.toContain('waves.mp3');
   });
 
   it('trims captions, so they stay italic and never turn into a list', () => {

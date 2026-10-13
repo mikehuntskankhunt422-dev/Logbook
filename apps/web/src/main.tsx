@@ -4,11 +4,15 @@ import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/newsreader';
 import '@fontsource-variable/newsreader/wght-italic.css';
 import './styles/app.css';
+import { loadFlagFont } from './lib/fonts.ts';
 import { Journal } from '@logbook/core';
 import { IndexedDbStore } from '@logbook/storage-idb';
 import { JournalProvider } from './app/journal-context.tsx';
 import { ToastProvider } from './app/toasts.tsx';
 import { App } from './app/App.tsx';
+import { ClockProvider } from './app/clock.tsx';
+
+loadFlagFont();
 
 async function boot() {
   const root = createRoot(document.getElementById('root')!);
@@ -17,17 +21,19 @@ async function boot() {
       <StrictMode>
         <ToastProvider>
           <JournalProvider journal={journal}>
-            <App />
+            <ClockProvider>
+              <App />
+            </ClockProvider>
           </JournalProvider>
         </ToastProvider>
       </StrictMode>,
     );
 
-  // Written out rather than `isDesktop` so the browser build drops the desktop code entirely.
-  if (import.meta.env.VITE_PLATFORM === 'desktop') {
-    // The journal folder on disk (D77).
-    const { bootDesktop, showError } = await import('./desktop/boot.tsx');
-    return bootDesktop(root, render).catch((err: unknown) => showError(root, err));
+  // Written out rather than `isApp` so the browser build drops the apps' code entirely.
+  if (import.meta.env.VITE_PLATFORM !== 'web') {
+    // The journal folder on disk (D77; inside the app on Android, D90).
+    const { bootApp, showError } = await import('./desktop/boot.tsx');
+    return bootApp(root, render).catch((err: unknown) => showError(root, err));
   }
 
   try {

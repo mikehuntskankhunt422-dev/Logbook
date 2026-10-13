@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page's dark paper colour (the background colour in apps/web/src/styles/app.css). -->
+    <color name="paper">#FF15130F</color>
+</resources>

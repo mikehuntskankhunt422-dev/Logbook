@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { GRADIENTS, computeStreak, entryPlainText, parseIsoDate, today, type Entry } from '@logbook/core';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
+import { expiresIn } from '../lib/expiry.ts';
 
 export function formatLongDate(iso: string, opts: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }): string {
   return parseIsoDate(iso).toLocaleDateString(undefined, opts);
@@ -43,6 +44,7 @@ export function EntryCard({ entry, highlight }: { entry: Entry; highlight?: stri
           </span>
         )}
         <span className="date-chip">{formatLongDate(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+        {entry.expiresAt && <span className="entry-expiry-chip">⏳ Expires {expiresIn(entry.expiresAt)}</span>}
       </div>
       <div className="entry-card-body">
         <h3 className="entry-card-title">{highlight ? <Highlight text={entry.title || 'Untitled'} terms={highlight} /> : entry.title || 'Untitled'}</h3>
@@ -97,6 +99,7 @@ export function StreakBadge() {
 /** Native <dialog> with focus management and Escape handling from the browser. */
 export function Dialog({ open, onClose, title, children, actions }: { open: boolean; onClose: () => void; title: string; children: ReactNode; actions: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -104,8 +107,8 @@ export function Dialog({ open, onClose, title, children, actions }: { open: bool
     if (!open && d.open) d.close();
   }, [open]);
   return (
-    <dialog ref={ref} onClose={onClose} aria-labelledby="dialog-title">
-      <h2 id="dialog-title">{title}</h2>
+    <dialog ref={ref} onClose={onClose} aria-labelledby={titleId}>
+      <h2 id={titleId}>{title}</h2>
       {children}
       <div className="dialog-actions">{actions}</div>
     </dialog>

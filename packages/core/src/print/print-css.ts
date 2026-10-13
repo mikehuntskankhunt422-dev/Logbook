@@ -15,6 +15,29 @@ export const PRINT_FONT_STYLESHEETS = [
   '@fontsource/bricolage-grotesque/400.css',
   '@fontsource/bricolage-grotesque/700.css',
   '@fontsource/noto-emoji/400.css',
+  // The fonts text can be set in (FONTS, D91).
+  '@fontsource/atkinson-hyperlegible/400.css',
+  '@fontsource/atkinson-hyperlegible/400-italic.css',
+  '@fontsource/atkinson-hyperlegible/700.css',
+  '@fontsource/atkinson-hyperlegible/700-italic.css',
+  '@fontsource/opendyslexic/400.css',
+  '@fontsource/opendyslexic/400-italic.css',
+  '@fontsource/opendyslexic/700.css',
+  '@fontsource/opendyslexic/700-italic.css',
+  '@fontsource/lora/400.css',
+  '@fontsource/lora/400-italic.css',
+  '@fontsource/lora/700.css',
+  '@fontsource/lora/700-italic.css',
+  '@fontsource/playfair-display/400.css',
+  '@fontsource/playfair-display/400-italic.css',
+  '@fontsource/playfair-display/700.css',
+  '@fontsource/playfair-display/700-italic.css',
+  '@fontsource/caveat/400.css',
+  '@fontsource/caveat/700.css',
+  '@fontsource/jetbrains-mono/400.css',
+  '@fontsource/jetbrains-mono/400-italic.css',
+  '@fontsource/jetbrains-mono/700.css',
+  '@fontsource/jetbrains-mono/700-italic.css',
 ] as const;
 
 const SERIF = `'Newsreader', 'Noto Emoji', serif`;
@@ -80,6 +103,23 @@ li > p { margin-bottom: 0.2em; }
 sup.link-ref { font-size: 0.65em; line-height: 0; margin-left: 0.1em; color: ${p.accent}; }
 .url, .link-notes, .file-name { overflow-wrap: anywhere; }
 .link-notes { font-size: 0.8em; color: ${p.muted}; margin: 1.2em 0 0; padding: 0.4em 0 0 1.4em; border-top: 0.5pt solid ${p.rule}; }
+/* More of the editor's formatting (D91): no transparency, nothing that needs the network. */
+h5, h6 { font-family: ${SANS}; font-size: 1em; line-height: 1.25; margin: 0.8em 0 0.3em; break-after: avoid; }
+h6 { font-size: 0.92em; letter-spacing: 0.03em; }
+mark { color: ${p.ink}; background-color: #fff176; }
+code, pre { font-family: 'JetBrains Mono', ${SANS}; font-size: 0.88em; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 0.6em; padding: 0.4em 0.6em; border-left: 2pt solid ${p.rule}; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 0.6em; font-size: 0.92em; }
+th, td { border: 0.75pt solid ${p.rule}; padding: 0.25em 0.4em; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+th { font-family: ${SANS}; }
+tr { break-inside: avoid; }
+td > :last-child, th > :last-child { margin-bottom: 0; }
+ul.tasks { list-style: none; padding-left: 0.2em; }
+li.task { display: flex; gap: 0.45em; align-items: baseline; }
+li.task > div { flex: 1; }
+li.task .box { flex: none; position: relative; width: 0.75em; height: 0.75em; border: 0.75pt solid ${p.ink}; top: 0.1em; }
+li.task.done .box::after { content: ''; position: absolute; left: 0.22em; top: 0.02em; width: 0.22em; height: 0.45em; border: solid ${p.ink}; border-width: 0 1.2pt 1.2pt 0; transform: rotate(45deg); }
+li.task.done > div { text-decoration: line-through; color: ${p.muted}; }
 
 /* Title, colophon, contents */
 .title-page, .colophon, .contents { page: front; }
@@ -159,6 +199,8 @@ figure.embed figcaption, figure.link figcaption { text-align: left; }
 .notes-page { break-before: page; }
 .notes-page h2 { font-size: 1.3em; margin: 0 0 0.2in; color: ${p.muted}; }
 .notes-page .rule { height: 0.33in; border-bottom: 0.5pt solid ${p.rule}; }
-${product.interior === 'bw' ? `.band[style] { background-image: linear-gradient(135deg, #e8e8e8 0%, #9a9a9a 100%) !important; }` : ''}
+${product.interior === 'bw' ? `.band[style] { background-image: linear-gradient(135deg, #e8e8e8 0%, #9a9a9a 100%) !important; }
+.text span[style] { color: ${p.ink} !important; }
+.text mark, .text mark[style] { background-color: ${p.plain} !important; }` : ''}
 `.trim();
 }

@@ -68,6 +68,28 @@ To release a version:
 
 The installers aren't code-signed (D77): Windows SmartScreen and macOS Gatekeeper warn on first open, and the README explains how to get past them. macOS builds are signed ad hoc (`signingIdentity: "-"`), without which Apple silicon Macs may report the app as damaged. A desktop build can order books only if it knows the API's address: set the repository variable `LOGBOOK_API_URL` (Settings → Secrets and variables → Actions → Variables) once the API is deployed. Without it, the book builder says ordering isn't open yet.
 
+### The Android app (D90)
+
+The Android app is the same Tauri shell built for phones: `apps/desktop/src-tauri/tauri.android.conf.json` gives it its own identifier (`app.logbookjournal.android`) and the Android web bundle (`vite build --mode android`, `npm run build:android -w @logbook/web`). Its Android project, `apps/desktop/src-tauri/gen/android`, is ours and committed: `MainActivity.kt` (room for the system bars and the keyboard) and `LogbookPlugin.kt` (printing, and writing files Android's save dialog picked) are hand-written; the rest came from `npx tauri android init`. The journal is a folder inside the app's own storage; there's no folder to choose and no updater (Settings → Updates checks GitHub for a newer APK and opens its download). Android's webview can only send text to the app, so file contents cross as base64, in 4 MB pieces (`packages/storage-fs/src/tauri.ts`).
+
+To build it yourself you need Android Studio (or the Android SDK with the NDK), JDK 21, and the Rust targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`), with `ANDROID_HOME` and `NDK_HOME` set:
+
+```bash
+cd apps/desktop
+npx tauri android build --apk --target aarch64    # an unsigned APK under src-tauri/gen/android/app/build/outputs/apk/
+npx tauri android dev                              # on a connected phone or an emulator, with hot reload
+```
+
+The release workflow's `android` job builds it for 64-bit and 32-bit ARM phones and x86-64 (emulators, Chromebooks). On a work branch it's **Logbook Preview** (`VITE_ANDROID_PREVIEW=1`): a separate app (`app.logbookjournal.android.preview`) with a journal of its own, signed with a throwaway key, which installs beside Logbook instead of over it, never looks for updates, and lets its page be inspected over USB. The `android-test` job installs it in an emulator and runs `apps/desktop/e2e/android.ts`: Playwright attaches to the app's page over adb, writes an entry, leaves the app and restarts it, saves a backup through Android's file picker and opens the PDF export's print screen. Its screenshots and logcat are in the `android-e2e` artifact. To install a preview on a phone, download the `android-preview` artifact, unzip it, open the APK and allow your browser or file manager to install apps.
+
+**The Android signing key.** Android installs an update only if it's signed with the same key as the app already on the phone, so every release is signed with one key, forever. Losing it means people can't update without uninstalling Logbook, which deletes their journal. The release's `sign` job signs the APK with `apps/desktop/scripts/sign-android.sh`, using the secrets `ANDROID_KEYSTORE_BASE64` (the keystore file, base64-encoded), `ANDROID_KEYSTORE_PASSWORD` and optionally `ANDROID_KEY_ALIAS` (default `logbook`); without them the release has no APK and the workflow warns. To make the key, with a JDK installed (`keytool` comes with it):
+
+```bash
+keytool -genkeypair -keystore logbook-android.p12 -storetype PKCS12 -alias logbook -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=Logbook"
+```
+
+It asks for a password. Then add the secrets to the `release` environment (Settings → Environments → release → Add environment secret): `ANDROID_KEYSTORE_PASSWORD` with that password, and `ANDROID_KEYSTORE_BASE64` with the file's contents in base64 (`base64 -w0 logbook-android.p12` on Linux, `base64 -i logbook-android.p12` on macOS, `[Convert]::ToBase64String([IO.File]::ReadAllBytes("logbook-android.p12"))` in PowerShell). Keep the `.p12` file and its password somewhere safe outside the computer, such as a password manager; never commit them.
+
 ## The server
 
 `npm run dev -w @logbook/server` runs the API. It's configured by environment variables, checked at startup; it refuses to start on a mistake rather than half-working. `APP_MODE` is `test` (the default) or `live`; live mode needs `ALLOW_LIVE=true` and live keys, and refuses test keys, and the other way round (D18).

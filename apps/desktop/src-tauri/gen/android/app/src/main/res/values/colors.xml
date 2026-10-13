@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page's paper colour (the background colour in apps/web/src/styles/app.css), behind the system bars. -->
+    <color name="paper">#FFFBF7F1</color>
+</resources>

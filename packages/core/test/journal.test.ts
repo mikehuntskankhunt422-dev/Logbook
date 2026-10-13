@@ -44,6 +44,30 @@ describe('Journal entries', () => {
     expect(await journal.listTrash()).toHaveLength(0);
   });
 
+  it('moves expired entries to the trash, and a restored one loses its passed expiry (D91)', async () => {
+    const { journal } = await fresh();
+    const now = new Date('2026-10-13T12:00:00Z');
+    const soon = await journal.saveEntry({ ...journal.newEntry({ title: 'soon' }), expiresAt: '2026-10-13T11:59:00Z' });
+    await journal.saveEntry({ ...journal.newEntry({ title: 'later' }), expiresAt: '2026-12-01T00:00:00Z' });
+    await journal.saveEntry(journal.newEntry({ title: 'never' }));
+    // Not while it's open in the editor.
+    expect(await journal.trashExpired(now, soon.id)).toBe(0);
+    expect(await journal.trashExpired(now)).toBe(1);
+    expect((await journal.listEntries()).map((e) => e.title).sort()).toEqual(['later', 'never']);
+    expect((await journal.listTrash())[0]?.deletedAt).toBe(now.toISOString());
+    await journal.restoreEntry(soon.id, now);
+    expect((await journal.getEntry(soon.id))?.expiresAt).toBeNull();
+    expect(await journal.trashExpired(now)).toBe(0);
+  });
+
+  it('keeps background music in use (D91)', async () => {
+    const { journal } = await fresh();
+    const music = await journal.addMedia(new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mpeg' }), { name: 'song.mp3' });
+    await journal.saveEntry({ ...journal.newEntry({ title: 'with music' }), musicId: music.id });
+    await journal.collectGarbage();
+    expect(await journal.getMediaMeta(music.id)).toBeDefined();
+  });
+
   it('reports invalid records instead of crashing', async () => {
     const { store, journal } = await fresh();
     await store.put('entries', { id: 'broken', nonsense: true } as never);
