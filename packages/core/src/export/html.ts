@@ -27,6 +27,7 @@ export function entryHtml(entry: Entry, media: MediaLookup, opts: HtmlOptions = 
   if (entry.cover.kind === 'photo') parts.push(mediaHtml(media(entry.cover.mediaId), '', mode, 'image'));
   // Background music (D91): a player in a saved page; nothing on paper.
   if (entry.musicId && mode === 'page') parts.push(mediaHtml(media(entry.musicId), 'Background music', mode, 'audio'));
+  if (entry.musicUrl && mode === 'page') parts.push(`<p class="lbx-attachment">🎵 Background music: ${anchor(entry.musicUrl, entry.musicUrl)}</p>`);
   for (const b of entry.blocks) parts.push(blockHtml(b, media, mode));
   return `<article class="lbx-entry">${parts.join('')}</article>`;
 }

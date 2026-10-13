@@ -1,4 +1,8 @@
-**0.3.2 finishes the flag picker fix.** It lists only the flags Logbook can draw, each once: no more doubled countries, and no more "Eurozone" or "Sark" entries showing as two letters (Sark's flag is newer than Logbook's flag font).
+**Music from a link.** 🎵 Music on an entry now takes a link as well as a sound file: **🔗 Paste a link…** and press **Play**. YouTube videos and live streams (Lofi Girl, say), Vimeo, Rumble, Dailymotion, Twitch, Kick and Streamable play in the site's own player, right there in the music bar, ads and all (you can skip or mute them with the player's buttons). A link to a sound file or an internet radio station plays like a sound file. If a site won't let its video play inside Logbook, the bar says so and offers to open it in your browser. Links need the internet.
+
+**Fixed:** on phones, the buttons on an entry's cover no longer run off the edge of the screen; they scroll sideways. The flag picker lists each country once, and only flags Logbook can draw (from 0.3.1 and 0.3.2).
+
+**Update every copy of Logbook you use.** Once 0.4.0 opens your journal, earlier versions won't open it (they'd lose music links when saving), and offer their update instead. On a computer, Logbook updates itself (**Settings → Updates**); on Android, install the new `.apk` over the old one.
 
 What came in 0.3.0:
 

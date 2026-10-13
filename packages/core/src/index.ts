@@ -3,6 +3,7 @@ export * from './ids.ts';
 export * from './dates.ts';
 export * from './richtext.ts';
 export * from './embeds.ts';
+export * from './music-links.ts';
 export * from './storage.ts';
 export * from './crypto.ts';
 export * from './journal.ts';

@@ -49,6 +49,8 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
   out.push(`*${metaLine(entry, opts).map(escapeMd).join(' · ')}*`);
   if (entry.cover.kind === 'photo') out.push(mediaMd(media(entry.cover.mediaId), 'Cover photo', ''));
   if (entry.musicId) out.push(mediaMd(media(entry.musicId), 'Audio', 'Background music'));
+  const musicHref = entry.musicUrl ? safeHref(entry.musicUrl) : null;
+  if (musicHref) out.push(`🎵 Background music: ${linkMd(musicHref, musicHref)}`);
   for (const b of entry.blocks) {
     const md = blockMd(b, media, ctx);
     if (md) out.push(md);
@@ -60,6 +62,7 @@ export function entryToText(entry: Entry, media: MediaLookup, opts: RenderOption
   const ctx: Ctx = { mode: 'text', shift: 0 };
   const out = [`${entry.title || 'Untitled'}\n${metaLine(entry, opts).join(' · ')}`];
   if (entry.musicId) out.push(mediaText(media(entry.musicId), 'audio', 'Background music'));
+  if (entry.musicUrl) out.push(`Background music: ${entry.musicUrl}`);
   for (const b of entry.blocks) {
     const text = blockText(b, media, ctx);
     if (text) out.push(text);

@@ -39,18 +39,18 @@ describe('FolderStore files', () => {
     const id2 = media.id.slice(0, 2);
     expect(await files(root)).toEqual([`entries/2026/2026-10-07--a-good-day--${e.id}.json`, 'logbook.json', `media/${id2}/${media.id}.meta.json`, `media/${id2}/${media.id}.png`].sort());
     const lb = JSON.parse(await readFile(join(root, 'logbook.json'), 'utf8'));
-    expect(lb).toMatchObject({ format: 'logbook', version: 2, settings: { theme: 'dark' } });
+    expect(lb).toMatchObject({ format: 'logbook', version: 3, settings: { theme: 'dark' } });
     // People can open their entries: indented JSON.
     expect(await readFile(join(root, 'entries/2026', `2026-10-07--a-good-day--${e.id}.json`), 'utf8')).toContain('\n  "title": "A good day"');
   });
 
-  it('marks a version 1 journal as version 2 when it opens, so older apps ask to be updated (D91)', async () => {
+  it('marks an older journal as the current version when it opens, so older apps ask to be updated (D91, D93)', async () => {
     const root = await folder();
     await writeFile(join(root, 'logbook.json'), JSON.stringify({ format: 'logbook', version: 1, settings: { theme: 'dark' } }));
     const j = await Journal.open(await open(root));
     expect(j.getSettings().theme).toBe('dark');
-    expect(JSON.parse(await readFile(join(root, 'logbook.json'), 'utf8'))).toEqual({ format: 'logbook', version: 2, settings: { theme: 'dark' } });
-    await writeFile(join(root, 'logbook.json'), JSON.stringify({ format: 'logbook', version: 3 }));
+    expect(JSON.parse(await readFile(join(root, 'logbook.json'), 'utf8'))).toEqual({ format: 'logbook', version: 3, settings: { theme: 'dark' } });
+    await writeFile(join(root, 'logbook.json'), JSON.stringify({ format: 'logbook', version: 4 }));
     await expect(open(root)).rejects.toThrow(/newer version of Logbook/);
   });
 

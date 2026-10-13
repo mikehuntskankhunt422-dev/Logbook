@@ -19,6 +19,7 @@ export function recordStoreContract(name: string, make: () => Promise<RecordStor
     deletedAt: null,
     expiresAt: null,
     musicId: null,
+    musicUrl: null,
   });
 
   describe(`${name} RecordStore contract`, () => {

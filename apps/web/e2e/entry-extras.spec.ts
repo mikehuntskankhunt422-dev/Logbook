@@ -62,6 +62,68 @@ test('background music, and exporting from the entry and the journal page', asyn
   await expect(page.getByRole('dialog', { name: 'Export your journal' }).getByRole('button', { name: /Download 1 entry/ })).toBeVisible();
 });
 
+test('background music from a link: a site’s player, a stream, and saying when a link won’t play (D93)', async ({ page }) => {
+  // Stand-ins for the sites: this test never reaches the real ones.
+  await page.route('https://www.youtube-nocookie.com/**', (r) =>
+    r.fulfill({
+      contentType: 'text/html',
+      // A player that says it won't play here, as YouTube does when embedding is off.
+      body: `<p>YouTube player</p><script>addEventListener('message', (e) => { if (String(e.data).includes('listening')) parent.postMessage(JSON.stringify({ event: 'onError', info: 153 }), '*'); });</script>`,
+    }),
+  );
+  await page.route('https://player.vimeo.com/**', (r) => r.fulfill({ contentType: 'text/html', body: '<p>Vimeo player</p>' }));
+  await page.route('https://radio.example.org/**', (r) => r.fulfill({ contentType: 'audio/wav', body: wav() }));
+  await page.route('https://rumble.com/api/**', (r) =>
+    r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ html: '<iframe src="https://rumble.com/embed/v4abc12/?pub=4"></iframe>' }) }),
+  );
+  await page.route('https://rumble.com/embed/**', (r) => r.fulfill({ contentType: 'text/html', body: '<p>Rumble player</p>' }));
+
+  await writeEntry(page, 'Study session', 'Notes');
+  await page.getByRole('button', { name: '🎵 Music' }).click();
+  const bar = page.getByRole('group', { name: 'Background music' });
+  const paste = async (link: string) => {
+    await bar.getByRole('button', { name: /link/i }).click();
+    await bar.getByLabel('Link to music').fill(link);
+    await bar.getByRole('button', { name: 'Play' }).click();
+  };
+
+  // Not a link.
+  await bar.getByRole('button', { name: /Paste a link/ }).click();
+  await bar.getByLabel('Link to music').fill('lofi girl');
+  await bar.getByRole('button', { name: 'Play' }).click();
+  await expect(bar.getByRole('alert')).toContainText('isn’t a web address');
+  await bar.getByRole('button', { name: 'Cancel' }).click();
+
+  // YouTube in its own player; when it won't play here, the bar says so and offers the link.
+  await paste('https://www.youtube.com/live/jfKfPfyJRdk');
+  await expect(bar.getByText('🎵 YouTube')).toBeVisible();
+  await expect(bar.getByRole('status')).toContainText('YouTube won’t play this video inside Logbook');
+  await expect(bar.getByRole('link', { name: /Open it in your browser/ })).toHaveAttribute('href', 'https://www.youtube.com/live/jfKfPfyJRdk');
+
+  // Vimeo's player, visible.
+  await paste('vimeo.com/76979871');
+  const frame = bar.locator('iframe[title="Vimeo player"]');
+  await expect(frame).toBeVisible();
+  expect(await frame.getAttribute('src')).toBe('https://player.vimeo.com/video/76979871?dnt=1&loop=1&autoplay=1');
+  expect((await frame.boundingBox())!.height).toBeGreaterThanOrEqual(199);
+
+  // A Rumble page, its player looked up.
+  await paste('https://rumble.com/v4l0q8g-some-video.html');
+  await expect(bar.locator('iframe[title="Rumble player"]')).toHaveAttribute('src', 'https://rumble.com/embed/v4abc12/?autoplay=1');
+
+  // A radio stream plays like a sound file, with Logbook's own button.
+  await paste('https://radio.example.org/stream');
+  await expect(bar.getByText('🎵 radio.example.org')).toBeVisible();
+  await expect(bar.getByRole('button', { name: /the music$/ })).toBeEnabled();
+  await page.waitForTimeout(1500);
+
+  // Kept after a reload.
+  await page.reload();
+  await expect(bar.getByText('🎵 radio.example.org')).toBeVisible();
+  await bar.getByRole('button', { name: 'Remove' }).click();
+  await expect(bar).toBeHidden();
+});
+
 /** A quarter of a second of silence, as a WAV file. */
 function wav(): Buffer {
   const rate = 8000;

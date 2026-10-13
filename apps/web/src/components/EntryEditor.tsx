@@ -388,7 +388,7 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
         {entry.expiresAt && <div className="hero-expiry">⏳ Expires {formatExpiry(entry.expiresAt)}</div>}
       </header>
 
-      {(entry.musicId || extra === 'music') && <MusicBar entry={entry} onChange={(musicId) => update((e) => ({ ...e, musicId }))} />}
+      {(entry.musicId || entry.musicUrl || extra === 'music') && <MusicBar entry={entry} onChange={(patch) => update((e) => ({ ...e, ...patch }))} />}
       {extra === 'expiry' && <ExpiryPanel entry={entry} onChange={(expiresAt) => update((e) => ({ ...e, expiresAt }))} />}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} entries={[entry]} title="Export this entry" />
 
