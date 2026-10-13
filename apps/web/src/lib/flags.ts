@@ -22,6 +22,9 @@ export function allFlags(locale = navigator.language): Flag[] {
       if (/^(A[AN]|Q[M-Z]|X[A-Z]|ZZ)$/.test(code)) continue;
       let name: string | undefined;
       try {
+        // Old codes still known as aliases (UK for GB, SU for RU, YU for RS…) would list a
+        // country twice, under a flag no font draws: only a region's current code counts.
+        if (Intl.getCanonicalLocales(`und-${code}`)[0] !== `und-${code}`) continue;
         name = names.of(code);
       } catch {
         continue;
