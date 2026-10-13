@@ -80,7 +80,7 @@ describe('HTML (web page export and printed book)', () => {
 
   it('the export shows checkboxes, tables, colours and fonts, and nothing unchecked', () => {
     const html = richTextToExportHtml(d);
-    expect(html).toContain('<p style="text-align:center"><span style="color:#d93025;font-family:&#39;Caveat&#39;, cursive">Hi</span></p>');
+    expect(html).toContain('<p style="text-align:center"><span style="color:#d93025;font-family:&#39;Twemoji Country Flags&#39;, &#39;Caveat&#39;, cursive">Hi</span></p>');
     expect(html).toContain('<input type="checkbox" disabled checked aria-label="Done">');
     expect(html).toContain('<th><p>Day</p></th>');
     expect(html).toContain('<td><p>Rome | Italy</p></td>');

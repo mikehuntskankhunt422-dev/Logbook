@@ -42,8 +42,11 @@ test('rich text: headings, a checklist, a table, colour, highlight and fonts', a
   await expect(editor.locator('mark')).toHaveText('tickets');
   await expect(editor.locator('span[style*="color"]')).toHaveText('tickets');
 
-  // A table, typed into, after the words (not over them).
-  await page.keyboard.press('ArrowRight');
+  // A table, typed into, after the words (not over them). The editor takes the focus back from the
+  // font menu a frame later, with the words still selected: wait for that before moving on.
+  await expect(editor).toBeFocused();
+  await page.waitForTimeout(100);
+  await editor.locator('p', { hasText: 'Remember the' }).click();
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await toolbar.getByRole('button', { name: 'Table' }).click();
@@ -83,4 +86,26 @@ test('rich text: headings, a checklist, a table, colour, highlight and fonts', a
   expect(text).toContain('<mark>tickets</mark>');
   expect(text).toMatch(/\| Day \| Place \| {2}\|/);
   expect(text).toContain('| Mon | Rome |');
+});
+
+test('flags from the picker, and easier reading', async ({ page }) => {
+  await writeEntry(page, 'Holiday', 'Off to ');
+  await page.getByRole('toolbar', { name: 'Text formatting' }).getByRole('button', { name: 'Insert a flag' }).click();
+  await page.getByLabel('Find a country').fill('japan');
+  await page.getByRole('button', { name: 'Flag of Japan' }).click();
+  await expect(page.getByRole('textbox', { name: 'Entry text' })).toContainText('Off to 🇯🇵');
+  // The flag font is the first in the stack, for Windows, whose emoji font has no flags.
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.rt')!).fontFamily)).toMatch(/^"?Twemoji Country Flags/);
+
+  await page.goto('/#/settings');
+  const appearance = page.getByRole('region', { name: 'Appearance' });
+  await appearance.getByRole('group', { name: 'Text size' }).getByRole('button', { name: 'Larger' }).click();
+  await appearance.getByRole('group', { name: 'Line spacing' }).getByRole('button', { name: 'Loose' }).click();
+  await appearance.getByLabel('Writing font').selectOption('Atkinson Hyperlegible');
+  await expect(page.locator('html')).toHaveAttribute('data-text-size', 'larger');
+  await expect(page.locator('html')).toHaveAttribute('data-line-spacing', 'loose');
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.reading-sample')!).fontFamily)).toContain('Atkinson Hyperlegible');
+  // Kept after a reload.
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-text-size', 'larger');
 });

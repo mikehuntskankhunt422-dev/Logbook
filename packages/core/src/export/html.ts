@@ -173,17 +173,17 @@ function linkOf(n: RichNode): string | undefined {
 export const EXPORT_CSS = `
 .lbx-page { margin: 0; padding: 2rem 1rem 4rem; background: #fbfaf7; color: #1f1d1a; }
 .lbx-header, .lbx { max-width: 44rem; margin: 0 auto; }
-.lbx-header h1 { font: 700 2rem/1.2 system-ui, sans-serif; margin: 0 0 .25rem; }
-.lbx-header p { color: #6b665d; margin: 0 0 2rem; font: 1rem/1.4 system-ui, sans-serif; }
-.lbx { font: 1.0625rem/1.65 Georgia, "Iowan Old Style", "Times New Roman", serif; color: #1f1d1a; }
+.lbx-header h1 { font: 700 2rem/1.2 "Twemoji Country Flags", system-ui, sans-serif; margin: 0 0 .25rem; }
+.lbx-header p { color: #6b665d; margin: 0 0 2rem; font: 1rem/1.4 "Twemoji Country Flags", system-ui, sans-serif; }
+.lbx { font: 1.0625rem/1.65 "Twemoji Country Flags", Georgia, "Iowan Old Style", "Times New Roman", serif; color: #1f1d1a; }
 .lbx-entry { padding: 1.5rem 0 2rem; border-top: 1px solid #e3ded4; }
 .lbx-entry:first-child { border-top: 0; }
-.lbx .lbx-title { font: 700 1.5rem/1.25 system-ui, sans-serif; margin: 0 0 .25rem; }
-.lbx .lbx-meta { font: .9rem/1.4 system-ui, sans-serif; color: #6b665d; margin: 0 0 1rem; }
-.lbx h3 { font: 700 1.2rem/1.3 system-ui, sans-serif; margin: 1.25rem 0 .5rem; }
-.lbx h4 { font: 700 1.05rem/1.3 system-ui, sans-serif; margin: 1rem 0 .5rem; }
-.lbx h5 { font: 700 1rem/1.3 system-ui, sans-serif; margin: 1rem 0 .5rem; }
-.lbx h6 { font: 700 .9rem/1.3 system-ui, sans-serif; margin: 1rem 0 .5rem; text-transform: uppercase; letter-spacing: .04em; }
+.lbx .lbx-title { font: 700 1.5rem/1.25 "Twemoji Country Flags", system-ui, sans-serif; margin: 0 0 .25rem; }
+.lbx .lbx-meta { font: .9rem/1.4 "Twemoji Country Flags", system-ui, sans-serif; color: #6b665d; margin: 0 0 1rem; }
+.lbx h3 { font: 700 1.2rem/1.3 "Twemoji Country Flags", system-ui, sans-serif; margin: 1.25rem 0 .5rem; }
+.lbx h4 { font: 700 1.05rem/1.3 "Twemoji Country Flags", system-ui, sans-serif; margin: 1rem 0 .5rem; }
+.lbx h5 { font: 700 1rem/1.3 "Twemoji Country Flags", system-ui, sans-serif; margin: 1rem 0 .5rem; }
+.lbx h6 { font: 700 .9rem/1.3 "Twemoji Country Flags", system-ui, sans-serif; margin: 1rem 0 .5rem; text-transform: uppercase; letter-spacing: .04em; }
 .lbx mark { color: #1f1d1a; background: #fff176; padding: 0 .1em; border-radius: 2px; }
 .lbx code { font: .9em/1.4 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; background: #efebe3; padding: .05em .3em; border-radius: 4px; }
 .lbx pre { background: #efebe3; padding: .75rem 1rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 .75rem; }
@@ -205,12 +205,12 @@ export const EXPORT_CSS = `
 .lbx-figure { margin: 0 0 1rem; }
 .lbx-figure img, .lbx-figure video { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 .lbx-figure audio { width: 100%; }
-.lbx figcaption, .lbx-caption { font: .9rem/1.4 system-ui, sans-serif; color: #6b665d; margin-top: .35rem; }
+.lbx figcaption, .lbx-caption { font: .9rem/1.4 "Twemoji Country Flags", system-ui, sans-serif; color: #6b665d; margin-top: .35rem; }
 .lbx-gallery { margin: 0 0 1rem; }
 .lbx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: .5rem; }
 .lbx-grid .lbx-figure { margin: 0; }
 .lbx-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; }
-.lbx-attachment, .lbx-link { font: .95rem/1.45 system-ui, sans-serif; }
+.lbx-attachment, .lbx-link { font: .95rem/1.45 "Twemoji Country Flags", system-ui, sans-serif; }
 .lbx-url { color: #6b665d; }
 @media (prefers-color-scheme: dark) {
   .lbx-page { background: #181715; }

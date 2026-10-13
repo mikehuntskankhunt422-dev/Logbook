@@ -22,6 +22,7 @@ import {
   type MediaMeta,
 } from '@logbook/core';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
+import { allFlags } from '../lib/flags.ts';
 import { tiltFor } from '../lib/motion.ts';
 
 type Of<T extends Block['type']> = Extract<Block, { type: T }>;
@@ -76,7 +77,7 @@ const EXTENSIONS = [
   Placeholder.configure({ placeholder: 'Write about your day…' }),
 ];
 
-type Palette = 'color' | 'highlight' | null;
+type Palette = 'color' | 'highlight' | 'flag' | null;
 
 export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'> & { autoFocus?: boolean }) {
   const latest = useRef({ block, onChange });
@@ -166,6 +167,7 @@ export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'>
           {btn('Strikethrough', <s>S</s>, editor.isActive('strike'), () => chain().toggleStrike().run())}
           {btn('Text colour', <span className="rt-swatch-a" style={{ borderBottomColor: (editor.getAttributes('textStyle').color as string | undefined) ?? 'currentColor' }}>A</span>, palette === 'color', () => setPalette((p) => (p === 'color' ? null : 'color')))}
           {btn('Highlight', '🖍', editor.isActive('highlight') || palette === 'highlight', () => setPalette((p) => (p === 'highlight' ? null : 'highlight')))}
+          {btn('Insert a flag', '🏳', palette === 'flag', () => setPalette((p) => (p === 'flag' ? null : 'flag')))}
           <select aria-label="Font" value={font} onChange={(e) => (e.target.value ? chain().setFontFamily(e.target.value).run() : chain().unsetFontFamily().run())}>
             <option value="">Default font</option>
             {FONTS.map((f) => (
@@ -196,7 +198,8 @@ export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'>
           {btn('Clear formatting', '⌫', false, () => chain().unsetAllMarks().clearNodes().run())}
         </div>
       )}
-      {focused && palette && (
+      {focused && palette === 'flag' && <FlagPicker onPick={(emoji) => (chain().insertContent(emoji).run(), setPalette(null))} />}
+      {focused && (palette === 'color' || palette === 'highlight') && (
         <div className="rt-palette" role="group" aria-label={palette === 'color' ? 'Text colours' : 'Highlighter colours'}>
           {(palette === 'color' ? TEXT_COLORS : HIGHLIGHT_COLORS).map((c) => (
             <button
@@ -258,6 +261,26 @@ export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'>
         </form>
       )}
       <EditorContent editor={editor} />
+    </div>
+  );
+}
+
+/** A searchable grid of flags; picking one types it where the cursor is. */
+function FlagPicker({ onPick }: { onPick: (emoji: string) => void }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const flags = allFlags().filter((f) => !q || f.name.toLowerCase().includes(q) || f.code.toLowerCase() === q);
+  return (
+    <div className="rt-flags" role="group" aria-label="Flags">
+      <input className="text-input" autoFocus aria-label="Find a country" placeholder="Find a country…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="rt-flag-grid">
+        {flags.map((f) => (
+          <button key={f.code} type="button" className="rt-flag" aria-label={`Flag of ${f.name}`} title={f.name} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(f.emoji)}>
+            {f.emoji}
+          </button>
+        ))}
+        {!flags.length && <p className="hint">No country by that name.</p>}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { WrongPasscodeError } from '@logbook/core';
+import { WrongPasscodeError, fontFor, fontStack, type Settings } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
 import { consumeReplaceFlag, href, useRoute, type Route } from './router.ts';
@@ -27,6 +27,7 @@ export function App() {
   const { journal, locked, settings } = useJournal();
   const route = useRoute();
   useTheme(settings.theme);
+  useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
   usePwaUpdates();
 
@@ -111,6 +112,20 @@ function useTheme(theme: 'system' | 'light' | 'dark') {
     if (theme === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', theme);
   }, [theme]);
+}
+
+/** Text size, line spacing and the writing font (Settings → Appearance, D91), on the whole app. */
+function useReadability({ textSize, lineSpacing, writingFont }: Pick<Settings, 'textSize' | 'lineSpacing' | 'writingFont'>) {
+  useEffect(() => {
+    const root = document.documentElement;
+    if (textSize === 'normal') root.removeAttribute('data-text-size');
+    else root.setAttribute('data-text-size', textSize);
+    if (lineSpacing === 'normal') root.removeAttribute('data-line-spacing');
+    else root.setAttribute('data-line-spacing', lineSpacing);
+    const font = fontFor(writingFont);
+    if (font) root.style.setProperty('--font-body', fontStack(font));
+    else root.style.removeProperty('--font-body');
+  }, [textSize, lineSpacing, writingFont]);
 }
 
 function useAutoLock(minutes: number, lock: () => void) {

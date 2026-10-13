@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
+import { FONTS, fontFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
@@ -56,6 +56,18 @@ export function SettingsView() {
   );
 }
 
+const TEXT_SIZES = [
+  ['normal', 'Normal'],
+  ['large', 'Large'],
+  ['larger', 'Larger'],
+  ['largest', 'Largest'],
+] as const;
+const LINE_SPACINGS = [
+  ['normal', 'Normal'],
+  ['relaxed', 'Relaxed'],
+  ['loose', 'Loose'],
+] as const;
+
 function AppearancePanel() {
   const { journal, settings } = useJournal();
   return (
@@ -68,7 +80,40 @@ function AppearancePanel() {
           </button>
         ))}
       </div>
-      <p className="hint">Animations follow your device's reduce-motion setting.</p>
+      <h3 className="settings-sub">Easier reading</h3>
+      <p className="settings-label" id="text-size-l">
+        Text size
+      </p>
+      <div className="segmented" role="group" aria-labelledby="text-size-l">
+        {TEXT_SIZES.map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={settings.textSize === value} onClick={() => void journal.updateSettings({ textSize: value })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="settings-label" id="line-spacing-l">
+        Line spacing
+      </p>
+      <div className="segmented" role="group" aria-labelledby="line-spacing-l">
+        {LINE_SPACINGS.map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={settings.lineSpacing === value} onClick={() => void journal.updateSettings({ lineSpacing: value })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="field">
+        <label htmlFor="writing-font">Writing font</label>
+        <select id="writing-font" className="text-input" value={fontFor(settings.writingFont)?.family ?? ''} onChange={(e) => void journal.updateSettings({ writingFont: e.target.value })}>
+          <option value="">Newsreader (the journal font)</option>
+          {FONTS.filter((f) => f.family !== 'Newsreader').map((f) => (
+            <option key={f.family} value={f.family}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="reading-sample">The quick brown fox wrote about its day in the forest. 🦊 🇯🇵 🇧🇷</p>
+      <p className="hint">The writing font is how your entries look on this device; to set words in a font of their own, pick it in the text toolbar. Animations follow your device's reduce-motion setting.</p>
     </section>
   );
 }

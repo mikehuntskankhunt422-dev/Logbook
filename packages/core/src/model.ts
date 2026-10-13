@@ -125,6 +125,11 @@ export const settingsSchema = z.object({
   backupSnoozedUntil: z.string().nullable().default(null),
   autoLockMinutes: z.number().int().min(0).max(240).default(5),
   compressLargeMedia: z.boolean().default(true),
+  /** Easier reading (D91): text size and line spacing across the app, and the writing font. */
+  textSize: z.enum(['normal', 'large', 'larger', 'largest']).default('normal'),
+  lineSpacing: z.enum(['normal', 'relaxed', 'loose']).default('normal'),
+  /** One of FONTS' families (richtext.ts), or '' for the journal font. */
+  writingFont: z.string().max(60).default(''),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});

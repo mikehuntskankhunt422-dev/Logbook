@@ -74,6 +74,7 @@ export const FONTS: readonly FontChoice[] = [
   { family: 'Newsreader', label: 'Newsreader (the journal font)', fallback: 'Georgia, serif' },
   { family: 'Bricolage Grotesque', label: 'Bricolage (clean)', fallback: 'system-ui, sans-serif' },
   { family: 'Atkinson Hyperlegible', label: 'Atkinson Hyperlegible (easy to read)', fallback: 'system-ui, sans-serif' },
+  { family: 'OpenDyslexic', label: 'OpenDyslexic (for dyslexia)', fallback: 'system-ui, sans-serif' },
   { family: 'Lora', label: 'Lora (book)', fallback: 'Georgia, serif' },
   { family: 'Playfair Display', label: 'Playfair (elegant)', fallback: 'Georgia, serif' },
   { family: 'Caveat', label: 'Caveat (handwriting)', fallback: 'cursive' },
@@ -85,9 +86,15 @@ export function fontFor(family: unknown): FontChoice | undefined {
   return typeof family === 'string' ? FONTS.find((f) => f.family.toLowerCase() === family.toLowerCase()) : undefined;
 }
 
+/**
+ * The colour flag font (Twemoji Country Flags, CC-BY 4.0), first in every stack in the app: it holds
+ * only flags (its `unicode-range`), which Windows' own emoji font draws as two letters.
+ */
+export const FLAG_FONT = 'Twemoji Country Flags';
+
 /** CSS `font-family` value for one of our fonts. */
 export function fontStack(font: FontChoice): string {
-  return `'${font.family}', ${font.fallback}`;
+  return `'${FLAG_FONT}', '${font.family}', ${font.fallback}`;
 }
 
 /** A heading's level, 1 to 6 (documents from before H1–H6 only have 2 and 3). */

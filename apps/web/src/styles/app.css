@@ -1,7 +1,10 @@
 /* Logbook design tokens. Light is the default; dark follows the OS unless the user picks a theme. */
 :root {
-  --font-ui: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', system-ui, sans-serif;
-  --font-body: 'Newsreader Variable', 'Newsreader', Georgia, serif;
+  /* The flag font first: it only holds flags (its unicode-range), which Windows can't draw (D91). */
+  --font-ui: 'Twemoji Country Flags', 'Bricolage Grotesque Variable', 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'Twemoji Country Flags', 'Newsreader Variable', 'Newsreader', Georgia, serif;
+  /* The writing's line spacing (Settings → Appearance). */
+  --rt-line: 1.65;
 
   --bg: #fbf7f1;
   --bg-elev: #ffffff;
@@ -97,9 +100,31 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+/* Easier reading (Settings → Appearance, D91): everything is sized in rem, so the root scales it all. */
+html[data-text-size='large'] {
+  font-size: 112.5%;
+}
+html[data-text-size='larger'] {
+  font-size: 125%;
+}
+html[data-text-size='largest'] {
+  font-size: 140%;
+}
+html[data-line-spacing='relaxed'] {
+  --rt-line: 1.9;
+}
+html[data-line-spacing='loose'] {
+  --rt-line: 2.2;
+}
+html[data-line-spacing='relaxed'] body {
+  line-height: 1.7;
+}
+html[data-line-spacing='loose'] body {
+  line-height: 1.9;
 }
 
 img,
@@ -189,7 +214,7 @@ textarea {
   background: linear-gradient(135deg, #ff5f6d, #ffc371);
   display: grid;
   place-items: center;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .nav {
@@ -730,7 +755,7 @@ button.tag[aria-pressed='true'] {
 .rt {
   font-family: var(--font-body);
   font-size: 1.18rem;
-  line-height: 1.65;
+  line-height: var(--rt-line);
   border-radius: var(--radius);
 }
 .rt .ProseMirror {
@@ -1844,4 +1869,54 @@ mark {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
   overflow-wrap: anywhere;
+}
+
+/* Settings → Appearance: easier reading */
+.settings-sub {
+  font-size: 1rem;
+  margin: 1.2em 0 0.4em;
+}
+.settings-label {
+  margin: 0.8em 0 0.3em;
+  font-weight: 600;
+}
+.reading-sample {
+  font-family: var(--font-body);
+  font-size: 1.18rem;
+  line-height: var(--rt-line);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-sunk);
+}
+
+/* Flag picker in the text toolbar */
+.rt-flags {
+  margin-bottom: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  max-width: 28rem;
+}
+.rt-flag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.4rem, 1fr));
+  gap: 2px;
+  max-height: 12rem;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+.rt-flag {
+  font-family: var(--font-ui);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.rt-flag:hover,
+.rt-flag:focus-visible {
+  background: var(--bg-sunk);
 }

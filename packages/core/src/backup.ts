@@ -333,8 +333,8 @@ export async function importBackup(journal: Journal, blob: Blob, opts: ImportOpt
     await journal.clearContent();
     const s = settingsSchema.safeParse(lb.settings ?? {});
     if (s.success) {
-      const { theme, backupReminderDays, autoLockMinutes, compressLargeMedia } = s.data;
-      await journal.updateSettings({ theme, backupReminderDays, autoLockMinutes, compressLargeMedia });
+      const { theme, backupReminderDays, autoLockMinutes, compressLargeMedia, textSize, lineSpacing, writingFont } = s.data;
+      await journal.updateSettings({ theme, backupReminderDays, autoLockMinutes, compressLargeMedia, textSize, lineSpacing, writingFont });
     }
   }
 
