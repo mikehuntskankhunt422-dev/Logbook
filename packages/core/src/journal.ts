@@ -439,10 +439,30 @@ export class Journal {
     await this.saveEntry({ ...e, deletedAt: new Date().toISOString() });
   }
 
-  async restoreEntry(id: string): Promise<void> {
+  async restoreEntry(id: string, now = new Date()): Promise<void> {
     const e = await this.getEntry(id);
     if (!e?.deletedAt) return;
-    await this.saveEntry({ ...e, deletedAt: null });
+    // An entry that expired comes back without its expiry, or it would go straight back.
+    await this.saveEntry({ ...e, deletedAt: null, expiresAt: isExpired(e, now) ? null : e.expiresAt });
+  }
+
+  /**
+   * Entries whose expiry has passed go to the trash, from where they can still be restored (D91).
+   * `keep` is the entry open in the editor: it waits until it's closed.
+   */
+  async trashExpired(now = new Date(), keep?: string): Promise<number> {
+    let trashed = 0;
+    for (const e of await this.listEntries()) {
+      if (e.id === keep || !isExpired(e, now)) continue;
+      try {
+        await this.saveEntry({ ...e, deletedAt: now.toISOString() }, { expectedRev: e.rev });
+        trashed++;
+      } catch (err) {
+        // Edited meanwhile: the next sweep looks again.
+        if (!(err instanceof ConflictError)) throw err;
+      }
+    }
+    return trashed;
   }
 
   /** Permanent: removes the entry and any media no other entry uses. */
@@ -638,6 +658,12 @@ export class Journal {
   getVault(): Vault | undefined {
     return this.vault;
   }
+}
+
+/** Whether an entry's expiry time has come. */
+export function isExpired(entry: Pick<Entry, 'expiresAt'>, now: Date): boolean {
+  const at = entry.expiresAt ? Date.parse(entry.expiresAt) : Number.NaN;
+  return Number.isFinite(at) && at <= now.getTime();
 }
 
 export class ConflictError extends Error {

@@ -481,7 +481,7 @@ function TrashPanel() {
   return (
     <section className="panel" aria-labelledby="trash-h">
       <h2 id="trash-h">Recently deleted</h2>
-      <p className="hint">Deleted entries stay here for 30 days.</p>
+      <p className="hint">Deleted and expired entries stay here for 30 days.</p>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
         {trash.map((e) => (
           <li key={e.id} className="row" style={{ justifyContent: 'space-between' }}>

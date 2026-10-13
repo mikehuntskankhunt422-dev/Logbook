@@ -36,6 +36,17 @@ export function App() {
     if (!locked) void journal.purgeExpiredTrash().then(() => journal.collectGarbage());
   }, [journal, locked]);
 
+  // Entries that were set to expire go to the trash when their time comes (D91), checked every
+  // minute; the one open in the editor waits until it's closed.
+  const openEntry = route.name === 'entry' ? route.id : undefined;
+  useEffect(() => {
+    if (locked) return;
+    const sweep = () => void journal.trashExpired(new Date(), openEntry).catch(() => {});
+    sweep();
+    const timer = setInterval(sweep, 60_000);
+    return () => clearInterval(timer);
+  }, [journal, locked, openEntry]);
+
   const firstRoute = useRef(true);
   const routeKey = route.name === 'entry' || route.name === 'order' ? route.id : '';
   useEffect(() => {

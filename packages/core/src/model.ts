@@ -95,6 +95,10 @@ export const entrySchema = z.object({
   updatedAt: z.string(),
   rev: z.number().int().nonnegative(),
   deletedAt: z.string().nullable().default(null),
+  /** When the entry moves to the trash by itself (an ISO time), if it should (D91). */
+  expiresAt: z.string().max(40).nullable().default(null),
+  /** An audio file that plays while the entry is open (D91). */
+  musicId: id.nullable().default(null),
 });
 export type Entry = z.infer<typeof entrySchema>;
 
@@ -145,6 +149,7 @@ export function mediaKind(mime: string): 'image' | 'video' | 'audio' | 'file' {
 export function referencedMediaIds(entry: Entry): string[] {
   const ids = new Set<string>();
   if (entry.cover.kind === 'photo') ids.add(entry.cover.mediaId);
+  if (entry.musicId) ids.add(entry.musicId);
   for (const b of entry.blocks) {
     if ('mediaId' in b) ids.add(b.mediaId);
     if (b.type === 'gallery') for (const item of b.items) ids.add(item.mediaId);

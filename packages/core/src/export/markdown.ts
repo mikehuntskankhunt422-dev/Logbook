@@ -48,6 +48,7 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
   out.push(`${'#'.repeat(level)} ${keepClosingHashes(escapeLine(escapeMd(entry.title || 'Untitled')))}`);
   out.push(`*${metaLine(entry, opts).map(escapeMd).join(' · ')}*`);
   if (entry.cover.kind === 'photo') out.push(mediaMd(media(entry.cover.mediaId), 'Cover photo', ''));
+  if (entry.musicId) out.push(mediaMd(media(entry.musicId), 'Audio', 'Background music'));
   for (const b of entry.blocks) {
     const md = blockMd(b, media, ctx);
     if (md) out.push(md);
@@ -58,6 +59,7 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
 export function entryToText(entry: Entry, media: MediaLookup, opts: RenderOptions = {}): string {
   const ctx: Ctx = { mode: 'text', shift: 0 };
   const out = [`${entry.title || 'Untitled'}\n${metaLine(entry, opts).join(' · ')}`];
+  if (entry.musicId) out.push(mediaText(media(entry.musicId), 'audio', 'Background music'));
   for (const b of entry.blocks) {
     const text = blockText(b, media, ctx);
     if (text) out.push(text);

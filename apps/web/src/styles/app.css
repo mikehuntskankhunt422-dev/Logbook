@@ -1920,3 +1920,60 @@ mark {
 .rt-flag:focus-visible {
   background: var(--bg-sunk);
 }
+
+/* Entry extras: expiry and background music (D91) */
+.hero-expiry {
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0.85;
+  margin-top: 4px;
+}
+.expiry-panel {
+  margin-top: 12px;
+}
+.music-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+}
+.music-name {
+  flex: 1;
+  min-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.music-playing {
+  animation: music-pulse 1.6s ease-in-out infinite;
+}
+@keyframes music-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+.entry-expiry-chip {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.85);
+  color: #1d1a17;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}

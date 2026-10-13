@@ -79,6 +79,28 @@ const EXTENSIONS = [
 
 type Palette = 'color' | 'highlight' | 'flag' | null;
 
+/** Whether a mouse button, finger or pen is down anywhere on the page. */
+let pressing = false;
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', () => (pressing = true), true);
+  for (const type of ['pointerup', 'pointercancel'] as const) document.addEventListener(type, () => (pressing = false), true);
+}
+
+/**
+ * Runs `fn` once any press in progress has ended and its click has landed. Hiding the toolbar moves
+ * what's below it up; done on the press, that would move a button out from under the pointer.
+ */
+function afterPress(fn: () => void) {
+  if (!pressing) return fn();
+  const done = () => {
+    document.removeEventListener('pointerup', done, true);
+    document.removeEventListener('pointercancel', done, true);
+    setTimeout(fn, 0);
+  };
+  document.addEventListener('pointerup', done, true);
+  document.addEventListener('pointercancel', done, true);
+}
+
 export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'> & { autoFocus?: boolean }) {
   const latest = useRef({ block, onChange });
   latest.current = { block, onChange };
@@ -109,7 +131,10 @@ export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'>
     onFocus: () => setFocused(true),
     onBlur: ({ event }) => {
       const next = (event as FocusEvent).relatedTarget as Node | null;
-      if (!next || !wrapper.current?.contains(next)) setFocused(false);
+      if (next && wrapper.current?.contains(next)) return;
+      afterPress(() => {
+        if (!wrapper.current?.contains(document.activeElement)) setFocused(false);
+      });
     },
   });
 

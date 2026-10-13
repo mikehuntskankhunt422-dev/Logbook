@@ -43,11 +43,11 @@ test('rich text: headings, a checklist, a table, colour, highlight and fonts', a
   await expect(editor.locator('span[style*="color"]')).toHaveText('tickets');
 
   // A table, typed into, after the words (not over them). The editor takes the focus back from the
-  // font menu a frame later, with the words still selected: wait for that before moving on.
+  // font menu a frame later, with the words still selected: wait for that, then for the editor
+  // itself (not just the page) to have let go of them, before pressing Enter.
   await expect(editor).toBeFocused();
-  await page.waitForTimeout(100);
-  await editor.locator('p', { hasText: 'Remember the' }).click();
-  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => editor.evaluate((el) => (el as HTMLElement & { editor: { state: { selection: { empty: boolean } } } }).editor.state.selection.empty)).toBe(true);
   await page.keyboard.press('Enter');
   await toolbar.getByRole('button', { name: 'Table' }).click();
   await page.keyboard.type('Day');
