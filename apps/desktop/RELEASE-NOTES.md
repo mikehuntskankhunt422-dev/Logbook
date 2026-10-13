@@ -1,3 +1,7 @@
+**0.3.1 fixes the flag picker**, which listed some countries twice (Germany, France, the United Kingdom, Russia and ten more), the second time with a flag that showed as two letters. Each country is listed once now.
+
+What came in 0.3.0:
+
 **Logbook for Android.** Logbook now comes as an Android app (Android 7 or later): the file ending in `.apk` below. Your journal is kept inside the app on your phone; move it between phone and computer with a backup file (**Settings → Backups**). It isn't on Google Play: open the release page on your phone, tap the `.apk`, and allow your browser to install apps when Android asks. Later versions install over it.
 
 **Richer writing.** The toolbar over your text now has headings 1 to 6 (as many as you like), underline, strikethrough, colours and highlights, eight fonts, alignment, **checklists with tick boxes**, **tables**, quotes and code, and a picker for **country flags** 🇯🇵, which now show on every computer, Windows too. **Settings → Appearance → Easier reading** sets the text size, line spacing and the font you write in, including Atkinson Hyperlegible and OpenDyslexic.
