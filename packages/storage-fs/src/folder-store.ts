@@ -32,8 +32,9 @@ export const FOLDER_FORMAT = 'logbook';
 /**
  * 2: entries can carry fields and formatting that version 1 apps would drop when saving (D91), so
  * a folder this version opens is marked 2, and those apps then ask to be updated instead.
+ * 3: entries can carry a music link (D93), which version 2 apps would drop the same way.
  */
-export const FOLDER_VERSION = 2;
+export const FOLDER_VERSION = 3;
 
 const KEY_FILES: Record<'bookDraft' | 'bookOrders', string> = {
   bookDraft: '.logbook/book-draft.json',

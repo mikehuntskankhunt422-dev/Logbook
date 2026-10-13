@@ -602,8 +602,21 @@ button.tag[aria-pressed='true'] {
   position: absolute;
   top: 12px;
   right: 12px;
+  left: 12px;
   display: flex;
+  justify-content: flex-end;
   gap: 6px;
+}
+.hero-tools .btn {
+  flex: none;
+}
+/* Five buttons are wider than a phone: they scroll sideways rather than off the edge. */
+@media (max-width: 520px) {
+  .entry-hero .hero-tools {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
 }
 .hero-tools .btn {
   background: rgb(255 255 255 / 0.9);
@@ -1983,15 +1996,50 @@ mark {
   margin-top: 12px;
 }
 .music-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  gap: 10px;
   margin-top: 12px;
   padding: 8px 12px;
   border-radius: var(--radius);
   background: var(--bg-elev);
   border: 1px solid var(--line);
+}
+.music-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.music-link-form {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+.music-link-form .text-input {
+  flex: 1;
+  min-width: 12rem;
+}
+.music-link-form .hint,
+.music-link-form .error {
+  font-weight: 400;
+}
+/* A site's player stays in view, at least 200 pixels tall (YouTube asks for that). */
+.music-player {
+  width: min(100%, 400px);
+  aspect-ratio: 16 / 9;
+  min-height: 200px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+}
+.music-player iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.music-problem {
+  margin: 0;
 }
 .music-name {
   flex: 1;

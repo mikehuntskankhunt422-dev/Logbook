@@ -126,6 +126,7 @@ describe('entries as documents', () => {
     deletedAt: null,
     expiresAt: null,
     musicId: null,
+    musicUrl: null,
   };
 
   it('Markdown with front matter, the photo and the link', () => {
@@ -141,6 +142,14 @@ describe('entries as documents', () => {
     expect(entryToMarkdown(withMusic, lookup)).toContain('[🔊 waves.mp3](media/waves.mp3)\n*Background music*');
     expect(entryHtml(withMusic, lookup)).toContain('<audio src="media/waves.mp3" controls preload="metadata"></audio><figcaption>Background music</figcaption>');
     expect(entryHtml(withMusic, lookup, { mode: 'print' })).not.toContain('waves.mp3');
+  });
+
+  it('links background music from the web in exports, not on paper (D93)', () => {
+    const withLink = { ...entry, musicUrl: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' };
+    expect(entryToMarkdown(withLink, () => undefined)).toContain('🎵 Background music: [https://www.youtube.com/watch?v=jfKfPfyJRdk](https://www.youtube.com/watch?v=jfKfPfyJRdk)');
+    expect(entryHtml(withLink, () => undefined)).toContain('🎵 Background music: <a href="https://www.youtube.com/watch?v=jfKfPfyJRdk"');
+    expect(entryHtml(withLink, () => undefined, { mode: 'print' })).not.toContain('youtube');
+    expect(entryToText(withLink, () => undefined)).toContain('Background music: https://www.youtube.com/watch?v=jfKfPfyJRdk');
   });
 
   it('trims captions, so they stay italic and never turn into a list', () => {

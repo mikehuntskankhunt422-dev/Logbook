@@ -17,8 +17,11 @@ import { isSealed, type SealedRecord } from './storage.ts';
  */
 
 export const BACKUP_FORMAT = 'logbook-backup';
-/** 2: entries can carry fields and formatting that version 1 apps would drop (D91); they refuse it. */
-export const BACKUP_VERSION = 2;
+/**
+ * 2: entries can carry fields and formatting that version 1 apps would drop (D91); they refuse it.
+ * 3: entries can carry a music link (D93), likewise.
+ */
+export const BACKUP_VERSION = 3;
 
 export interface BackupManifest {
   format: typeof BACKUP_FORMAT;

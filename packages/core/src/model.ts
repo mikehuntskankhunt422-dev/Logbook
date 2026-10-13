@@ -99,6 +99,8 @@ export const entrySchema = z.object({
   expiresAt: z.string().max(40).nullable().default(null),
   /** An audio file that plays while the entry is open (D91). */
   musicId: id.nullable().default(null),
+  /** Or a link that plays instead: a video or live stream, a sound file, a radio stream (D93). */
+  musicUrl: z.string().max(2000).nullable().default(null),
 });
 export type Entry = z.infer<typeof entrySchema>;
 
