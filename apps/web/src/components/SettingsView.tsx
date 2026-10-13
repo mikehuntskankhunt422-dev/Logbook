@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { FONTS, fontFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
+import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
@@ -70,6 +71,7 @@ const LINE_SPACINGS = [
 
 function AppearancePanel() {
   const { journal, settings } = useJournal();
+  const [prompts, setPrompts] = useState(promptsOn);
   return (
     <section className="panel" aria-labelledby="appearance-h">
       <h2 id="appearance-h">Appearance</h2>
@@ -114,6 +116,17 @@ function AppearancePanel() {
       </div>
       <p className="reading-sample">The quick brown fox wrote about its day in the forest. 🦊 🇯🇵 🇧🇷</p>
       <p className="hint">The writing font is how your entries look on this device; to set words in a font of their own, pick it in the text toolbar. Animations follow your device's reduce-motion setting.</p>
+      <label className="row" style={{ marginTop: 10 }}>
+        <input
+          type="checkbox"
+          checked={prompts}
+          onChange={(e) => {
+            setPromptsOn(e.target.checked);
+            setPrompts(e.target.checked);
+          }}
+        />{' '}
+        💭 Show a writing prompt on new entries
+      </label>
     </section>
   );
 }

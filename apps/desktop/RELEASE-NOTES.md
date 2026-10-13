@@ -1,3 +1,9 @@
+**Writing prompts.** A new entry now suggests a question when the page is blank, such as "What made you smile today?". **Write about this** puts it at the top of your text with the cursor ready below; **🔀 Another** picks a different one; ✕ hides it. Turn them off in **Settings → Appearance**.
+
+**Fixed:** leaving a new entry within a second of typing no longer brings you back to it.
+
+What came in 0.4.0:
+
 **Music from a link.** 🎵 Music on an entry now takes a link as well as a sound file: **🔗 Paste a link…** and press **Play**. YouTube videos and live streams (Lofi Girl, say), Vimeo, Rumble, Dailymotion, Twitch, Kick and Streamable play in the site's own player, right there in the music bar, ads and all (you can skip or mute them with the player's buttons). A link to a sound file or an internet radio station plays like a sound file. If a site won't let its video play inside Logbook, the bar says so and offers to open it in your browser. Links need the internet.
 
 **Fixed:** on phones, the buttons on an entry's cover no longer run off the edge of the screen; they scroll sideways. The flag picker lists each country once, and only flags Logbook can draw (from 0.3.1 and 0.3.2).
