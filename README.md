@@ -4,7 +4,7 @@ A private journal for your computer: write about your days with photos, video, v
 
 Logbook is a free app for Windows, macOS, Linux and Android phones. Your journal is kept as ordinary files on your own device, never on our servers. The only thing that costs money is a printed book, if you order one.
 
-> **Status: preview (0.2.0).** Writing, photos and media, search, the calendar, backups, the passcode lock, the book builder with its page-by-page preview, export to Markdown, text, web page or PDF, and automatic updates all work. **Not yet:** ordering a printed book (it opens once Logbook's print service is online) and a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
+> **Status: preview (0.3.0).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, the book builder with its page-by-page preview, export to Markdown, text, web page or PDF, a clock with alarms and timers, automatic updates and an Android app all work. **Not yet:** ordering a printed book (it opens once Logbook's print service is online) and a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
 
 ## Download
 
@@ -15,7 +15,7 @@ Get the latest version from the [Releases page](https://github.com/mikehuntskank
 | Windows 10 or 11 | `Logbook_<version>_x64-setup.exe` | Installs for your user account; no administrator needed |
 | macOS 10.15 or later | `Logbook_<version>_universal.dmg` | Apple silicon and Intel |
 | Linux | `.AppImage`, `.deb` or `.rpm` | The AppImage runs on most distributions; `.deb` for Ubuntu and Debian, `.rpm` for Fedora |
-| Android 7 or later | `Logbook-<version>.apk` | From the release after 0.2.0; not on Google Play |
+| Android 7 or later | `Logbook-<version>.apk` | From 0.3.0; not on Google Play |
 
 Each release lists the files' SHA-256 checksums in `SHA256SUMS.txt`.
 
