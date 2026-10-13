@@ -744,16 +744,132 @@ button.tag[aria-pressed='true'] {
 .rt:focus-within {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 40%, transparent);
 }
+.rt h1,
 .rt h2,
-.rt h3 {
+.rt h3,
+.rt h4,
+.rt h5,
+.rt h6 {
   font-family: var(--font-ui);
   margin: 0.8em 0 0.3em;
+  line-height: 1.25;
+}
+.rt h1 {
+  font-size: 1.85rem;
 }
 .rt h2 {
   font-size: 1.5rem;
 }
 .rt h3 {
   font-size: 1.2rem;
+}
+.rt h4 {
+  font-size: 1.08rem;
+}
+.rt h5 {
+  font-size: 1rem;
+}
+.rt h6 {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rt ul,
+.rt ol {
+  padding-left: 1.4em;
+  margin: 0 0 0.6em;
+}
+.rt hr {
+  border: 0;
+  border-top: 2px solid var(--line);
+  margin: 1em 0;
+}
+.rt mark {
+  /* Dark text on the light highlighter, in the dark theme too (TipTap sets color: inherit). */
+  color: #1d1a17 !important;
+  border-radius: 3px;
+  padding: 0 0.1em;
+}
+.rt code {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--bg-sunk);
+  padding: 0.05em 0.3em;
+  border-radius: 5px;
+}
+.rt pre {
+  background: var(--bg-sunk);
+  padding: 10px 14px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0 0 0.6em;
+}
+.rt pre code {
+  background: none;
+  padding: 0;
+}
+/* Checklists */
+.rt ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.rt ul[data-type='taskList'] li {
+  display: flex;
+  gap: 0.5em;
+  align-items: flex-start;
+}
+.rt ul[data-type='taskList'] li > label {
+  flex: none;
+  margin-top: 0.3em;
+}
+.rt ul[data-type='taskList'] li > label input {
+  width: 1.05em;
+  height: 1.05em;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.rt ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.rt ul[data-type='taskList'] li[data-checked='true'] > div {
+  text-decoration: line-through;
+  color: var(--ink-faint);
+}
+/* Tables */
+.rt .tableWrapper {
+  overflow-x: auto;
+  margin: 0 0 0.6em;
+}
+.rt table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+.rt th,
+.rt td {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  vertical-align: top;
+  position: relative;
+  min-width: 3em;
+}
+.rt th {
+  background: var(--bg-sunk);
+  font-family: var(--font-ui);
+  text-align: left;
+}
+.rt th > p,
+.rt td > p {
+  margin: 0;
+}
+.rt .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  pointer-events: none;
 }
 .rt p {
   margin: 0 0 0.6em;
@@ -780,6 +896,7 @@ button.tag[aria-pressed='true'] {
 .rt-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
   padding: 4px;
   margin-bottom: 4px;
@@ -787,6 +904,67 @@ button.tag[aria-pressed='true'] {
   background: var(--bg-elev);
   border: 1px solid var(--line);
   width: fit-content;
+  max-width: 100%;
+  position: sticky;
+  top: 6px;
+  z-index: 5;
+  box-shadow: var(--shadow);
+}
+.rt-toolbar select {
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-sunk);
+  color: inherit;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  padding: 0 6px;
+  max-width: 11rem;
+}
+.rt-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rt-swatch-a {
+  border-bottom: 3px solid currentColor;
+  line-height: 1;
+}
+.rt-table-tools button {
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+.rt-palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.rt-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  cursor: pointer;
+}
+.rt-swatch:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.rt-unreadable .rt-plain {
+  white-space: pre-wrap;
+}
+@media (max-width: 640px) {
+  .rt-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 100%;
+    scrollbar-width: thin;
+  }
+  .rt-toolbar > * {
+    flex: none;
+  }
 }
 .rt-toolbar button {
   min-width: 36px;

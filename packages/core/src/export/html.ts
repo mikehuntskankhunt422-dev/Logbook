@@ -1,5 +1,7 @@
 import type { Block, Entry, RichNode } from '../model.ts';
 import { esc, shortUrl } from '../print/html.ts';
+import { alignStyle, codeBlockHtml, isChecked, tableHtml, wrapMark } from '../rich-html.ts';
+import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
 import { mediaLabel, metaLine, safeHref, type ExportMedia, type MediaLookup, type RenderOptions } from './common.ts';
 
 /**
@@ -92,25 +94,34 @@ function anchor(href: string, text: string): string {
 
 // ── rich text ────────────────────────────────────────────────────────────────────────────────────
 
-const MARK_TAGS: Record<string, string> = { bold: 'strong', italic: 'em', strike: 's', underline: 'u' };
-
 /** HTML for a TipTap document, with clickable links. Unknown nodes keep their words. */
 export function richTextToExportHtml(doc: RichNode | undefined): string {
-  return doc ? node(doc) : '';
+  return doc ? node(doc, hasTopHeading(doc)) : '';
 }
 
-function node(n: RichNode): string {
+/** `topHeading`: the document has an H1, which goes just below the entry title (`h2`, D91). */
+function node(n: RichNode, topHeading: boolean): string {
   const kids = () => inline(n.content ?? []);
-  const blocks = () => (n.content ?? []).map(node).join('');
+  const blocks = (of: RichNode = n) => (of.content ?? []).map((c) => node(c, topHeading)).join('');
   switch (n.type) {
     case 'doc':
       return blocks();
     case 'paragraph':
-      return n.content?.length ? `<p>${kids()}</p>` : '';
+      return n.content?.length ? `<p${alignStyle(n)}>${kids()}</p>` : '';
     case 'heading': {
-      const tag = n.attrs?.['level'] === 3 ? 'h4' : 'h3';
-      return `<${tag}>${kids()}</${tag}>`;
+      const tag = `h${outputHeadingLevel(n, 2, topHeading)}`;
+      return `<${tag}${alignStyle(n)}>${kids()}</${tag}>`;
     }
+    case 'taskList':
+      return `<ul class="lbx-tasks">${blocks()}</ul>`;
+    case 'taskItem': {
+      const done = isChecked(n);
+      return `<li class="lbx-task${done ? ' lbx-done' : ''}"><input type="checkbox" disabled${done ? ' checked' : ''} aria-label="${done ? 'Done' : 'Not done'}"><div>${blocks()}</div></li>`;
+    }
+    case 'codeBlock':
+      return codeBlockHtml(n);
+    case 'table':
+      return `<div class="lbx-table">${tableHtml(n, (c) => blocks(c))}</div>`;
     case 'bulletList':
       return `<ul>${blocks()}</ul>`;
     case 'orderedList': {
@@ -147,10 +158,7 @@ function inline(nodes: RichNode[]): string {
 function leaf(n: RichNode): string {
   if (n.type === 'hardBreak') return '<br>';
   let html = n.type === 'text' ? esc(n.text ?? '') : inline(n.content ?? []);
-  for (const m of n.marks ?? []) {
-    const tag = MARK_TAGS[m.type];
-    if (tag) html = `<${tag}>${html}</${tag}>`;
-  }
+  for (const m of n.marks ?? []) html = wrapMark(m, html);
   return html;
 }
 
@@ -174,6 +182,21 @@ export const EXPORT_CSS = `
 .lbx .lbx-meta { font: .9rem/1.4 system-ui, sans-serif; color: #6b665d; margin: 0 0 1rem; }
 .lbx h3 { font: 700 1.2rem/1.3 system-ui, sans-serif; margin: 1.25rem 0 .5rem; }
 .lbx h4 { font: 700 1.05rem/1.3 system-ui, sans-serif; margin: 1rem 0 .5rem; }
+.lbx h5 { font: 700 1rem/1.3 system-ui, sans-serif; margin: 1rem 0 .5rem; }
+.lbx h6 { font: 700 .9rem/1.3 system-ui, sans-serif; margin: 1rem 0 .5rem; text-transform: uppercase; letter-spacing: .04em; }
+.lbx mark { color: #1f1d1a; background: #fff176; padding: 0 .1em; border-radius: 2px; }
+.lbx code { font: .9em/1.4 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; background: #efebe3; padding: .05em .3em; border-radius: 4px; }
+.lbx pre { background: #efebe3; padding: .75rem 1rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 .75rem; }
+.lbx pre code { background: none; padding: 0; }
+.lbx-table { overflow-x: auto; margin: 0 0 .75rem; }
+.lbx table { border-collapse: collapse; width: 100%; }
+.lbx th, .lbx td { border: 1px solid #d8d2c6; padding: .35rem .6rem; vertical-align: top; text-align: left; }
+.lbx th { background: #f3efe7; }
+.lbx td > :last-child, .lbx th > :last-child { margin-bottom: 0; }
+.lbx-tasks { list-style: none; padding-left: .25rem; }
+.lbx-task { display: flex; gap: .5rem; align-items: baseline; }
+.lbx-task > div { flex: 1; }
+.lbx-done > div { text-decoration: line-through; color: #6b665d; }
 .lbx p { margin: 0 0 .75rem; }
 .lbx blockquote { margin: 0 0 .75rem; padding-left: 1rem; border-left: 3px solid #d8d2c6; color: #4a463f; }
 .lbx ul, .lbx ol { margin: 0 0 .75rem; padding-left: 1.5rem; }
@@ -196,6 +219,8 @@ export const EXPORT_CSS = `
   .lbx-page .lbx-entry, .lbx-page hr { border-color: #34312c; }
   .lbx-page blockquote { color: #c9c3b8; border-color: #4a463f; }
   .lbx-page a { color: #8bb8f0; }
+  .lbx-page code, .lbx-page pre, .lbx-page th { background: #26241f; }
+  .lbx-page th, .lbx-page td { border-color: #4a463f; }
 }
 @media print {
   @page { margin: 18mm 16mm; }
@@ -203,7 +228,7 @@ export const EXPORT_CSS = `
   .lbx, .lbx-page .lbx { color: #000; font-size: 11pt; }
   .lbx-page .lbx-header h1 { color: #000; }
   .lbx .lbx-title { break-after: avoid; }
-  .lbx-figure, .lbx-attachment, .lbx-link { break-inside: avoid; }
+  .lbx-figure, .lbx-attachment, .lbx-link, .lbx tr, .lbx pre { break-inside: avoid; }
   .lbx-entry > .lbx-figure img { max-height: 120mm; width: auto; }
   .lbx a { color: inherit; text-decoration: none; }
 }

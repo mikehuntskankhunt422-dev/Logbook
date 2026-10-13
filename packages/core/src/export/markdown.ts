@@ -1,5 +1,6 @@
 import type { Block, Entry, RichNode } from '../model.ts';
 import { shortUrl } from '../print/html.ts';
+import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
 import { mediaLabel, metaLine, safeHref, type MediaLookup, type RenderOptions } from './common.ts';
 
 /**
@@ -12,8 +13,10 @@ type Mode = 'md' | 'text';
 
 interface Ctx {
   mode: Mode;
-  /** Added to an editor heading's level: the entry title is `#` in its own file, `##` in a shared one. */
+  /** The entry title's level: `#` in its own file, `##` in a shared one; the text's headings go below it. */
   shift: number;
+  /** Whether the document has an H1, which then sits just below the title (D91). */
+  topHeading?: boolean;
 }
 
 export interface MarkdownOptions extends RenderOptions {
@@ -142,7 +145,10 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
       .join(s);
   switch (n.type) {
     case 'doc':
-      return kids();
+      return (n.content ?? [])
+        .map((c) => block(c, { ...ctx, topHeading: hasTopHeading(n) }, sep))
+        .filter(Boolean)
+        .join(sep);
     case 'paragraph':
       return paragraph(n.content ?? [], ctx);
     case 'heading': {
@@ -150,7 +156,7 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
       const text = paragraph((n.content ?? []).map((c) => (c.type === 'hardBreak' ? { type: 'text', text: ' ' } : c)), ctx);
       if (!text) return '';
       if (ctx.mode === 'text') return text;
-      const level = Math.min(6, (n.attrs?.['level'] === 3 ? 3 : 2) + ctx.shift - 1);
+      const level = Math.max(1, outputHeadingLevel(n, ctx.shift, ctx.topHeading ?? false));
       return `${'#'.repeat(level)} ${keepClosingHashes(text)}`;
     }
     case 'bulletList':
@@ -161,7 +167,20 @@ function block(n: RichNode, ctx: Ctx, sep = '\n\n'): string {
       return (n.content ?? []).map((li, i) => listItem(li, `${first + i}. `, ctx)).join('\n');
     }
     case 'listItem':
+    case 'taskItem':
       return listItemBody(n, ctx);
+    case 'taskList':
+      // GitHub's task lists: "- [x] done". Nested lines indent by the bullet only, or four more
+      // spaces would make them code.
+      return (n.content ?? []).map((li) => listItem(li, `${ctx.mode === 'md' ? '- ' : ''}[${li.attrs?.['checked'] === true ? 'x' : ' '}] `, ctx, 2)).join('\n');
+    case 'codeBlock': {
+      const code = (n.content ?? []).map((c) => c.text ?? '').join('');
+      if (ctx.mode === 'text') return code;
+      const fence = '`'.repeat(Math.max(3, longestRun(code, '`') + 1));
+      return `${fence}\n${code}\n${fence}`;
+    }
+    case 'table':
+      return table(n, ctx);
     case 'blockquote':
       return kids()
         .split('\n')
@@ -198,10 +217,10 @@ function listItemBody(li: RichNode, ctx: Ctx): string {
   return out;
 }
 
-function listItem(li: RichNode, marker: string, ctx: Ctx): string {
+function listItem(li: RichNode, marker: string, ctx: Ctx, indent = marker.length): string {
   const body = listItemBody(li, ctx);
   const [first = '', ...rest] = body.split('\n');
-  const pad = ' '.repeat(marker.length);
+  const pad = ' '.repeat(indent);
   return [marker + first, ...rest.map((l) => (l ? pad + l : l))].join('\n');
 }
 
@@ -236,9 +255,16 @@ function inline(nodes: RichNode[], ctx: Ctx): string {
   return out;
 }
 
-const MD_MARKS: Record<string, [string, string]> = { bold: ['**', '**'], italic: ['*', '*'], strike: ['~~', '~~'], underline: ['<u>', '</u>'] };
+/** Marks Markdown has no syntax for, as HTML, which Markdown readers render (colours and fonts are dropped). */
+const TAG_MARKS: Record<string, [string, string]> = {
+  underline: ['<u>', '</u>'],
+  highlight: ['<mark>', '</mark>'],
+  subscript: ['<sub>', '</sub>'],
+  superscript: ['<sup>', '</sup>'],
+};
+const MD_MARKS: Record<string, [string, string]> = { bold: ['**', '**'], italic: ['*', '*'], strike: ['~~', '~~'], ...TAG_MARKS };
 /** The same marks as HTML, which Markdown readers render wherever they appear. */
-const HTML_MARKS: Record<string, [string, string]> = { bold: ['<strong>', '</strong>'], italic: ['<em>', '</em>'], strike: ['<s>', '</s>'], underline: ['<u>', '</u>'] };
+const HTML_MARKS: Record<string, [string, string]> = { bold: ['<strong>', '</strong>'], italic: ['<em>', '</em>'], strike: ['<s>', '</s>'], ...TAG_MARKS };
 const EDGE_PUNCTUATION = /^[\p{P}\p{S}]|[\p{P}\p{S}]$/u;
 
 function leaf(n: RichNode, ctx: Ctx): string {
@@ -249,6 +275,11 @@ function leaf(n: RichNode, ctx: Ctx): string {
   // Markers hug the words: "** bold**" isn't bold in Markdown, so spaces go outside them.
   const [, lead = '', core = '', trail = ''] = /^(\s*)([\s\S]*?)(\s*)$/.exec(raw) ?? [];
   if (!core) return raw;
+  // Code takes no other marks; it's written as it is, between enough backticks.
+  if (n.marks?.some((m) => m.type === 'code')) {
+    const ticks = '`'.repeat(longestRun(core, '`') + 1);
+    return lead + (core.startsWith('`') || core.endsWith('`') ? `${ticks} ${core} ${ticks}` : `${ticks}${core}${ticks}`) + trail;
+  }
   let md = escapeMd(core);
   // `**"quote"**word` isn't bold in Markdown (a marker next to punctuation must also have a space
   // or punctuation on its outside), and Chinese and Japanese have no spaces: HTML tags then.
@@ -258,6 +289,44 @@ function leaf(n: RichNode, ctx: Ctx): string {
     if (wrap) md = `${wrap[0]}${md}${wrap[1]}`;
   }
   return lead + md + trail;
+}
+
+/** The longest run of `ch` in `s`. */
+function longestRun(s: string, ch: string): number {
+  let best = 0;
+  let run = 0;
+  for (const c of s) {
+    run = c === ch ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return best;
+}
+
+/**
+ * A table: GitHub's Markdown table, each cell's lines joined with `<br>` (cells hold one line); a
+ * table without a header row gets an empty one, which Markdown requires. Plain text: one line per
+ * row, cells between " | ".
+ */
+function table(n: RichNode, ctx: Ctx): string {
+  const rows = (n.content ?? []).filter((r) => r.type === 'tableRow');
+  const cells = rows.map((r) =>
+    (r.content ?? []).flatMap((c) => {
+      const text = (c.content ?? [])
+        .map((b) => block(b, ctx, '\n'))
+        .filter(Boolean)
+        .join('\n');
+      const one = ctx.mode === 'md' ? text.split('\n').join('<br>') : text.split('\n').join(' / ');
+      const span = Number(c.attrs?.['colspan'] ?? 1);
+      return [one, ...Array<string>(Number.isInteger(span) && span > 1 ? Math.min(span, 50) - 1 : 0).fill('')];
+    }),
+  );
+  if (!cells.length) return '';
+  if (ctx.mode === 'text') return cells.map((r) => r.join(' | ')).join('\n');
+  const width = Math.max(...cells.map((r) => r.length), 1);
+  const line = (r: string[]) => `| ${Array.from({ length: width }, (_, i) => r[i] ?? '').join(' | ')} |`;
+  const headed = rows[0]?.content?.every((c) => c.type === 'tableHeader') ?? false;
+  const head = headed ? cells.shift()! : [];
+  return [line(head), `|${Array.from({ length: width }, () => ' --- |').join('')}`, ...cells.map(line)].join('\n');
 }
 
 function linkOf(n: RichNode): string | undefined {

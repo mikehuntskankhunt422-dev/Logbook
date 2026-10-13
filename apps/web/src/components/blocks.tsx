@@ -1,8 +1,26 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
-import { embedPlayerUrl, formatBytes, formatDuration, type Block, type MediaMeta } from '@logbook/core';
+import { TaskItem, TaskList } from '@tiptap/extension-list';
+import { TableKit } from '@tiptap/extension-table';
+import { Color, FontFamily, TextStyle } from '@tiptap/extension-text-style';
+import { Highlight } from '@tiptap/extension-highlight';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { Subscript } from '@tiptap/extension-subscript';
+import { Superscript } from '@tiptap/extension-superscript';
+import {
+  FONTS,
+  HIGHLIGHT_COLORS,
+  TEXT_COLORS,
+  embedPlayerUrl,
+  fontStack,
+  formatBytes,
+  formatDuration,
+  richTextToPlain,
+  type Block,
+  type MediaMeta,
+} from '@logbook/core';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { tiltFor } from '../lib/motion.ts';
 
@@ -33,35 +51,60 @@ function Caption({ value, onChange, label, placeholder = 'Add a caption…' }: {
 
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
 
+/** The editor's formatting (D91): everything the exports and printed books know how to show. */
+const EXTENSIONS = [
+  StarterKit.configure({
+    heading: { levels: [1, 2, 3, 4, 5, 6] },
+    link: {
+      autolink: true,
+      linkOnPaste: true,
+      openOnClick: false,
+      defaultProtocol: 'https',
+      HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
+    },
+  }),
+  TaskList,
+  TaskItem.configure({ nested: true }),
+  TableKit.configure({ table: { resizable: false } }),
+  TextStyle,
+  Color,
+  FontFamily,
+  Highlight.configure({ multicolor: true }),
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Subscript,
+  Superscript,
+  Placeholder.configure({ placeholder: 'Write about your day…' }),
+];
+
+type Palette = 'color' | 'highlight' | null;
+
 export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'> & { autoFocus?: boolean }) {
   const latest = useRef({ block, onChange });
   latest.current = { block, onChange };
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkValue, setLinkValue] = useState('');
+  const [palette, setPalette] = useState<Palette>(null);
   const [focused, setFocused] = useState(false);
+  // Text this version can't read (written by a newer Logbook): shown, never saved over.
+  const [unreadable, setUnreadable] = useState(false);
+  const blocked = useRef(false);
   const wrapper = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [2, 3] },
-        code: false,
-        codeBlock: false,
-        link: {
-          autolink: true,
-          linkOnPaste: true,
-          openOnClick: false,
-          defaultProtocol: 'https',
-          HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
-        },
-      }),
-      Placeholder.configure({ placeholder: 'Write about your day…' }),
-    ],
+    extensions: EXTENSIONS,
     content: block.doc,
+    enableContentCheck: true,
+    onContentError: ({ editor }) => {
+      blocked.current = true;
+      editor.setEditable(false);
+      setUnreadable(true);
+    },
     autofocus: autoFocus ? 'end' : false,
     shouldRerenderOnTransaction: true,
     editorProps: { attributes: { 'aria-label': 'Entry text', 'aria-multiline': 'true', role: 'textbox' } },
-    onUpdate: ({ editor }) => latest.current.onChange({ ...latest.current.block, doc: editor.getJSON() }),
+    onUpdate: ({ editor }) => {
+      if (!blocked.current) latest.current.onChange({ ...latest.current.block, doc: editor.getJSON() });
+    },
     onFocus: () => setFocused(true),
     onBlur: ({ event }) => {
       const next = (event as FocusEvent).relatedTarget as Node | null;
@@ -69,39 +112,132 @@ export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'>
     },
   });
 
+  if (unreadable) {
+    return (
+      <div className="rt rt-unreadable">
+        <p className="notice notice-warn">This text uses formatting from a newer version of Logbook. Update Logbook to edit it; until then it's shown as plain text and left as it is.</p>
+        <p className="rt-plain">{richTextToPlain(block.doc)}</p>
+      </div>
+    );
+  }
   if (!editor) return null;
-  const btn = (label: string, text: string, active: boolean, run: () => void) => (
-    <button type="button" aria-label={label} title={label} aria-pressed={active} onMouseDown={(e) => e.preventDefault()} onClick={run}>
+
+  const btn = (label: string, text: ReactNode, active: boolean, run: () => void, disabled = false) => (
+    <button type="button" aria-label={label} title={label} aria-pressed={active} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={run}>
       {text}
     </button>
   );
+  const chain = () => editor.chain().focus();
 
   const applyLink = () => {
     const v = linkValue.trim();
-    const chain = editor.chain().focus().extendMarkRange('link');
-    if (!v) chain.unsetLink().run();
-    else {
-      const url = SAFE_HREF.test(v) ? v : `https://${v}`;
-      chain.setLink({ href: url }).run();
-    }
+    const c = chain().extendMarkRange('link');
+    if (!v) c.unsetLink().run();
+    else c.setLink({ href: SAFE_HREF.test(v) ? v : `https://${v}` }).run();
     setLinkOpen(false);
   };
+
+  const style = editor.isActive('codeBlock') ? 'code' : (([1, 2, 3, 4, 5, 6].find((level) => editor.isActive('heading', { level })) ?? 0) as number);
+  const setStyle = (value: string) => {
+    if (value === 'code') chain().toggleCodeBlock().run();
+    else if (value === '0') chain().setParagraph().run();
+    else chain().setHeading({ level: Number(value) as 1 | 2 | 3 | 4 | 5 | 6 }).run();
+  };
+  const font = (editor.getAttributes('textStyle').fontFamily as string | undefined) ?? '';
+  const align = (['center', 'right', 'justify'] as const).find((a) => editor.isActive({ textAlign: a })) ?? 'left';
+  const inTable = editor.isActive('table');
 
   return (
     <div className="rt" ref={wrapper} onFocus={() => setFocused(true)}>
       {(focused || linkOpen) && (
         <div className="rt-toolbar" role="toolbar" aria-label="Text formatting">
-          {btn('Bold (Ctrl+B)', 'B', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run())}
-          {btn('Italic (Ctrl+I)', 'I', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run())}
-          {btn('Heading', 'H', editor.isActive('heading', { level: 2 }), () => editor.chain().focus().toggleHeading({ level: 2 }).run())}
-          {btn('Subheading', 'h', editor.isActive('heading', { level: 3 }), () => editor.chain().focus().toggleHeading({ level: 3 }).run())}
-          {btn('Bulleted list', '•', editor.isActive('bulletList'), () => editor.chain().focus().toggleBulletList().run())}
-          {btn('Numbered list', '1.', editor.isActive('orderedList'), () => editor.chain().focus().toggleOrderedList().run())}
-          {btn('Quote', '❝', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run())}
+          <select aria-label="Text style" value={String(style)} onChange={(e) => setStyle(e.target.value)}>
+            <option value="0">Text</option>
+            {[1, 2, 3, 4, 5, 6].map((l) => (
+              <option key={l} value={l}>
+                Heading {l}
+              </option>
+            ))}
+            <option value="code">Code block</option>
+          </select>
+          {btn('Bold (Ctrl+B)', <b>B</b>, editor.isActive('bold'), () => chain().toggleBold().run())}
+          {btn('Italic (Ctrl+I)', <i>I</i>, editor.isActive('italic'), () => chain().toggleItalic().run())}
+          {btn('Underline (Ctrl+U)', <u>U</u>, editor.isActive('underline'), () => chain().toggleUnderline().run())}
+          {btn('Strikethrough', <s>S</s>, editor.isActive('strike'), () => chain().toggleStrike().run())}
+          {btn('Text colour', <span className="rt-swatch-a" style={{ borderBottomColor: (editor.getAttributes('textStyle').color as string | undefined) ?? 'currentColor' }}>A</span>, palette === 'color', () => setPalette((p) => (p === 'color' ? null : 'color')))}
+          {btn('Highlight', '🖍', editor.isActive('highlight') || palette === 'highlight', () => setPalette((p) => (p === 'highlight' ? null : 'highlight')))}
+          <select aria-label="Font" value={font} onChange={(e) => (e.target.value ? chain().setFontFamily(e.target.value).run() : chain().unsetFontFamily().run())}>
+            <option value="">Default font</option>
+            {FONTS.map((f) => (
+              <option key={f.family} value={f.family} style={{ fontFamily: fontStack(f) }}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Alignment" value={align} onChange={(e) => (e.target.value === 'left' ? chain().unsetTextAlign().run() : chain().setTextAlign(e.target.value).run())}>
+            <option value="left">Align left</option>
+            <option value="center">Centre</option>
+            <option value="right">Align right</option>
+            <option value="justify">Justify</option>
+          </select>
+          {btn('Bulleted list', '•', editor.isActive('bulletList'), () => chain().toggleBulletList().run())}
+          {btn('Numbered list', '1.', editor.isActive('orderedList'), () => chain().toggleOrderedList().run())}
+          {btn('Checklist', '☑', editor.isActive('taskList'), () => chain().toggleTaskList().run())}
+          {btn('Quote', '❝', editor.isActive('blockquote'), () => chain().toggleBlockquote().run())}
+          {btn('Code', '</>', editor.isActive('code'), () => chain().toggleCode().run())}
+          {btn('Divider line', '―', false, () => chain().setHorizontalRule().run())}
+          {btn('Table', '▦', inTable, () => (inTable ? undefined : chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()), inTable)}
+          {btn('Superscript', <span>x²</span>, editor.isActive('superscript'), () => chain().toggleSuperscript().run())}
+          {btn('Subscript', <span>x₂</span>, editor.isActive('subscript'), () => chain().toggleSubscript().run())}
           {btn('Link', '🔗', editor.isActive('link'), () => {
             setLinkValue((editor.getAttributes('link').href as string | undefined) ?? '');
             setLinkOpen((o) => !o);
           })}
+          {btn('Clear formatting', '⌫', false, () => chain().unsetAllMarks().clearNodes().run())}
+        </div>
+      )}
+      {focused && palette && (
+        <div className="rt-palette" role="group" aria-label={palette === 'color' ? 'Text colours' : 'Highlighter colours'}>
+          {(palette === 'color' ? TEXT_COLORS : HIGHLIGHT_COLORS).map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              className="rt-swatch"
+              style={{ background: c.value }}
+              aria-label={`${palette === 'color' ? 'Text colour' : 'Highlight'} ${c.name}`}
+              title={c.name}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (palette === 'color') chain().setColor(c.value).run();
+                else chain().setHighlight({ color: c.value }).run();
+                setPalette(null);
+              }}
+            />
+          ))}
+          <button
+            type="button"
+            className="btn btn-small"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (palette === 'color') chain().unsetColor().run();
+              else chain().unsetHighlight().run();
+              setPalette(null);
+            }}
+          >
+            {palette === 'color' ? 'No colour' : 'No highlight'}
+          </button>
+        </div>
+      )}
+      {focused && inTable && (
+        <div className="rt-toolbar rt-table-tools" role="toolbar" aria-label="Table">
+          {btn('Add a row above', '↑ Row', false, () => chain().addRowBefore().run())}
+          {btn('Add a row below', '↓ Row', false, () => chain().addRowAfter().run())}
+          {btn('Add a column to the left', '← Column', false, () => chain().addColumnBefore().run())}
+          {btn('Add a column to the right', '→ Column', false, () => chain().addColumnAfter().run())}
+          {btn('Header row on or off', 'Header', false, () => chain().toggleHeaderRow().run())}
+          {btn('Delete this row', '✕ Row', false, () => chain().deleteRow().run())}
+          {btn('Delete this column', '✕ Column', false, () => chain().deleteColumn().run())}
+          {btn('Delete the table', '✕ Table', false, () => chain().deleteTable().run())}
         </div>
       )}
       {linkOpen && (
