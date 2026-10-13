@@ -1,5 +1,5 @@
 import type { RichNode } from './model.ts';
-import { esc } from './print/html.ts';
+import { esc } from './html-text.ts';
 import { fontFor, fontStack, safeAlign, safeColor } from './richtext.ts';
 
 /**

@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { createVault, openVault, rewrapVault, type Cipher, type KdfParams, type Vault } from './crypto.ts';
 import { addDays, today } from './dates.ts';
 import { newId } from './ids.ts';
@@ -15,19 +14,9 @@ import {
   type Settings,
   GRADIENT_IDS,
 } from './model.ts';
-import { bookOptionsSchema, type BookOptions } from './print/options.ts';
 import { emptyDoc } from './richtext.ts';
 import { isSealed, type RecordStore } from './storage.ts';
 
-/** A print order placed from this device: enough to find it again, e.g. on the page Stripe returns to. */
-export const bookOrderRefSchema = z.object({
-  id: z.string().regex(/^ord_[\w-]{1,40}$/),
-  token: z.string().min(16).max(200),
-  createdAt: z.string(),
-});
-export type BookOrderRef = z.infer<typeof bookOrderRefSchema>;
-/** Only the most recent orders are kept; older ones can be looked up from their emails (M4). */
-export const MAX_BOOK_ORDERS = 20;
 
 /**
  * The passcode was turned off, on, or changed somewhere else (another computer sharing the journal
@@ -166,8 +155,6 @@ export class Journal {
     this.cipher = cipher;
     const entries = await this.readAllEntries(true);
     const media = await this.listMediaMeta();
-    const draft = await this.getBookDraft();
-    const orders = await this.listBookOrders();
     const blobs = new Map<string, Blob>();
     /** Photos whose data this key can't open: left sealed with their details, like other strangers. */
     const keepSealed = new Set<string>();
@@ -203,8 +190,7 @@ export class Journal {
       for (const e of entries) await this.store.put('entries', e);
       for (const m of media) if (!keepSealed.has(m.id)) await this.store.put('media', m);
       for (const [id, b] of blobs) await this.store.putBlob(id, b);
-      await this.store.setKey('bookDraft', draft);
-      await this.store.setKey('bookOrders', orders.length ? orders : undefined);
+      await this.dropBookData();
       await this.store.setKey('vault', undefined);
     } catch (err) {
       this.vault = vault;
@@ -224,10 +210,7 @@ export class Journal {
 
   /** Re-saves every record through the current cipher (used after enabling encryption). */
   private async rewriteAll(): Promise<void> {
-    const draft = await this.getBookDraft();
-    if (draft) await this.saveBookDraft(draft);
-    const orders = await this.listBookOrders();
-    if (orders.length) await this.writeBookOrders(orders);
+    await this.dropBookData();
     for (const e of await this.readAllEntries(true)) await this.writeEntry(e);
     for (const m of await this.listMediaMeta()) {
       const blob = await this.getMediaBlob(m.id);
@@ -236,65 +219,17 @@ export class Journal {
     }
   }
 
-  // ── book draft ────────────────────────────────────────────────────────────────────────────────
+  // ── retired book data ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * The book builder's last settings (D40). Kept out of Settings, which are stored and backed up in
-   * plain text: a draft holds a title, back-cover text and chosen entries, so it's sealed like an
-   * entry when a passcode is on. Not included in backups.
+   * Printed books were removed (D96). A journal can still hold the book builder's last draft and
+   * the list of print orders from earlier versions; they're deleted, not left behind (a draft
+   * holds entry titles and back-cover text).
    */
-  async getBookDraft(): Promise<BookOptions | undefined> {
+  async dropBookData(): Promise<void> {
     this.assertUnlocked();
-    const rec = await this.store.getKey('bookDraft');
-    if (rec === undefined) return undefined;
-    try {
-      const raw = isSealed(rec) ? await this.cipher!.openJson<unknown>('book', rec) : rec;
-      const parsed = bookOptionsSchema.safeParse(raw);
-      return parsed.success ? parsed.data : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  async saveBookDraft(draft: BookOptions): Promise<void> {
-    this.assertUnlocked();
-    const value = bookOptionsSchema.parse(draft);
-    const cipher = await this.writeCipher();
-    await this.store.setKey('bookDraft', cipher ? await cipher.sealJson('book', 'draft', value) : value);
-  }
-
-  // ── print orders ──────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Orders placed from this device, newest first. Each token opens that order's proof (journal
-   * content), so the list is sealed like an entry when a passcode is on, and isn't backed up.
-   */
-  async listBookOrders(): Promise<BookOrderRef[]> {
-    this.assertUnlocked();
-    const rec = await this.store.getKey('bookOrders');
-    if (rec === undefined) return [];
-    try {
-      const raw = isSealed(rec) ? await this.cipher!.openJson<unknown>('book', rec) : rec;
-      const parsed = z.array(bookOrderRefSchema).safeParse(raw);
-      return parsed.success ? parsed.data : [];
-    } catch {
-      return [];
-    }
-  }
-
-  async getBookOrder(id: string): Promise<BookOrderRef | undefined> {
-    return (await this.listBookOrders()).find((o) => o.id === id);
-  }
-
-  async saveBookOrder(order: BookOrderRef): Promise<void> {
-    const ref = bookOrderRefSchema.parse(order);
-    const rest = (await this.listBookOrders()).filter((o) => o.id !== ref.id);
-    await this.writeBookOrders([ref, ...rest].slice(0, MAX_BOOK_ORDERS));
-  }
-
-  private async writeBookOrders(orders: BookOrderRef[]): Promise<void> {
-    const cipher = await this.writeCipher();
-    await this.store.setKey('bookOrders', cipher ? await cipher.sealJson('book', 'orders', orders) : orders);
+    if ((await this.store.getKey('bookDraft')) !== undefined) await this.store.setKey('bookDraft', undefined);
+    if ((await this.store.getKey('bookOrders')) !== undefined) await this.store.setKey('bookOrders', undefined);
   }
 
   // ── settings ──────────────────────────────────────────────────────────────────────────────────
@@ -628,8 +563,7 @@ export class Journal {
   async clearContent(): Promise<void> {
     this.assertUnlocked();
     await this.store.clearContent();
-    await this.store.setKey('bookDraft', undefined);
-    await this.store.setKey('bookOrders', undefined);
+    await this.dropBookData();
     await this.updateSettings({ changesSinceBackup: 0 });
     this.emit('entries');
     this.emit('media');

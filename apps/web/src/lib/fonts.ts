@@ -1,7 +1,7 @@
 /*
  * Fonts for the app's own screens (D91): the ones text can be set in (core's FONTS), and the
- * colour flag font. The same static files as the printed book (print-fonts.ts), so a page shows
- * text the way it prints. A font file only loads once something on screen uses it.
+ * colour flag font. Static files, which a PDF export embeds properly. A font file only loads once
+ * something on screen uses it.
  */
 import '@fontsource/atkinson-hyperlegible/400.css';
 import '@fontsource/atkinson-hyperlegible/400-italic.css';

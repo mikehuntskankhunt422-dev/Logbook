@@ -501,7 +501,7 @@ async fn print_page(app: AppHandle) -> Result<(), String> {
     android::print(&app)
 }
 
-/// Opens a web address in the default browser: links in entries, and Stripe's payment page.
+/// Opens a web address in the default browser: links in entries and the app's own links.
 #[tauri::command]
 async fn open_url(url: String, app: AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;

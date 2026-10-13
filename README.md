@@ -1,10 +1,10 @@
 # Logbook
 
-A private journal for your computer: write about your days with photos, video, voice notes and links, and turn any stretch of it into a printed book.
+A private journal for your computer: write about your days with photos, video, voice notes and links, and export any of it as documents.
 
-Logbook is a free app for Windows, macOS, Linux and Android phones. Your journal is kept as ordinary files on your own device, never on our servers. The only thing that costs money is a printed book, if you order one.
+Logbook is a free app for Windows, macOS, Linux and Android phones. Your journal is kept as ordinary files on your own device, never on our servers. Nothing in it costs money.
 
-> **Status: preview (0.4.1).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, the book builder with its page-by-page preview, export to Markdown, text, web page or PDF, a clock with alarms and timers, automatic updates and an Android app all work. **Not yet:** ordering a printed book (it opens once Logbook's print service is online) and a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
+> **Status: preview (0.5.0).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, export to Markdown, text, web page or PDF, a clock with alarms and timers, automatic updates and an Android app all work. **Not yet:** a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
 
 ## Download
 
@@ -64,27 +64,23 @@ Logbook/
 
 **Passcode lock.** **Settings → Passcode lock** encrypts your entries, photos and other media in the folder, so they can't be read without your passcode, and locks Logbook after a few idle minutes. A forgotten passcode can't be recovered. Conflict copies (made by a sync service, or by Logbook when two computers changed the same entry) are kept as they were, unencrypted.
 
-**Printed books.** **Book** lets you pick a date range or individual entries, the size (6×9 or 8.5×11 inches), paperback or hardcover, and a matte or gloss cover, and shows every page as it will be printed. Ordering, with a proof to check, the price, delivery and payment through Stripe, opens in an update; books are printed and posted by [Lulu](https://www.lulu.com).
-
 ## Privacy
 
 - Your journal stays on your computer, in your folder. Logbook has no account, no analytics and no tracking.
-- Nothing is uploaded unless you order a book. Logbook first lists exactly what will be sent (the entries and photos in that book, nothing else) and asks you to confirm. Those files are used only to print your book and are deleted within 7 days.
-- With a passcode on, the chosen entries are decrypted on your computer only to make the book.
+- Nothing is ever uploaded: there's nowhere to upload it to.
 - A YouTube or Vimeo video in an entry loads from that site when you play it.
 
 ## For developers
 
-Logbook is a TypeScript monorepo (npm workspaces): a React app that runs in a [Tauri 2](https://tauri.app) window, and a Node server that makes print files and handles orders with Stripe and Lulu.
+Logbook is a TypeScript monorepo (npm workspaces): a React app that runs in a [Tauri 2](https://tauri.app) window, on computers and Android phones.
 
 | Path | What |
 |---|---|
-| `packages/core` | Data model, journal service, encryption (Argon2id + AES-GCM), backup format, search, dates and streaks, the print layout |
+| `packages/core` | Data model, journal service, encryption (Argon2id + AES-GCM), backup format, search, dates and streaks, exports |
 | `packages/storage-fs` | The desktop journal: a folder of plain files in the backup layout |
 | `packages/storage-idb` | Browser storage, for running the app in a browser during development and tests |
 | `apps/web` | The app's screens (React). `--mode desktop` builds the bundle the desktop app loads |
 | `apps/desktop` | The Tauri shell (Rust): the journal folder, save dialogs, links, installers, a WebDriver smoke test |
-| `apps/server` | The API (Fastify): print PDFs (Paged.js in Chromium), pricing, Stripe Checkout, Lulu print jobs |
 | `docs/` | Plan, decisions, milestone reports, verified API facts |
 
 Quick start, with Node.js 24 and Rust (stable); on Linux also `libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`:
@@ -96,4 +92,4 @@ npm run dev              # the same screens in a browser, at http://localhost:51
 npm run lint && npm run typecheck && npm test
 ```
 
-Building installers, making a release, running the server, Stripe and Lulu test modes, and the test suites are covered in [docs/DEVELOPING.md](docs/DEVELOPING.md). The reasons behind the design are in [docs/DECISIONS.md](docs/DECISIONS.md).
+Building installers, making a release, and the test suites are covered in [docs/DEVELOPING.md](docs/DEVELOPING.md). The reasons behind the design are in [docs/DECISIONS.md](docs/DECISIONS.md).

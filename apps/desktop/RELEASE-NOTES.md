@@ -1,6 +1,6 @@
-**Writing prompts.** A new entry now suggests a question when the page is blank, such as "What made you smile today?". **Write about this** puts it at the top of your text with the cursor ready below; **🔀 Another** picks a different one; ✕ hides it. Turn them off in **Settings → Appearance**.
+**Printed books are gone.** Logbook no longer makes or sells printed books: the **Book** tab is removed. Everything else stays, including **Export** (on an entry, the journal page, search results, or **Settings → Export**): your entries as Markdown, plain text, a web page or a PDF you can print yourself. Book drafts saved by earlier versions are deleted from your journal.
 
-**Fixed:** leaving a new entry within a second of typing no longer brings you back to it.
+**From 0.4.1:** writing prompts on new entries (**Write about this**, **🔀 Another**; off in **Settings → Appearance**).
 
 What came in 0.4.0:
 
@@ -42,6 +42,6 @@ Already on 0.2.0? Logbook updates itself: **Update and restart** when it asks, o
 - macOS 15 or later: drag Logbook to Applications and open it. When macOS says it can't check it, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. On earlier versions, Control-click Logbook in Applications and choose **Open**.
 - Linux AppImage: `chmod +x Logbook_*.AppImage`, then run it.
 
-**Not in this preview yet:** ordering printed books (the book builder and its preview work; ordering opens in an update), and a screen for sorting out conflicting copies made by a sync service.
+**Not in this preview yet:** a screen for sorting out conflicting copies made by a sync service.
 
 This is a preview: keep a backup of anything you'd hate to lose (**Settings → Backups**). Checksums are in `SHA256SUMS.txt`.

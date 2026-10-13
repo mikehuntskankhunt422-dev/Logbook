@@ -68,16 +68,19 @@ describe('FolderStore files', () => {
     expect((await files(root)).filter((p) => p.includes(e.id))).toEqual([`entries/2026/2026-10-07--second--${e.id}.json`]);
   });
 
-  it('keeps the journal across reopening, including book state outside the backup layout', async () => {
+  it('keeps the journal across reopening, and deletes book files left by earlier versions (D96)', async () => {
     const root = await folder();
+    await mkdir(join(root, '.logbook'), { recursive: true });
+    await writeFile(join(root, '.logbook', 'book-orders.json'), JSON.stringify([{ id: 'ord_1', token: 'secret-token-0123456789', createdAt: '2026-10-10T00:00:00.000Z' }]));
+    await writeFile(join(root, '.logbook', 'book-draft.json'), JSON.stringify({ title: 'Trip' }));
     const j1 = await Journal.open(await open(root));
     const saved = await j1.saveEntry(j1.newEntry({ title: 'Still here' }));
-    await j1.saveBookOrder({ id: 'ord_1', token: 'secret-token-0123456789', createdAt: '2026-10-10T00:00:00.000Z' });
+    await j1.dropBookData();
+    expect(await files(root)).not.toContain('.logbook/book-orders.json');
+    expect(await files(root)).not.toContain('.logbook/book-draft.json');
 
     const j2 = await Journal.open(await open(root));
     expect((await j2.getEntry(saved.id))?.title).toBe('Still here');
-    expect((await j2.listBookOrders()).map((o) => o.id)).toEqual(['ord_1']);
-    expect(await files(root)).toContain('.logbook/book-orders.json');
   });
 
   it('seals every file with a passcode and restores the readable layout without one', async () => {

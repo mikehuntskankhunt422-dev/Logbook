@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entryPlainText, fontFor, outputHeadingLevel, richTextToExportHtml, richTextToHtml, richTextToMarkdown, richTextToText, safeAlign, safeColor, type RichNode } from '../src/index.ts';
+import { entryPlainText, fontFor, outputHeadingLevel, richTextToExportHtml, richTextToMarkdown, richTextToText, safeAlign, safeColor, type RichNode } from '../src/index.ts';
 
 // The editor's formatting in exports and printed books (D91).
 
@@ -70,7 +70,7 @@ describe('Markdown and plain text', () => {
   });
 });
 
-describe('HTML (web page export and printed book)', () => {
+describe('HTML (web page export)', () => {
   const d = doc(
     { type: 'paragraph', attrs: { textAlign: 'center' }, content: [t('Hi', [{ type: 'textStyle', attrs: { color: '#d93025', fontFamily: 'Caveat' } }])] },
     { type: 'taskList', content: [task(true, 'Done')] },
@@ -86,17 +86,5 @@ describe('HTML (web page export and printed book)', () => {
     expect(html).toContain('<td><p>Rome | Italy</p></td>');
     expect(html).toContain('<p><mark>x</mark></p>');
     expect(html).not.toMatch(/url\(|evil|display:none|rgba/);
-  });
-
-  it('the book draws boxes instead of inputs, and never links', () => {
-    const html = richTextToHtml(d);
-    expect(html).toContain('<li class="task done"><span class="box"></span><div><p>Done</p></div></li>');
-    expect(html).toContain('<table><tbody><tr><th><p>Day</p></th>');
-    expect(html).not.toMatch(/<input|<a\b|url\(|evil|rgba/);
-  });
-
-  it('keeps the old output for the old headings', () => {
-    expect(richTextToHtml(doc(h(2, 'A'), h(3, 'B')))).toBe('<h3>A</h3><h4>B</h4>');
-    expect(richTextToHtml(doc(h(1, 'A'), h(2, 'B'), h(6, 'C')))).toBe('<h3>A</h3><h4>B</h4><h6>C</h6>');
   });
 });

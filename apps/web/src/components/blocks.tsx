@@ -52,7 +52,7 @@ function Caption({ value, onChange, label, placeholder = 'Add a caption…' }: {
 
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
 
-/** The editor's formatting (D91): everything the exports and printed books know how to show. */
+/** The editor's formatting (D91): everything the exports know how to show. */
 const EXTENSIONS = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3, 4, 5, 6] },
