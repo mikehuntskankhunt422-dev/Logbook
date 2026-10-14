@@ -1530,6 +1530,7 @@ dialog h2 {
   border-radius: 999px;
   padding: 4px 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .lock-screen {
@@ -2541,4 +2542,177 @@ dialog[open]::backdrop {
   .prompt-card {
     margin-left: 0;
   }
+}
+
+/* ── The garden (D97) ──────────────────────────────────────────────────────────────────── */
+:root {
+  --tier-0: #6f655a;
+  --tier-1: #2e7d3e;
+  --tier-2: #2b62bd;
+  --tier-3: #7a3fc2;
+  --tier-4: #8f5c00;
+  --tier-5: #c23f17;
+  --tier-6: #7f6200;
+  --tier-7: #8a2f9e;
+  --tier-8: #1d6a85;
+  --tier-9: #55647f;
+  --tier-10: #127f69;
+  --tier-11: #3b2a8f;
+  --tier-12: #8a6d00;
+  --tier-13: #6b4a1f;
+  --tier-14: #1f6b3a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --tier-0: #b3a899;
+    --tier-1: #6fd08a;
+    --tier-2: #79a8ff;
+    --tier-3: #b98cff;
+    --tier-4: #ffc94d;
+    --tier-5: #ff7a45;
+    --tier-6: #ffe08a;
+    --tier-7: #f0a8ff;
+    --tier-8: #9eeaff;
+    --tier-9: #dfe6ff;
+    --tier-10: #5ef2c4;
+    --tier-11: #a99cff;
+    --tier-12: #ffd75e;
+    --tier-13: #e0a95c;
+    --tier-14: #7fe0a0;
+  }
+}
+:root[data-theme='dark'] {
+  --tier-0: #b3a899;
+  --tier-1: #6fd08a;
+  --tier-2: #79a8ff;
+  --tier-3: #b98cff;
+  --tier-4: #ffc94d;
+  --tier-5: #ff7a45;
+  --tier-6: #ffe08a;
+  --tier-7: #f0a8ff;
+  --tier-8: #9eeaff;
+  --tier-9: #dfe6ff;
+  --tier-10: #5ef2c4;
+  --tier-11: #a99cff;
+  --tier-12: #ffd75e;
+  --tier-13: #e0a95c;
+  --tier-14: #7fe0a0;
+}
+/* Garden colours (perks): the app accent, only once chosen. */
+:root[data-accent='rose'] { --accent: #b8336a; --accent-ink: #ffffff; --accent-soft: #fbe1ec; }
+:root[data-accent='lavender'] { --accent: #6b4fbb; --accent-ink: #ffffff; --accent-soft: #ece6ff; }
+:root[data-accent='moss'] { --accent: #3f7a32; --accent-ink: #ffffff; --accent-soft: #e2f2dc; }
+:root[data-accent='lagoon'] { --accent: #0f6f80; --accent-ink: #ffffff; --accent-soft: #d9f2f6; }
+:root[data-accent='midnight'] { --accent: #3a3f9e; --accent-ink: #ffffff; --accent-soft: #e3e5ff; }
+:root[data-accent='sakura'] { --accent: #b0476f; --accent-ink: #ffffff; --accent-soft: #fde4ee; }
+:root[data-accent='gold'] { --accent: #8a6200; --accent-ink: #ffffff; --accent-soft: #fbf0d0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-accent='rose'] { --accent: #ff8fb8; --accent-ink: #2a0c18; --accent-soft: #3b1a27; }
+  :root:not([data-theme='light'])[data-accent='lavender'] { --accent: #b9a2ff; --accent-ink: #160d33; --accent-soft: #2a2245; }
+  :root:not([data-theme='light'])[data-accent='moss'] { --accent: #8fd47e; --accent-ink: #0d1f09; --accent-soft: #1f3319; }
+  :root:not([data-theme='light'])[data-accent='lagoon'] { --accent: #5fd3e6; --accent-ink: #06232a; --accent-soft: #14343a; }
+  :root:not([data-theme='light'])[data-accent='midnight'] { --accent: #9aa4ff; --accent-ink: #0e1033; --accent-soft: #22254a; }
+  :root:not([data-theme='light'])[data-accent='sakura'] { --accent: #ffb3cf; --accent-ink: #2e0d1b; --accent-soft: #3d2230; }
+  :root:not([data-theme='light'])[data-accent='gold'] { --accent: #ffcf5a; --accent-ink: #2a1d00; --accent-soft: #3a2e12; }
+}
+:root[data-theme='dark'][data-accent='rose'] { --accent: #ff8fb8; --accent-ink: #2a0c18; --accent-soft: #3b1a27; }
+:root[data-theme='dark'][data-accent='lavender'] { --accent: #b9a2ff; --accent-ink: #160d33; --accent-soft: #2a2245; }
+:root[data-theme='dark'][data-accent='moss'] { --accent: #8fd47e; --accent-ink: #0d1f09; --accent-soft: #1f3319; }
+:root[data-theme='dark'][data-accent='lagoon'] { --accent: #5fd3e6; --accent-ink: #06232a; --accent-soft: #14343a; }
+:root[data-theme='dark'][data-accent='midnight'] { --accent: #9aa4ff; --accent-ink: #0e1033; --accent-soft: #22254a; }
+:root[data-theme='dark'][data-accent='sakura'] { --accent: #ffb3cf; --accent-ink: #2e0d1b; --accent-soft: #3d2230; }
+:root[data-theme='dark'][data-accent='gold'] { --accent: #ffcf5a; --accent-ink: #2a1d00; --accent-soft: #3a2e12; }
+
+.garden-page { max-width: 920px; margin: 0 auto; }
+.garden-rank { display: flex; gap: 16px; align-items: center; }
+.garden-rank-emoji { font-size: 3rem; line-height: 1; }
+.garden-rank-text { flex: 1; min-width: 0; }
+.garden-rank-name { margin: 0 0 8px; font-size: 1.15rem; }
+.garden-scene {
+  --sky-top: #bfe0fb;
+  --sky-bottom: #e9f6ff;
+  --ground: #9ccc7a;
+  --ground-deep: #7fb25e;
+  position: relative;
+  margin: 16px 0;
+  padding: 56px 16px 16px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(var(--sky-top), var(--sky-bottom) 160px, var(--sky-bottom));
+  overflow: hidden;
+  color: #1d1a17;
+}
+.garden-scene[data-sky='dawn'] { --sky-top: #f6b8c8; --sky-bottom: #fde7d6; }
+.garden-scene[data-sky='golden'] { --sky-top: #f7b267; --sky-bottom: #fde4b8; }
+.garden-scene[data-sky='night'] { --sky-top: #0f1838; --sky-bottom: #26345e; color: #f3efe8; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .garden-scene:not([data-sky='dawn']):not([data-sky='golden']) { --sky-top: #0f1838; --sky-bottom: #1d2a4d; color: #f3efe8; }
+}
+:root[data-theme='dark'] .garden-scene:not([data-sky='dawn']):not([data-sky='golden']) { --sky-top: #0f1838; --sky-bottom: #1d2a4d; color: #f3efe8; }
+.garden-scene[data-ancient] { --ground: #b98c4e; --ground-deep: #8a6234; }
+.garden-scene::before { content: ''; position: absolute; inset: 0 0 auto; height: 160px; pointer-events: none; }
+.garden-scene[data-stars]::before {
+  background:
+    radial-gradient(1.5px 1.5px at 12% 20%, #fff, transparent), radial-gradient(1px 1px at 30% 40%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 55% 15%, #fff, transparent), radial-gradient(1px 1px at 70% 35%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 88% 22%, #fff, transparent), radial-gradient(12px 12px at 85% 12%, #fdf6d8 45%, transparent 50%);
+}
+.garden-scene[data-aurora]::after {
+  content: ''; position: absolute; left: -10%; right: -10%; top: 0; height: 140px; pointer-events: none; opacity: 0.35;
+  background: linear-gradient(100deg, transparent 10%, #5ef2c4 35%, #4fd17f 50%, #a66bff 70%, transparent 90%);
+  filter: none; animation: aurora-drift 12s ease-in-out infinite alternate;
+}
+.garden-scene[data-nebula] { background-image: radial-gradient(circle at 25% 10%, rgb(123 79 214 / 0.35), transparent 40%), linear-gradient(var(--sky-top), var(--sky-bottom) 160px, var(--sky-bottom)); }
+@keyframes aurora-drift { to { transform: translateX(6%); } }
+.garden-gate { position: absolute; top: 12px; left: 16px; font-size: 1.6rem; display: flex; gap: 6px; }
+.garden-visitors span { position: absolute; top: 24px; font-size: 1.1rem; animation: visit 9s ease-in-out infinite alternate; pointer-events: none; }
+@keyframes visit { 0% { transform: translate(0, 0) rotate(-8deg); } 50% { transform: translate(40px, 30px) rotate(8deg); } 100% { transform: translate(-30px, 10px) rotate(-4deg); } }
+.garden-empty { position: relative; text-align: center; padding: 40px 0; font-weight: 650; }
+.garden-bed { position: relative; margin-top: 18px; content-visibility: auto; contain-intrinsic-size: auto 260px; }
+.garden-sign { font-size: 1rem; margin: 0 0 6px; display: inline-block; background: rgb(255 255 255 / 0.75); color: #1d1a17; padding: 2px 10px; border-radius: 8px; }
+.garden-scene[data-gold] .garden-sign { background: linear-gradient(#ffe08a, #e8b43a); color: #3a2a00; }
+.garden-count { color: #4a433b; font-weight: 500; }
+.garden-ground {
+  list-style: none; margin: 0; padding: 10px 12px 14px;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 10px;
+  background: linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep));
+  border-radius: 0 0 16px 16px;
+}
+.garden-scene[data-border='picket'] .garden-ground { border-bottom: 6px dashed #fffaf0; }
+.garden-scene[data-border='hedge'] .garden-ground { border-bottom: 8px solid #3f7a32; }
+.garden-scene[data-border='tulips'] .garden-ground { border-bottom: 6px dotted #ff7aa8; }
+.garden-scene[data-path] .garden-bed + .garden-bed { padding-top: 18px; }
+.garden-scene[data-path] .garden-bed + .garden-bed::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 12px; border-radius: 6px; }
+.garden-scene[data-path='gravel'] .garden-bed + .garden-bed::before { background: repeating-radial-gradient(circle at 3px 3px, #c9bfae 0 2px, #a89c88 2px 5px); }
+.garden-scene[data-path='brick'] .garden-bed + .garden-bed::before { background: repeating-linear-gradient(90deg, #b5543a 0 18px, #8a3b26 18px 20px); }
+.garden-scene[data-path='boardwalk'] .garden-bed + .garden-bed::before { background: repeating-linear-gradient(90deg, #a0723f 0 10px, #6b4a26 10px 12px); }
+.garden-scene[data-path='stardust'] .garden-bed + .garden-bed::before { background: linear-gradient(90deg, #3b2a8f, #7b4fd6, #3b2a8f); box-shadow: 0 0 8px #a99cff; }
+.garden-plant { position: relative; display: block; text-decoration: none; border-radius: 10px; padding: 2px; }
+.garden-plant:hover { background: rgb(255 255 255 / 0.25); }
+.garden-plant:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.garden-scene[data-sky='night'] .garden-plant:focus-visible { outline-color: #8ab4ff; }
+.garden-scene[data-sky='dawn'] .garden-plant:focus-visible, .garden-scene[data-sky='golden'] .garden-plant:focus-visible { outline-color: #1f5fe0; }
+/* For keyboard users: past a long garden's plants to the shed, shown when focused. */
+.garden-skip:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.garden-skip:focus { margin-bottom: 10px; }
+.garden-more { display: block; margin: 12px auto 0; }
+.plant-svg { display: block; overflow: visible; transform-origin: 50% 100%; pointer-events: none; }
+.garden-tier-dot { position: absolute; bottom: -2px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; }
+.g-sway { animation: sway 6s ease-in-out infinite alternate; }
+@keyframes sway { from { transform: rotate(-1.5deg); } to { transform: rotate(1.5deg); } }
+.g-spin { animation: spin 30s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.g-drift { animation: aurora-drift 12s ease-in-out infinite alternate; }
+.g-ember { animation: ember 2.4s ease-out infinite; }
+@keyframes ember { to { transform: translateY(-14px); opacity: 0; } }
+.g-twinkle { animation: twinkle 2.4s ease-in-out infinite alternate; }
+@keyframes twinkle { to { opacity: 0.2; } }
+.perk-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.perk { display: flex; gap: 12px; align-items: flex-start; }
+.perk[data-open='false'] .perk-tier { filter: grayscale(1); opacity: 0.55; }
+.perk-tier { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 1.05rem; }
+.perk-body { flex: 1; min-width: 0; }
+.perk-body .hint { margin: 2px 0 6px; }
+.tier-list { columns: 2; padding-left: 1.4em; }
+@media (prefers-reduced-motion: reduce) {
+  .g-sway, .g-spin, .g-drift, .g-ember, .g-twinkle, .garden-visitors span, .garden-scene[data-aurora]::after { animation: none; }
 }

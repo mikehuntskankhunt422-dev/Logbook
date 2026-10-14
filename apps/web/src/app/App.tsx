@@ -9,6 +9,9 @@ import { CalendarView, Memories, SearchView, Timeline } from '../components/view
 import { SettingsView } from '../components/SettingsView.tsx';
 import { ClockView } from '../components/ClockView.tsx';
 import { Ringer } from './clock.tsx';
+import { useGarden, useGardenEffects } from './garden.tsx';
+import { GardenView } from '../components/GardenView.tsx';
+import { useGardenPrefs } from '../lib/garden-prefs.ts';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
@@ -20,6 +23,7 @@ const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'calendar' }, label: 'Calendar', icon: '🗓️' },
   { route: { name: 'memories' }, label: 'On this day', icon: '🕰️' },
   { route: { name: 'search' }, label: 'Search', icon: '🔍' },
+  { route: { name: 'garden' }, label: 'Garden', icon: '🌱' },
   { route: { name: 'clock' }, label: 'Clock', icon: '⏰' },
   { route: { name: 'settings' }, label: 'Settings', icon: '⚙️' },
 ];
@@ -32,6 +36,9 @@ export function App() {
   useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
   usePwaUpdates();
+  const gardenHidden = useGardenPrefs().hidden;
+  const garden = useGarden(!gardenHidden);
+  useGardenEffects(garden);
 
   useEffect(() => {
     // Tidy up once per launch: purge 30-day-old trash and media nothing references, and the book
@@ -58,7 +65,7 @@ export function App() {
   const firstRoute = useRef(true);
   const routeKey = route.name === 'entry' ? route.id : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: 'Garden · Logbook', settings: 'Settings · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -93,7 +100,7 @@ export function App() {
         </a>
         <StreakBadge />
         <nav className="nav" aria-label="Main">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !(gardenHidden && n.route.name === 'garden')).map((n) => (
             <a key={n.label} href={href(n.route)} title={n.label} aria-current={section === n.route.name ? 'page' : undefined}>
               {/* One highlight that glides from item to item. */}
               {section === n.route.name && <motion.span layoutId="nav-pill" className="nav-pill" transition={spring(reduced)} aria-hidden="true" />}
@@ -116,6 +123,7 @@ export function App() {
           {route.name === 'memories' && <Memories />}
           {route.name === 'search' && <SearchView tag={route.tag} />}
           {route.name === 'clock' && <ClockView />}
+          {route.name === 'garden' && <GardenView garden={garden} />}
           {route.name === 'settings' && <SettingsView />}
         </div>
       </main>

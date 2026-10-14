@@ -4,7 +4,7 @@ A private journal for your computer: write about your days with photos, video, v
 
 Logbook is a free app for Windows, macOS, Linux and Android phones. Your journal is kept as ordinary files on your own device, never on our servers. Nothing in it costs money.
 
-> **Status: preview (0.5.0).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, export to Markdown, text, web page or PDF, a clock with alarms and timers, automatic updates and an Android app all work. **Not yet:** a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
+> **Status: preview (0.6.0).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, export to Markdown, text, web page or PDF, a clock with alarms and timers, a garden that grows a plant for every entry, automatic updates and an Android app all work. **Not yet:** a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
 
 ## Download
 
@@ -51,6 +51,8 @@ Logbook/
 **Formatting.** The toolbar over the text has headings 1 to 6 (as many as you like), bold, italic, underline, strikethrough, colours and highlights, eight fonts (including Atkinson Hyperlegible and OpenDyslexic for easier reading), alignment, bulleted and numbered lists, checklists with tick boxes, tables, quotes, code, links, and country flags 🇯🇵 that show on every computer. **Settings → Appearance → Easier reading** sets the text size, the line spacing and the font you write in.
 
 **Writing prompts.** A new entry suggests a question when the page is blank; **Write about this** puts it at the top of your text, **Another** picks a different one. Turn them off in **Settings → Appearance**.
+
+**Garden.** **🌱 Garden** grows a plant for every entry, in a bed for each month: the longer the entry, the bigger the plant, and its mood picks the flower. Writing earns your garden Growth, which ranks it through 15 tiers from Common to Worldbloom; each new plant blooms at your garden's tier, long entries a tier or two higher. Every tier unlocks a perk in the **Garden shed** (petal celebrations, butterflies, app colours, skies, paths and more), used only if you choose it. Tap a plant to open its entry. Copied text, links and filler don't count, and nothing ever wilts. Hide it in **Settings → Appearance**.
 
 **Music and expiry.** **🎵 Music** gives an entry a sound file, or a link, that plays while it's open: a YouTube video or live stream (Lofi Girl, say), Vimeo, Rumble, Dailymotion, Twitch, Kick, Streamable, a sound file on the web or an internet radio station. Videos play in their site's own player, ads included; a link needs the internet. **⏳ Expiry** makes an entry expire in a day, a week, a month, a year or at a time you choose: then it moves to the trash by itself, where you can still restore it for 30 days.
 
