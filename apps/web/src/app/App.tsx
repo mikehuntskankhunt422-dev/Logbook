@@ -9,7 +9,7 @@ import { CalendarView, Memories, SearchView, Timeline } from '../components/view
 import { SettingsView } from '../components/SettingsView.tsx';
 import { ClockView } from '../components/ClockView.tsx';
 import { Ringer } from './clock.tsx';
-import { useGardenEffects } from './garden.tsx';
+import { useGarden, useGardenEffects } from './garden.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
 import { StreakBadge } from '../components/common.tsx';
@@ -36,8 +36,9 @@ export function App() {
   useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
   usePwaUpdates();
-  useGardenEffects();
   const gardenHidden = useGardenPrefs().hidden;
+  const garden = useGarden(!gardenHidden);
+  useGardenEffects(garden);
 
   useEffect(() => {
     // Tidy up once per launch: purge 30-day-old trash and media nothing references, and the book
@@ -122,7 +123,7 @@ export function App() {
           {route.name === 'memories' && <Memories />}
           {route.name === 'search' && <SearchView tag={route.tag} />}
           {route.name === 'clock' && <ClockView />}
-          {route.name === 'garden' && <GardenView />}
+          {route.name === 'garden' && <GardenView garden={garden} />}
           {route.name === 'settings' && <SettingsView />}
         </div>
       </main>

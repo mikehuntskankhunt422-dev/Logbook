@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
-import { rankName, SIZE_STAGES, TIERS, type Plant as PlantData } from '@logbook/core';
-import { useGarden } from '../app/garden.tsx';
+import { memo, useMemo, useState } from 'react';
+import { rankName, SIZE_STAGES, TIERS, type Garden, type Plant as PlantData } from '@logbook/core';
 import { href } from '../app/router.ts';
-import { PERKS, setGardenPrefs, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
+import { PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
 import { formatLongDate } from './common.tsx';
 import { Plant, TIER_COLOURS } from './garden/Plant.tsx';
 
@@ -15,9 +14,12 @@ function skyNow(): 'dawn' | 'day' | 'golden' | 'night' {
   return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'golden' : 'night';
 }
 
-export function GardenView() {
-  const garden = useGarden();
+/** Months shown at first, and added by "Show earlier months": a long journal's garden opens fast. */
+const BEDS_AT_ONCE = 12;
+
+export function GardenView({ garden }: { garden: Garden | null }) {
   const prefs = useGardenPrefs();
+  const [shown, setShown] = useState(BEDS_AT_ONCE);
   const beds = useMemo(() => {
     const byMonth = new Map<string, PlantData[]>();
     for (const p of garden?.plants ?? []) {
@@ -27,10 +29,22 @@ export function GardenView() {
     return [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([month, plants]) => ({ month, plants: plants.sort((a, b) => a.entry.date.localeCompare(b.entry.date)) }));
   }, [garden]);
 
+  if (prefs.hidden)
+    return (
+      <div className="garden-page">
+        <h1>Garden</h1>
+        <p>The garden is turned off on this device.</p>
+        <button type="button" className="btn" onClick={() => setGardenPrefs({ hidden: false })}>
+          🌱 Show the garden
+        </button>
+      </div>
+    );
   if (!garden) return <p className="muted">Opening the garden…</p>;
   const { rank } = garden;
   const top = rank.tier === TIERS.length - 1;
-  const has = (tier: number) => rank.tier >= tier;
+  // Perks stay open once reached, even if Growth later falls (old entries deleted for good).
+  const open = unlockedTier(rank.tier, prefs);
+  const has = (tier: number) => open >= tier;
   const on = (tier: number, pref: keyof GardenPrefs) => has(tier) && Boolean(prefs[pref]);
   const sky = on(4, 'livingSky') ? skyNow() : 'day';
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
@@ -57,6 +71,9 @@ export function GardenView() {
         </div>
       </section>
 
+      <button type="button" className="btn garden-skip" onClick={() => document.getElementById('shed-h')?.focus()}>
+        Skip to the garden shed
+      </button>
       <div
         className="garden-scene"
         data-sky={sky}
@@ -84,53 +101,37 @@ export function GardenView() {
         {beds.length === 0 ? (
           <p className="garden-empty">Write your first entry to plant your first seed. 🌱</p>
         ) : (
-          beds.map((bed) => (
-            <section key={bed.month} className="garden-bed" aria-labelledby={`bed-${bed.month}`}>
-              <h2 className="garden-sign" id={`bed-${bed.month}`}>
-                {on(6, 'lanterns') && <span aria-hidden="true">🏮 </span>}
-                {new Date(`${bed.month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-                <span className="muted"> · {bed.plants.length === 1 ? '1 plant' : `${bed.plants.length} plants`}</span>
-              </h2>
-              <ul className="garden-ground">
-                {bed.plants.map((p) => (
-                  <li key={p.entry.id}>
-                    <a
-                      className="garden-plant"
-                      href={href({ name: 'entry', id: p.entry.id })}
-                      title={`${p.entry.title || 'Untitled'} · ${TIERS[p.tier]!.name} ${p.species}`}
-                      aria-label={`${p.entry.title || 'Untitled'}, ${formatLongDate(p.entry.date)}: ${TIERS[p.tier]!.name} ${p.species}, ${SIZE_STAGES[p.stage]!.name}`}
-                    >
-                      <Plant plant={p} />
-                      <span className="garden-tier-dot" style={{ background: TIER_COLOURS[p.tier] }} aria-hidden="true" />
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))
+          beds.slice(0, shown).map((bed) => <Bed key={bed.month} month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} />)
         )}
       </div>
+      {beds.length > shown && (
+        <button type="button" className="btn garden-more" onClick={() => setShown((n) => n + BEDS_AT_ONCE)}>
+          Show earlier months ({beds.length - shown} more)
+        </button>
+      )}
 
       <section className="panel garden-shed" aria-labelledby="shed-h">
-        <h2 id="shed-h">Garden shed</h2>
+        <h2 id="shed-h" tabIndex={-1}>
+          Garden shed
+        </h2>
         <p className="hint">Every tier unlocks a perk. Nothing changes until you choose it, and nothing is ever taken back.</p>
         <ul className="perk-list">
           {PERKS.map((perk) => {
-            const open = has(perk.tier);
+            const unlocked = has(perk.tier);
             return (
-              <li key={perk.tier} className="perk" data-open={open}>
+              <li key={perk.tier} className="perk" data-open={unlocked}>
                 <span className="perk-tier" style={{ background: TIER_COLOURS[perk.tier] }} aria-hidden="true">
                   {TIERS[perk.tier]!.emoji}
                 </span>
                 <div className="perk-body">
                   <strong>{perk.title}</strong> <span className="muted">· {TIERS[perk.tier]!.name}</span>
-                  <p className="hint">{open ? perk.text : `🔒 Reach ${TIERS[perk.tier]!.name} (${TIERS[perk.tier]!.at.toLocaleString()} Growth).`}</p>
-                  {open && perk.kind === 'toggle' && (
+                  <p className="hint">{unlocked ? perk.text : `🔒 Reach ${TIERS[perk.tier]!.name} (${TIERS[perk.tier]!.at.toLocaleString()} Growth).`}</p>
+                  {unlocked && perk.kind === 'toggle' && (
                     <label className="row">
-                      <input type="checkbox" checked={Boolean(prefs[perk.pref])} onChange={(e) => setGardenPrefs({ [perk.pref]: e.target.checked })} /> On
+                      <input type="checkbox" aria-label={perk.title} checked={Boolean(prefs[perk.pref])} onChange={(e) => setGardenPrefs({ [perk.pref]: e.target.checked })} /> On
                     </label>
                   )}
-                  {open && perk.kind === 'choice' && (
+                  {unlocked && perk.kind === 'choice' && (
                     <div className="row" role="group" aria-label={perk.title}>
                       <button type="button" className="chip" aria-pressed={!prefs[perk.pref]} onClick={() => setGardenPrefs({ [perk.pref]: '' })}>
                         None
@@ -168,3 +169,31 @@ export function GardenView() {
     </div>
   );
 }
+
+/** One month's bed. Memoised, so choosing a perk doesn't redraw every plant. */
+const Bed = memo(function Bed({ month, plants, lantern }: { month: string; plants: PlantData[]; lantern: boolean }) {
+  return (
+    <section className="garden-bed" aria-labelledby={`bed-${month}`}>
+      <h2 className="garden-sign" id={`bed-${month}`}>
+        {lantern && <span aria-hidden="true">🏮 </span>}
+        {new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+        <span className="garden-count"> · {plants.length === 1 ? '1 plant' : `${plants.length} plants`}</span>
+      </h2>
+      <ul className="garden-ground">
+        {plants.map((p) => (
+          <li key={p.entry.id}>
+            <a
+              className="garden-plant"
+              href={href({ name: 'entry', id: p.entry.id })}
+              title={`${p.entry.title || 'Untitled'} · ${TIERS[p.tier]!.name} ${p.species}`}
+              aria-label={`${p.entry.title || 'Untitled'}, ${formatLongDate(p.entry.date)}: ${TIERS[p.tier]!.name} ${p.species}, ${SIZE_STAGES[p.stage]!.name}`}
+            >
+              <Plant plant={p} />
+              <span className="garden-tier-dot" style={{ background: TIER_COLOURS[p.tier] }} aria-hidden="true" />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+});

@@ -78,7 +78,7 @@ export const PERKS: Perk[] = [
     title: 'Garden paths',
     text: 'A path between the beds.',
   },
-  { tier: 6, kind: 'toggle', pref: 'lanterns', title: 'Lanterns', text: 'Lanterns along the paths.' },
+  { tier: 6, kind: 'toggle', pref: 'lanterns', title: 'Lanterns', text: 'A lantern on every bed’s sign.' },
   {
     tier: 7,
     kind: 'choice',
@@ -89,7 +89,7 @@ export const PERKS: Perk[] = [
       { value: 'tulips', label: 'Tulip border', tier: 7 },
     ],
     title: 'Bed borders',
-    text: 'A border around each month’s bed.',
+    text: 'A border along the front of each month’s bed.',
   },
   {
     tier: 8,
@@ -103,11 +103,11 @@ export const PERKS: Perk[] = [
     title: 'Gate ornament',
     text: 'Something to greet you at the gate.',
   },
-  { tier: 9, kind: 'toggle', pref: 'stars', title: 'Starry night', text: 'Stars and a moon over the garden at night and in the dark theme.' },
-  { tier: 10, kind: 'toggle', pref: 'aurora', title: 'Aurora sky', text: 'Aurora curtains in the night sky, and three more garden colours.' },
-  { tier: 11, kind: 'toggle', pref: 'nebula', title: 'Nebula sky', text: 'A nebula in the night sky, and two more paths.' },
+  { tier: 9, kind: 'toggle', pref: 'stars', title: 'Starry night', text: 'Stars and a moon over the garden.' },
+  { tier: 10, kind: 'toggle', pref: 'aurora', title: 'Aurora sky', text: 'Aurora curtains across the garden’s sky, and three more garden colours.' },
+  { tier: 11, kind: 'toggle', pref: 'nebula', title: 'Nebula sky', text: 'A nebula in the garden’s sky, and two more paths.' },
   { tier: 12, kind: 'toggle', pref: 'goldSigns', title: 'Gold signs', text: 'Gold signs on every bed.' },
-  { tier: 13, kind: 'toggle', pref: 'ancient', title: 'Ancient ground', text: 'Fossil ferns and amber stones in the soil.' },
+  { tier: 13, kind: 'toggle', pref: 'ancient', title: 'Ancient ground', text: 'Old amber soil under every bed.' },
   { tier: 14, kind: 'none', title: 'Keeper of the Worldbloom', text: 'The title, and a gold colour for the app (in Garden colours).' },
 ];
 
@@ -115,11 +115,16 @@ const KEY = 'logbook.garden';
 const listeners = new Set<() => void>();
 let current: GardenPrefs = load();
 
-function load(): GardenPrefs {
+/** The saved choices, or `fallback` when there are none (or storage can't be read). */
+function load(fallback: GardenPrefs = DEFAULTS): GardenPrefs {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<GardenPrefs>) };
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) return fallback;
+    const prefs = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<GardenPrefs>) };
+    if (!Number.isFinite(prefs.seen)) prefs.seen = -1;
+    return prefs;
   } catch {
-    return DEFAULTS;
+    return fallback;
   }
 }
 
@@ -128,13 +133,29 @@ export function gardenPrefs(): GardenPrefs {
 }
 
 export function setGardenPrefs(patch: Partial<GardenPrefs>): void {
-  current = { ...current, ...patch };
+  // Read again first, so a choice made meanwhile in another window isn't written over.
+  current = { ...load(current), ...patch };
   try {
     localStorage.setItem(KEY, JSON.stringify(current));
   } catch {
     // Private browsing: the choice lasts until the page closes.
   }
   for (const l of listeners) l();
+}
+
+if (typeof window !== 'undefined')
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY && e.key !== null) return;
+    current = load();
+    for (const l of listeners) l();
+  });
+
+/**
+ * The tiers whose perks are open: the garden's tier, or the highest this device has seen if
+ * that's higher, so a perk never locks again (if Growth falls when old entries are deleted).
+ */
+export function unlockedTier(rankTier: number, prefs: GardenPrefs): number {
+  return Math.max(rankTier, Math.floor(prefs.seen / 1000));
 }
 
 export function useGardenPrefs(): GardenPrefs {

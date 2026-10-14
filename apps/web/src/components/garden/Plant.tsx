@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { memo, useId, type ReactNode } from 'react';
 import { plantHeight, SIZE_STAGES, type Plant as PlantData } from '@logbook/core';
 
 /**
@@ -48,7 +48,8 @@ function seeded(id: string) {
   };
 }
 
-export function Plant({ plant }: { plant: PlantData }) {
+/** Memoised: the garden page re-renders on every perk choice, its plants don't need to. */
+export const Plant = memo(function Plant({ plant }: { plant: PlantData }) {
   const uid = useId().replace(/:/g, '');
   const look = LOOKS[plant.species] ?? LOOKS['Wildflower']!;
   const t = plant.tier;
@@ -166,29 +167,39 @@ export function Plant({ plant }: { plant: PlantData }) {
   return (
     <svg className="plant-svg g-sway" viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden="true" style={{ animationDelay: `${Math.round(rand() * 3000)}ms` }}>
       <defs>
-        <radialGradient id={`${uid}pg`}>
-          <stop offset="0%" stopColor={look.light} />
-          <stop offset="100%" stopColor={look.deep} />
-        </radialGradient>
+        {t >= 1 && (
+          <radialGradient id={`${uid}pg`}>
+            <stop offset="0%" stopColor={look.light} />
+            <stop offset="100%" stopColor={look.deep} />
+          </radialGradient>
+        )}
+        {t >= 4 && (
         <radialGradient id={`${uid}gl`}>
           <stop offset="0%" stopColor={t >= 6 ? '#fff4c2' : '#ffd66b'} stopOpacity={0.8} />
           <stop offset="100%" stopColor={t >= 6 ? '#fff4c2' : '#ffd66b'} stopOpacity={0} />
         </radialGradient>
+        )}
+        {t >= 7 && (
         <linearGradient id={`${uid}rb`} x1="0" x2="1">
           {['#ff5f6d', '#ffc371', '#fff36b', '#5be37b', '#4fb8ff', '#a66bff'].map((c, i) => (
             <stop key={c} offset={`${i * 20}%`} stopColor={c} />
           ))}
         </linearGradient>
+        )}
+        {t >= 10 && (
         <linearGradient id={`${uid}au`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#5ef2c4" />
           <stop offset="50%" stopColor="#4fd17f" />
           <stop offset="100%" stopColor="#a66bff" />
         </linearGradient>
+        )}
+        {t >= 11 && (
         <radialGradient id={`${uid}nb`}>
           <stop offset="0%" stopColor={look.light} stopOpacity={0.6} />
           <stop offset="55%" stopColor="#7b4fd6" stopOpacity={0.35} />
           <stop offset="100%" stopColor="#2f5fd6" stopOpacity={0} />
         </radialGradient>
+        )}
       </defs>
       {behind}
       {stems}
@@ -198,7 +209,7 @@ export function Plant({ plant }: { plant: PlantData }) {
       {front}
     </svg>
   );
-}
+});
 
 function hexagon(x: number, y: number, s: number): string {
   return Array.from({ length: 6 }, (_, i) => `${x + s * Math.cos((Math.PI / 3) * i)},${y + s * Math.sin((Math.PI / 3) * i)}`).join(' ');

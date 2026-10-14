@@ -31,8 +31,8 @@ const PETALS = ['#ffb7c5', '#ff8fab', '#fbcfe8', '#fff0f5', '#f9a8d4', '#fde68a'
 export function celebrate(kind: 'entry' | 'streak' | 'backup' = 'entry'): void {
   if (prefersReducedMotion()) return;
   // The garden's Petal celebrations perk (D97): soft petals instead of confetti.
-  const petals = gardenPrefs().petals;
-  const base = petals
+  const { petals, hidden } = gardenPrefs();
+  const base = petals && !hidden
     ? { colors: PETALS, shapes: ['circle' as const], scalar: 1.4, gravity: 0.6, drift: 0.4, ticks: 260, disableForReducedMotion: true, zIndex: 80 }
     : { colors: COLORS, disableForReducedMotion: true, zIndex: 80 };
   if (kind === 'streak') {

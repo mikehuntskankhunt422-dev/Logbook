@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { growGarden, plantHeight, plantWords, rankFor, rankName, sizeStage, wordGrowth } from '../src/garden.ts';
+import { growGarden, type GardenCache, plantHeight, plantWords, rankFor, rankName, sizeStage, wordGrowth } from '../src/garden.ts';
 import type { Entry } from '../src/model.ts';
 import { emptyDoc } from '../src/richtext.ts';
 
@@ -18,6 +18,17 @@ describe('the garden (D97)', () => {
     expect(plantWords(entry('aaaaaaa zzzz ok')).written).toBe(1);
     expect(plantWords(entry(Array.from({ length: 100 }, (_, i) => i).join(' '))).written).toBe(25);
     expect(plantWords(entry('I love this day. I love this day. I love this day.')).written).toBe(4);
+    // Word filler counts at most 4 times each different word.
+    expect(plantWords(entry('lol '.repeat(1000))).written).toBe(4);
+    expect(plantWords(entry('lorem ipsum '.repeat(245))).written).toBe(8);
+  });
+
+  it('counts words in scripts written without spaces about as English does', () => {
+    expect(plantWords(entry('今天天气很好，我和朋友去公园散步。')).written).toBe(8);
+    expect(plantWords(entry('きょうはともだちとこうえんにいきました。')).written).toBe(7);
+    expect(plantWords(entry('วันนี้อากาศดีมากฉันไปเดินเล่นที่สวนกับเพื่อน')).written).toBeGreaterThanOrEqual(8);
+    expect(plantWords(entry('오늘은 날씨가 정말 좋았다.')).written).toBe(4);
+    expect(plantWords(entry('आज मौसम बहुत अच्छा था।')).written).toBe(5);
   });
 
   it('gives copies of earlier entries nothing, and a little for pictures and voice', () => {
@@ -58,6 +69,19 @@ describe('the garden (D97)', () => {
       ['Wildflower', 0, 0],
       ['Wildflower', 1, 1],
     ]);
+  });
+
+  it('counts an entry in both lists (just restored) once, and gives the same garden with a cache', () => {
+    const a = entry(words(300, 'g'));
+    const b = entry(words(80, 'h'));
+    const alone = growGarden([a, b]);
+    expect(growGarden([a, b, { ...a, deletedAt: '2026-10-10T00:00:00.000Z' }])).toEqual(alone);
+    const cache: GardenCache = new Map();
+    expect(growGarden([a, b], cache)).toEqual(alone);
+    expect(growGarden([a, b], cache)).toEqual(alone);
+    const edited = { ...b, rev: 2, updatedAt: '2026-10-11T00:00:00.000Z', blocks: entry(words(400, 'i')).blocks };
+    expect(growGarden([a, edited], cache)).toEqual(growGarden([a, edited]));
+    expect(cache.size).toBe(2);
   });
 
   it('keeps trashed entries’ Growth but shows only live plants', () => {

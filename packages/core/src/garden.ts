@@ -8,7 +8,7 @@ import { richTextToPlain } from './richtext.ts';
  *
  * Growth rewards writing, not padding: it's earned per day you write (100 for turning up, and up to
  * 439 for your words on a slowing curve), and repeated sentences, text copied from other entries,
- * links, number lists and filler add nothing.
+ * links, number lists and repeated-word filler add nothing.
  */
 
 export const TIERS = [
@@ -101,9 +101,23 @@ export const TURN_UP_WORDS = 20;
 
 // ── words ─────────────────────────────────────────────────────────────────────────────────────────
 
-const WORD_RE = /[\p{L}\p{N}][\p{L}\p{M}\p{N}'’-]*/gu;
+/**
+ * Scripts written without spaces between words are cut into short runs instead: Chinese 2
+ * characters, Japanese kana 3, Thai, Lao, Khmer and Burmese 4 letters (with their marks), so a
+ * line of them counts about as many words as the same line in English.
+ */
+const UNSPACED = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\u30fc\\p{Script=Thai}\\p{Script=Lao}\\p{Script=Khmer}\\p{Script=Myanmar}';
+const WORD_RE = new RegExp(
+  '\\p{Script=Han}{1,2}' +
+    '|[\\p{Script=Hiragana}\\p{Script=Katakana}\\u30fc]{1,3}' +
+    '|(?:(?=\\p{L})[\\p{Script=Thai}\\p{Script=Lao}\\p{Script=Khmer}\\p{Script=Myanmar}]\\p{M}*){1,4}' +
+    `|(?![${UNSPACED}])[\\p{L}\\p{N}](?:(?![${UNSPACED}])[\\p{L}\\p{M}\\p{N}'’-])*`,
+  'gu',
+);
 const URL_RE = /\bhttps?:\/\/\S+|\bwww\.\S+/gi;
 const SENTENCE_SPLIT = /[.!?…。！？\n]+/;
+/** An entry's written words count up to 4 times its different words: "lol lol lol…" is 4. */
+const VARIETY = 4;
 
 /** The words of one piece of text that count: no links, no long or repeated-letter junk. */
 function tokens(text: string, numbersLeft: { n: number }): string[] {
@@ -152,27 +166,35 @@ function hash(s: string): number {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-/**
- * An entry's plant words: its own written words (a sentence of 3+ words repeated in the entry, or
- * of 5+ words already in an earlier entry, adds nothing), plus a little for voice and pictures.
- * `seen` holds the sentences of earlier entries and gains this one's.
- */
-export function plantWords(entry: Entry, seen: Set<number> = new Set()): { words: number; written: number } {
+/** What one entry holds, worked out once per saved version (see GardenCache). */
+export interface EntryAnalysis {
+  /** Each sentence that counts within the entry (repeats of 3+ words dropped), and its words. */
+  keys: number[];
+  sizes: number[];
+  /** The most its written words can count: VARIETY × its different words. */
+  cap: number;
+  /** Words for voice, video and pictures. */
+  extra: number;
+}
+
+function analyse(entry: Entry): EntryAnalysis {
   const numbers = { n: 25 };
   const own = new Set<number>();
-  let written = 0;
+  const vocab = new Set<string>();
+  const keys: number[] = [];
+  const sizes: number[] = [];
   for (const piece of pieces(entry)) {
     for (const sentence of piece.replace(URL_RE, ' ').split(SENTENCE_SPLIT)) {
       const t = tokens(sentence, numbers);
       if (!t.length) continue;
       const key = hash(t.join(' '));
       if (t.length >= 3 && own.has(key)) continue;
-      if (t.length >= 5 && seen.has(key)) continue;
       own.add(key);
-      written += t.length;
+      keys.push(key);
+      sizes.push(t.length);
+      for (const w of t) vocab.add(w);
     }
   }
-  for (const k of own) seen.add(k);
   let voice = 0;
   let pictures = 0;
   for (const b of entry.blocks) {
@@ -180,8 +202,33 @@ export function plantWords(entry: Entry, seen: Set<number> = new Set()): { words
     else if (b.type === 'photo' || b.type === 'file') pictures += 10;
     else if (b.type === 'gallery') pictures += 10 * b.items.length;
   }
-  return { words: written + Math.min(voice, 200) + Math.min(pictures, 50), written };
+  return { keys, sizes, cap: VARIETY * vocab.size, extra: Math.min(voice, 200) + Math.min(pictures, 50) };
 }
+
+/** Plant words from an analysis, given the sentences of earlier entries (which it then joins). */
+function count(a: EntryAnalysis, seen: Set<number>): { words: number; written: number } {
+  let written = 0;
+  for (let i = 0; i < a.keys.length; i++) if (!(a.sizes[i]! >= 5 && seen.has(a.keys[i]!))) written += a.sizes[i]!;
+  for (const k of a.keys) seen.add(k);
+  written = Math.min(written, a.cap);
+  return { words: written + a.extra, written };
+}
+
+/**
+ * An entry's plant words: its own written words (a sentence of 3+ words repeated in the entry, or
+ * of 5+ words already in an earlier entry, adds nothing, and words count at most 4 times each
+ * different word), plus a little for voice and pictures. `seen` holds the sentences of earlier
+ * entries and gains this one's.
+ */
+export function plantWords(entry: Entry, seen: Set<number> = new Set()): { words: number; written: number } {
+  return count(analyse(entry), seen);
+}
+
+/**
+ * Analyses of entries by saved version, so that growing the garden again after a save only reads
+ * the entry that changed. Keep one for the app's lifetime and pass it to every growGarden.
+ */
+export type GardenCache = Map<string, EntryAnalysis>;
 
 // ── the garden ───────────────────────────────────────────────────────────────────────────────────
 
@@ -208,16 +255,30 @@ const dayOf = (e: Entry) => (/^\d{4}-\d{2}-\d{2}T/.test(e.createdAt) ? e.created
 
 /**
  * The garden of these entries (live and trashed: trashed ones keep counting until they're gone
- * for good, and only live ones show). Taken in the order they were written.
+ * for good, and only live ones show; an entry in both lists counts once, as the live one). Taken
+ * in the order they were written.
  */
-export function growGarden(entries: Entry[]): Garden {
-  const ordered = [...entries].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1));
+export function growGarden(entries: Entry[], cache?: GardenCache): Garden {
+  const byId = new Map<string, Entry>();
+  for (const e of entries) {
+    const had = byId.get(e.id);
+    if (!had || (had.deletedAt && !e.deletedAt)) byId.set(e.id, e);
+  }
+  const ordered = [...byId.values()].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1));
+  const used = cache && new Set<string>();
   const seen = new Set<number>();
   const days = new Map<string, { words: number; turnedUp: boolean }>();
   let growth = 0;
   const plants: Plant[] = [];
   for (const entry of ordered) {
-    const { words, written } = plantWords(entry, seen);
+    let analysis: EntryAnalysis;
+    if (cache && used) {
+      const key = `${entry.id}\u0000${entry.rev}\u0000${entry.updatedAt}`;
+      analysis = cache.get(key) ?? analyse(entry);
+      cache.set(key, analysis);
+      used.add(key);
+    } else analysis = analyse(entry);
+    const { words, written } = count(analysis, seen);
     const base = rankFor(growth).tier;
     const bonus = words >= 1_200 ? 2 : words >= 600 ? 1 : 0;
     const tier = Math.min(base + bonus, TOP_TIER);
@@ -232,6 +293,8 @@ export function growGarden(entries: Entry[]): Garden {
     days.set(key, day);
     growth += (day.turnedUp ? TURN_UP : 0) + wordGrowth(day.words) - before;
   }
+  // Forget the versions that have been saved over.
+  if (cache && used && cache.size > used.size) for (const k of cache.keys()) if (!used.has(k)) cache.delete(k);
   return { plants, rank: rankFor(growth) };
 }
 

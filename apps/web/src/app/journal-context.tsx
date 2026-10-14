@@ -24,16 +24,24 @@ export function JournalProvider({ journal, children }: { journal: Journal; child
   const askedPersist = useRef(false);
 
   const reload = useCallback(async () => {
-    setLocked(journal.isLocked);
     if (journal.isLocked) {
+      setLocked(true);
       setEntries([]);
       search.rebuild([]);
       setLoaded(true);
       return;
     }
-    const list = await journal.listEntries();
+    let list: Entry[];
+    try {
+      list = await journal.listEntries();
+    } catch (err) {
+      setLocked(journal.isLocked);
+      throw err;
+    }
     search.rebuild(list);
+    // Unlocked together with the entries arriving, so nothing sees an open journal with no entries.
     setEntries(list);
+    setLocked(false);
     setLoaded(true);
   }, [journal, search]);
 
