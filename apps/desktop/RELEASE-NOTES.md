@@ -1,3 +1,11 @@
+**A garden for your journal.** **🌱 Garden** in the menu grows a plant for every entry you write, in a flower bed for each month. The longer the entry, the bigger the plant, from a little sprout to a flowering tree, and its mood picks the flower (😄 a sunflower, 🥰 a rose, no mood a wildflower). Tap a plant to open its entry.
+
+**15 rarity tiers.** Writing earns your garden Growth, which takes it from 🌱 Common through Uncommon, Rare, Epic, Legendary, Mythic, Radiant, Prismatic, Crystal, Celestial, Aurora, Cosmic, Eternal and Primordial to 🌳 Worldbloom, and then ★ rings. Each new plant blooms at your garden's tier, and entries of 600 or 1,200 words bloom one or two tiers higher. Rarer plants get dew, gold, flames, rainbows, crystals, halos and a crown. Growth comes from the days you write: copied text, links and filler don't count, and plants never wilt. Your existing entries are planted straight away.
+
+**Perks.** Every tier unlocks a perk in the **Garden shed**: petal celebrations, visiting butterflies, colours for the whole app, a sky that follows the time of day, paths, lanterns, bed borders, a gate ornament, starry, aurora and nebula skies, and more. Nothing changes until you choose it, and nothing locks again. Don't want a garden? Turn it off in **Settings → Appearance**.
+
+What came in 0.5.0:
+
 **Printed books are gone.** Logbook no longer makes or sells printed books: the **Book** tab is removed. Everything else stays, including **Export** (on an entry, the journal page, search results, or **Settings → Export**): your entries as Markdown, plain text, a web page or a PDF you can print yourself. Book drafts saved by earlier versions are deleted from your journal.
 
 **From 0.4.1:** writing prompts on new entries (**Write about this**, **🔀 Another**; off in **Settings → Appearance**).
