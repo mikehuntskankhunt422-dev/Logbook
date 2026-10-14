@@ -1,6 +1,6 @@
-# The garden (design draft, not built)
+# The garden (design)
 
-Design for the journal garden game, from a design review on 2026-10-14. Nothing here is built yet; numbers may change.
+Design for the journal garden game, from a design review on 2026-10-14. The first release (0.6.0, D97) builds a smaller part of it: plants, sizes, species, the 15 tiers, Growth and one perk per tier. Unlike this draft, it stores nothing in the journal: perk choices stay on each device. The rest is for later updates; numbers may change.
 
 ## Summary
 

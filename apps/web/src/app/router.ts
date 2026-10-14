@@ -8,6 +8,7 @@ export type Route =
   | { name: 'memories' }
   | { name: 'search'; tag?: string }
   | { name: 'clock' }
+  | { name: 'garden' }
   | { name: 'settings' };
 
 export function parseHash(hash: string): Route {
@@ -27,6 +28,8 @@ export function parseHash(hash: string): Route {
       return { name: 'search', tag: q.get('tag') ?? undefined };
     case 'clock':
       return { name: 'clock' };
+    case 'garden':
+      return { name: 'garden' };
     case 'settings':
       return { name: 'settings' };
     default:
@@ -50,6 +53,8 @@ export function href(route: Route): string {
       return route.tag ? `#/search?tag=${encodeURIComponent(route.tag)}` : '#/search';
     case 'clock':
       return '#/clock';
+    case 'garden':
+      return '#/garden';
     case 'settings':
       return '#/settings';
   }

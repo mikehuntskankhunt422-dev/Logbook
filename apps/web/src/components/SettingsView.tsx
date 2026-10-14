@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { FONTS, fontFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
+import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
@@ -72,6 +73,7 @@ const LINE_SPACINGS = [
 function AppearancePanel() {
   const { journal, settings } = useJournal();
   const [prompts, setPrompts] = useState(promptsOn);
+  const garden = useGardenPrefs();
   return (
     <section className="panel" aria-labelledby="appearance-h">
       <h2 id="appearance-h">Appearance</h2>
@@ -126,6 +128,9 @@ function AppearancePanel() {
           }}
         />{' '}
         💭 Show a writing prompt on new entries
+      </label>
+      <label className="row">
+        <input type="checkbox" checked={!garden.hidden} onChange={(e) => setGardenPrefs({ hidden: !e.target.checked })} /> 🌱 Show the garden
       </label>
     </section>
   );

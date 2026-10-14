@@ -52,6 +52,8 @@ Logbook/
 
 **Writing prompts.** A new entry suggests a question when the page is blank; **Write about this** puts it at the top of your text, **Another** picks a different one. Turn them off in **Settings → Appearance**.
 
+**Garden.** **🌱 Garden** grows a plant for every entry, in a bed for each month: the longer the entry, the bigger the plant, and its mood picks the flower. Writing earns your garden Growth, which ranks it through 15 tiers from Common to Worldbloom; each new plant blooms at your garden's tier, long entries a tier or two higher. Every tier unlocks a perk in the **Garden shed** (petal celebrations, butterflies, app colours, skies, paths and more), used only if you choose it. Tap a plant to open its entry. Copied text, links and filler don't count, and nothing ever wilts. Hide it in **Settings → Appearance**.
+
 **Music and expiry.** **🎵 Music** gives an entry a sound file, or a link, that plays while it's open: a YouTube video or live stream (Lofi Girl, say), Vimeo, Rumble, Dailymotion, Twitch, Kick, Streamable, a sound file on the web or an internet radio station. Videos play in their site's own player, ads included; a link needs the internet. **⏳ Expiry** makes an entry expire in a day, a week, a month, a year or at a time you choose: then it moves to the trash by itself, where you can still restore it for 30 days.
 
 **Backups.** The folder is your journal, so a copy of the folder is a backup. Logbook can also save one backup file: **Settings → Backups → Save a backup**, and it reminds you when it's been a while. **Restore from backup** brings one back, merged with what you have or replacing it. A backup unzipped into an empty folder also opens as a journal.

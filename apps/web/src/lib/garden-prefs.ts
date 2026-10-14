@@ -1,0 +1,145 @@
+import { useSyncExternalStore } from 'react';
+
+/**
+ * The garden's perks (D97) and the choices made with them. Every tier unlocks one; none changes
+ * anything outside the garden until it's chosen, and none is ever taken back. Choices belong to
+ * the device (browser storage), like the clock, so the journal's format doesn't change.
+ */
+
+export interface GardenPrefs {
+  hidden: boolean;
+  petals: boolean;
+  visitors: boolean;
+  accent: string;
+  livingSky: boolean;
+  path: string;
+  lanterns: boolean;
+  border: string;
+  ornament: string;
+  stars: boolean;
+  aurora: boolean;
+  nebula: boolean;
+  goldSigns: boolean;
+  ancient: boolean;
+  /** The highest rank seen on this device (tier × 1000 + ring), for "your garden reached…". */
+  seen: number;
+}
+
+const DEFAULTS: GardenPrefs = {
+  hidden: false,
+  petals: false,
+  visitors: true,
+  accent: '',
+  livingSky: false,
+  path: '',
+  lanterns: false,
+  border: '',
+  ornament: '',
+  stars: false,
+  aurora: false,
+  nebula: false,
+  goldSigns: false,
+  ancient: false,
+  seen: -1,
+};
+
+export type Choice = { value: string; label: string; tier: number };
+export type Perk =
+  | { tier: number; title: string; text: string; kind: 'none' }
+  | { tier: number; title: string; text: string; kind: 'toggle'; pref: keyof GardenPrefs }
+  | { tier: number; title: string; text: string; kind: 'choice'; pref: keyof GardenPrefs; choices: Choice[] };
+
+export const ACCENTS: Choice[] = [
+  { value: 'rose', label: 'Rose', tier: 3 },
+  { value: 'lavender', label: 'Lavender', tier: 3 },
+  { value: 'moss', label: 'Moss', tier: 3 },
+  { value: 'lagoon', label: 'Lagoon', tier: 10 },
+  { value: 'midnight', label: 'Midnight Bloom', tier: 10 },
+  { value: 'sakura', label: 'Sakura', tier: 10 },
+  { value: 'gold', label: 'Worldbloom gold', tier: 14 },
+];
+
+export const PERKS: Perk[] = [
+  { tier: 0, kind: 'none', title: 'The garden', text: 'A plant for every entry, free forever. Tap one to open its entry.' },
+  { tier: 1, kind: 'toggle', pref: 'petals', title: 'Petal celebrations', text: 'Celebrations throw petals instead of confetti.' },
+  { tier: 2, kind: 'toggle', pref: 'visitors', title: 'Visitors', text: 'Butterflies, a bee and a ladybird visit the garden.' },
+  { tier: 3, kind: 'choice', pref: 'accent', choices: ACCENTS, title: 'Garden colours', text: 'Give the whole app a garden colour.' },
+  { tier: 4, kind: 'toggle', pref: 'livingSky', title: 'Living sky', text: 'The garden’s sky follows your clock: dawn, day, golden hour and night.' },
+  {
+    tier: 5,
+    kind: 'choice',
+    pref: 'path',
+    choices: [
+      { value: 'gravel', label: 'Gravel', tier: 5 },
+      { value: 'brick', label: 'Brick', tier: 5 },
+      { value: 'boardwalk', label: 'Boardwalk', tier: 11 },
+      { value: 'stardust', label: 'Stardust', tier: 11 },
+    ],
+    title: 'Garden paths',
+    text: 'A path between the beds.',
+  },
+  { tier: 6, kind: 'toggle', pref: 'lanterns', title: 'Lanterns', text: 'Lanterns along the paths.' },
+  {
+    tier: 7,
+    kind: 'choice',
+    pref: 'border',
+    choices: [
+      { value: 'picket', label: 'Picket fence', tier: 7 },
+      { value: 'hedge', label: 'Low hedge', tier: 7 },
+      { value: 'tulips', label: 'Tulip border', tier: 7 },
+    ],
+    title: 'Bed borders',
+    text: 'A border around each month’s bed.',
+  },
+  {
+    tier: 8,
+    kind: 'choice',
+    pref: 'ornament',
+    choices: [
+      { value: 'sundial', label: 'Sundial', tier: 8 },
+      { value: 'birdbath', label: 'Birdbath', tier: 8 },
+      { value: 'globe', label: 'Gazing ball', tier: 8 },
+    ],
+    title: 'Gate ornament',
+    text: 'Something to greet you at the gate.',
+  },
+  { tier: 9, kind: 'toggle', pref: 'stars', title: 'Starry night', text: 'Stars and a moon over the garden at night and in the dark theme.' },
+  { tier: 10, kind: 'toggle', pref: 'aurora', title: 'Aurora sky', text: 'Aurora curtains in the night sky, and three more garden colours.' },
+  { tier: 11, kind: 'toggle', pref: 'nebula', title: 'Nebula sky', text: 'A nebula in the night sky, and two more paths.' },
+  { tier: 12, kind: 'toggle', pref: 'goldSigns', title: 'Gold signs', text: 'Gold signs on every bed.' },
+  { tier: 13, kind: 'toggle', pref: 'ancient', title: 'Ancient ground', text: 'Fossil ferns and amber stones in the soil.' },
+  { tier: 14, kind: 'none', title: 'Keeper of the Worldbloom', text: 'The title, and a gold colour for the app (in Garden colours).' },
+];
+
+const KEY = 'logbook.garden';
+const listeners = new Set<() => void>();
+let current: GardenPrefs = load();
+
+function load(): GardenPrefs {
+  try {
+    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<GardenPrefs>) };
+  } catch {
+    return DEFAULTS;
+  }
+}
+
+export function gardenPrefs(): GardenPrefs {
+  return current;
+}
+
+export function setGardenPrefs(patch: Partial<GardenPrefs>): void {
+  current = { ...current, ...patch };
+  try {
+    localStorage.setItem(KEY, JSON.stringify(current));
+  } catch {
+    // Private browsing: the choice lasts until the page closes.
+  }
+  for (const l of listeners) l();
+}
+
+export function useGardenPrefs(): GardenPrefs {
+  return useSyncExternalStore(
+    (l) => (listeners.add(l), () => listeners.delete(l)),
+    () => current,
+  );
+}
