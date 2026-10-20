@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { rankName, SIZE_STAGES, TIERS, type Garden, type Plant as PlantData } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
-import { CATALOGUE, FEATURES, PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
+import { cardFeatures, CATALOGUE, FEATURES, PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
 import { formatLongDate } from './common.tsx';
 import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
 import { Herbarium } from './garden/Herbarium.tsx';
@@ -56,8 +56,9 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
   const nextName = top ? `${TIERS[rank.tier]!.name} ★${rank.ring + 1}` : TIERS[rank.tier + 1]!.name;
   // Features a garden update added to tiers this device had already reached: said once.
-  const fresh = FEATURES.filter((f) => f.catalogue > prefs.catalogue && has(f.tier));
-  const tryIt = fresh.find((f) => f.view);
+  const fresh = cardFeatures(prefs);
+  // Not on the page it would open: a link to where you are would only take focus away.
+  const tryIt = fresh.find((f) => f.view && f.view !== view);
   const postcardBed = postcard ? beds.find((b) => b.month === postcard) : undefined;
 
   return (

@@ -26,6 +26,9 @@ export interface GardenPrefs {
   seen: number;
   /** The garden update last announced on this device (FEATURES' catalogue numbers). */
   catalogue: number;
+  /** The newest garden update this device has run, and the tier it had reached when it first did. */
+  updateFor: number;
+  updateTier: number;
 }
 
 const DEFAULTS: GardenPrefs = {
@@ -45,6 +48,8 @@ const DEFAULTS: GardenPrefs = {
   ancient: false,
   seen: -1,
   catalogue: 0,
+  updateFor: 0,
+  updateTier: -1,
 };
 
 export type Choice = { value: string; label: string; tier: number };
@@ -136,6 +141,29 @@ export const FEATURES: Feature[] = [
 /** The newest garden update. */
 export const CATALOGUE = Math.max(...FEATURES.map((f) => f.catalogue));
 
+/**
+ * What to remember the first time this device runs a new garden update: the tier it had reached
+ * then. Features at those tiers are told in a "Garden update" card; features at tiers reached
+ * later are told by the rank-up, so with none due, the update counts as told. A garden never seen
+ * here has nothing to be told: all of it is new. Null once noted.
+ */
+export function noteUpdate(prefs: GardenPrefs): Partial<GardenPrefs> | null {
+  if (prefs.updateFor >= CATALOGUE) return null;
+  const updateTier = prefs.seen < 0 ? -1 : Math.floor(prefs.seen / 1000);
+  const noted = { ...prefs, updateFor: CATALOGUE, updateTier };
+  return { updateFor: CATALOGUE, updateTier, ...(cardFeatures(noted).length ? {} : { catalogue: CATALOGUE }) };
+}
+
+/** The features a "Garden update" card tells of: new since the last card, at tiers reached before the update. */
+export function cardFeatures(prefs: GardenPrefs): Feature[] {
+  return FEATURES.filter((f) => f.catalogue > prefs.catalogue && f.catalogue <= prefs.updateFor && f.tier <= prefs.updateTier);
+}
+
+/** A rank-up's news from one tier to a higher one: the new tier's perk, and the features of every tier passed. */
+export function rankUpNews(from: number, to: number): string[] {
+  return [...PERKS.filter((p) => p.tier === to), ...FEATURES.filter((f) => f.tier > from && f.tier <= to)].map((p) => p.title);
+}
+
 const KEY = 'logbook.garden';
 const listeners = new Set<() => void>();
 let current: GardenPrefs = load();
@@ -148,6 +176,8 @@ function load(fallback: GardenPrefs = DEFAULTS): GardenPrefs {
     const prefs = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<GardenPrefs>) };
     if (!Number.isFinite(prefs.seen)) prefs.seen = -1;
     if (!Number.isFinite(prefs.catalogue)) prefs.catalogue = 0;
+    if (!Number.isFinite(prefs.updateFor)) prefs.updateFor = 0;
+    if (!Number.isFinite(prefs.updateTier)) prefs.updateTier = -1;
     return prefs;
   } catch {
     return fallback;

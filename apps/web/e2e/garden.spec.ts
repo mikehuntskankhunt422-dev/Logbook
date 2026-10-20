@@ -125,13 +125,26 @@ test('garden history and postcards (D98): the update card, the Almanac, the Time
   await expect(opener).toBeFocused();
 });
 
-test('a device that reaches a tier after the update hears of its features in the rank-up, not in a card', async ({ page }) => {
+test('a garden update tells in a card only of tiers reached before it; later tiers come with their rank-up', async ({ page }) => {
   await writeEntry(page, 'A note', 'Just a few words today.');
-  // Updated at Epic: Garden history (Mythic) and Postcards (Radiant) weren't reached yet.
+  // Updated at Mythic: Garden history was already reached, Postcards (Radiant) not yet.
+  await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 5000, catalogue: 0 })));
+  await page.goto('/#/garden/almanac');
+  await page.reload();
+  const card = page.getByRole('region', { name: '🎁 Garden update' });
+  await expect(card).toContainText('now has Garden history.');
+  await expect(card).not.toContainText('Postcards');
+  // Already on the Almanac: no Try it, which would only take focus away.
+  await expect(card.getByRole('link', { name: 'Try it' })).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').updateTier)).toBe(5);
+  await card.getByRole('button', { name: 'Close' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Almanac' })).toBeFocused();
+
+  // Updated at Epic: nothing to tell yet, so no card, now or once Mythic comes.
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 3000, catalogue: 0 })));
-  await page.goto('/#/garden');
   await page.reload();
   await expect(page.getByRole('region', { name: 'Your garden' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(1);
-  await expect(page.getByRole('region', { name: '🎁 Garden update' })).toHaveCount(0);
+  await expect(card).toHaveCount(0);
 });

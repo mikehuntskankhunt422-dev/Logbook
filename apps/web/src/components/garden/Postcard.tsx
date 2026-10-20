@@ -104,10 +104,16 @@ function ground(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, 
   ctx.fillRect(x, y, w, h);
 }
 
+/**
+ * Without Intl.Segmenter: a flag (a pair of regional indicators), or a character with its marks,
+ * skin tones and tags, joined to the next by zero-width joiners. Close enough to keep emoji whole.
+ */
+const CLUSTER = /\p{RI}\p{RI}|\P{M}[\p{M}\p{Emoji_Modifier}\u{e0020}-\u{e007f}]*(?:\u200d\P{M}[\p{M}\p{Emoji_Modifier}\u{e0020}-\u{e007f}]*)*/gu;
+
 /** Text cut short with "…" to fit `max` pixels, between whole letters and emoji. */
 function fit(ctx: CanvasRenderingContext2D, text: string, max: number): string {
   if (ctx.measureText(text).width <= max) return text;
-  const parts = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment) : [...text];
+  const parts = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment) : (text.match(CLUSTER) ?? [...text]);
   while (parts.length > 1 && ctx.measureText(`${parts.join('')}…`).width > max) parts.pop();
   return `${parts.join('').trimEnd()}…`;
 }
@@ -159,7 +165,8 @@ export async function plantPostcard(plant: PlantData, opts: PostcardOptions): Pr
 
 export async function bedPostcard(month: string, plants: PlantData[], opts: PostcardOptions): Promise<Blob> {
   const SCALE = 2;
-  const MARGIN = 48;
+  // Wide enough for the glow of a rare plant at either end of a row.
+  const MARGIN = 96;
   const GAP = 24;
   const GROUND_H = 36;
   const HEAD = 140;
@@ -243,16 +250,17 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
   const toast = useToast();
   const [plantId, setPlantId] = useState('');
   const [opts, setOpts] = useState<PostcardOptions>({ moods: false, words: false });
-  const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
+  // A picture remembers what it was drawn from: one drawn from other choices is never shown as
+  // ready or saved, however quickly the choices change.
+  const [card, setCard] = useState<{ blob: Blob; url: string; opts: PostcardOptions; plant?: PlantData; plants: PlantData[] } | null>(null);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const plant = plants.find((p) => p.entry.id === plantId);
+  const ready = card && card.opts === opts && card.plant === plant && card.plants === plants ? card : null;
 
   useEffect(() => {
     let alive = true;
     let url = '';
-    // The picture of the old choices goes at once: it can't be saved while the new one draws.
-    setCard(null);
     setFailed(false);
     // After this render: the plants are drawn by React, outside the page.
     void Promise.resolve()
@@ -260,7 +268,7 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
       .then((blob) => {
         if (!alive) return;
         url = URL.createObjectURL(blob);
-        setCard({ blob, url });
+        setCard({ blob, url, opts, plant, plants });
       })
       .catch(() => alive && setFailed(true));
     return () => {
@@ -270,12 +278,12 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
   }, [plant, plants, month, opts]);
 
   const save = async () => {
-    if (!card) return;
+    if (!ready) return;
     setSaving(true);
     try {
       // The name gives the date away too, so it has one only when the picture does.
-      const name = opts.words ? `garden-${plant ? plant.entry.date : month}.png` : 'garden-postcard.png';
-      if (await savePostcard(journal, card.blob, name)) toast('📮 Postcard saved.');
+      const name = ready.opts.words ? `garden-${ready.plant ? ready.plant.entry.date : month}.png` : 'garden-postcard.png';
+      if (await savePostcard(journal, ready.blob, name)) toast('📮 Postcard saved.');
     } catch (err) {
       toast(`Couldn’t save the postcard: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -294,7 +302,7 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
           <button type="button" className="btn" onClick={(e) => e.currentTarget.closest('dialog')?.close()}>
             Close
           </button>
-          <button type="button" className="btn btn-primary" disabled={!card || saving || failed} onClick={() => void save()}>
+          <button type="button" className="btn btn-primary" disabled={!ready || saving} onClick={() => void save()}>
             {saving ? 'Saving…' : 'Save picture'}
           </button>
         </>
@@ -303,7 +311,16 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
       <div className="postcard-form">
         <label className="field">
           <span>Picture of</span>
-          <select className="text-input" value={plantId} onChange={(e) => setPlantId(e.target.value)}>
+          <select
+            className="text-input"
+            value={plantId}
+            onChange={(e) => {
+              // "Show the month" isn't "Show the title and date": switching between the bed and a
+              // plant starts that choice again.
+              if (Boolean(e.target.value) !== Boolean(plantId)) setOpts({ ...opts, words: false });
+              setPlantId(e.target.value);
+            }}
+          >
             <option value="">The whole bed ({plants.length === 1 ? '1 plant' : `${plants.length} plants`})</option>
             {plants.map((p) => (
               <option key={p.entry.id} value={p.entry.id}>
@@ -329,7 +346,7 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
         </label>
       </div>
       <div className="postcard-preview">
-        {failed ? <p className="error">The postcard couldn’t be drawn.</p> : card ? <img src={card.url} alt="Postcard preview" /> : <p className="muted">Drawing…</p>}
+        {failed ? <p className="error">The postcard couldn’t be drawn.</p> : ready ? <img src={ready.url} alt="Postcard preview" /> : <p className="muted">Drawing…</p>}
       </div>
     </Dialog>
   );

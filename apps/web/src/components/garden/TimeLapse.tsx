@@ -7,6 +7,14 @@ import { Plant, TIER_COLOURS } from './Plant.tsx';
 const BEDS_SHOWN = 3;
 const SPEEDS = [0.5, 1, 2];
 
+/** A place in the time-lapse, in months from its first month then. */
+interface Spot {
+  pos: number;
+  first: string;
+}
+/** "2026-10" as a count of months, to measure between two. */
+const monthNo = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
+
 const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const thisMonth = () => {
   const d = new Date();
@@ -23,16 +31,19 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
   const reduced = useReducedMotion();
   const months = useMemo(() => timeLapseMonths(plants, thisMonth()), [plants]);
   const count = months.length;
-  // How far it has played, in months (2.5 is halfway through the third month); null is today, the
-  // end, which stays the end when a new month's entry adds a month.
-  const [at, setAt] = useState<number | null>(null);
+  const first = months[0]?.month ?? '';
+  // How far it has played, in months (2.5 is halfway through the third month), counted from the
+  // first month it had then, so the same month stays in view if an earlier one goes. Null is today,
+  // the end, which stays the end when a new month's entry adds a month.
+  const [at, setAt] = useState<Spot | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const pos = at ?? count;
-  const posRef = useRef(pos);
+  const pos = at ? Math.min(count, Math.max(0, at.pos + monthNo(at.first) - monthNo(first))) : count;
+  const atRef = useRef(at);
   const move = (to: number | null) => {
-    posRef.current = to ?? count;
-    setAt(to);
+    const spot = to === null ? null : { pos: to, first };
+    atRef.current = spot;
+    setAt(spot);
   };
 
   useEffect(() => {
@@ -44,19 +55,20 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
       // frame, so it picks up where it was.
       const step = (Math.min(now - last, 100) * speed) / perMonth;
       last = now;
-      const next = posRef.current + step;
+      const spot = atRef.current;
+      const next = (spot ? spot.pos + monthNo(spot.first) - monthNo(first) : count) + step;
       if (next >= count) {
-        posRef.current = count;
+        atRef.current = null;
         setAt(null);
         setPlaying(false);
       } else {
-        posRef.current = next;
-        setAt(next);
+        atRef.current = { pos: next, first };
+        setAt(atRef.current);
         frame = requestAnimationFrame(tick);
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [playing, reduced, speed, count]);
+  }, [playing, reduced, speed, count, first]);
 
   if (!count) return <p>Write your first entry to plant your first seed. 🌱</p>;
 
@@ -105,6 +117,17 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
           onChange={(e) => {
             setPlaying(false);
             const to = Number(e.target.value) + 1;
+            move(to >= count ? null : to);
+          }}
+          onKeyDown={(e) => {
+            // A range already at its end sends no change, even when Pause left that month part-grown:
+            // Home and End, and the arrows at either end, still show the whole month.
+            const back = ['ArrowLeft', 'ArrowDown', 'PageDown'].includes(e.key);
+            const on = ['ArrowRight', 'ArrowUp', 'PageUp'].includes(e.key);
+            const to = e.key === 'Home' || (back && index === 0) ? 1 : e.key === 'End' || (on && index === count - 1) ? count : 0;
+            if (!to) return;
+            e.preventDefault();
+            setPlaying(false);
             move(to >= count ? null : to);
           }}
         />
