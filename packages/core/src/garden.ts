@@ -244,6 +244,8 @@ export interface Plant {
   bonus: number;
   /** Crowns for plants that would bloom past Worldbloom (0–2). */
   crowns: number;
+  /** The Growth this entry added: its share of its day's. */
+  growth: number;
 }
 
 export interface Garden {
@@ -282,8 +284,6 @@ export function growGarden(entries: Entry[], cache?: GardenCache): Garden {
     const base = rankFor(growth).tier;
     const bonus = words >= 1_200 ? 2 : words >= 600 ? 1 : 0;
     const tier = Math.min(base + bonus, TOP_TIER);
-    if (!entry.deletedAt)
-      plants.push({ entry, words, stage: sizeStage(words), species: (entry.mood && SPECIES[entry.mood]) || WILDFLOWER, tier, bonus, crowns: base + bonus - tier });
     // This entry's share of its day's Growth.
     const key = dayOf(entry);
     const day = days.get(key) ?? { words: 0, turnedUp: false };
@@ -291,7 +291,10 @@ export function growGarden(entries: Entry[], cache?: GardenCache): Garden {
     day.words += words;
     day.turnedUp ||= written >= TURN_UP_WORDS;
     days.set(key, day);
-    growth += (day.turnedUp ? TURN_UP : 0) + wordGrowth(day.words) - before;
+    const added = (day.turnedUp ? TURN_UP : 0) + wordGrowth(day.words) - before;
+    growth += added;
+    if (!entry.deletedAt)
+      plants.push({ entry, words, stage: sizeStage(words), species: (entry.mood && SPECIES[entry.mood]) || WILDFLOWER, tier, bonus, crowns: base + bonus - tier, growth: added });
   }
   // Forget the versions that have been saved over.
   if (cache && used && cache.size > used.size) for (const k of cache.keys()) if (!used.has(k)) cache.delete(k);

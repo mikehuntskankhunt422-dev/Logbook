@@ -2716,3 +2716,51 @@ dialog[open]::backdrop {
 @media (prefers-reduced-motion: reduce) {
   .g-sway, .g-spin, .g-drift, .g-ember, .g-twinkle, .garden-visitors span, .garden-scene[data-aurora]::after { animation: none; }
 }
+
+/* Garden update 1, "History" (D98): the pages, the Herbarium, the Almanac, the Time-lapse, postcards. */
+.garden-tabs { display: flex; width: fit-content; max-width: 100%; margin: 0 0 4px; }
+.garden-tabs a { border-radius: 999px; padding: 8px 16px; min-height: 38px; display: inline-flex; align-items: center; font-weight: 650; color: inherit; text-decoration: none; }
+.garden-tabs a[aria-current='page'] { background: var(--bg-elev); box-shadow: var(--shadow); }
+.garden-tabs a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.garden-card ul { margin: 0 0 12px; padding-left: 1.2em; }
+.garden-bed-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.garden-bed-head .garden-sign { margin: 0; }
+.garden-postcard { min-height: 32px; }
+.table-scroll { overflow-x: auto; }
+.garden-table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; }
+.garden-table th, .garden-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.garden-table td { font-variant-numeric: tabular-nums; }
+.garden-table thead th { font-size: 0.9rem; color: var(--ink-soft); }
+.garden-herbarium h3, .garden-almanac h3 { margin: 18px 0 6px; }
+.garden-sizes { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.garden-sizes li { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 0.9rem; }
+.garden-sizes li[data-reached='true'] { background: var(--accent-soft); border-color: var(--accent); font-weight: 650; }
+.garden-sizes li[data-reached='false'] { color: var(--ink-soft); }
+.garden-collections { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.garden-flags { font-size: 1.2rem; letter-spacing: 2px; }
+.almanac-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.almanac-stats div { background: var(--bg-sunk); border-radius: 12px; padding: 10px 12px; }
+.almanac-stats dt { font-size: 0.85rem; color: var(--ink-soft); }
+.almanac-stats dd { margin: 2px 0 0; font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.almanac-highlights { list-style: none; padding: 0; margin: 0 0 6px; display: grid; gap: 4px; }
+.almanac-chart { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; height: 200px; padding-top: 22px; }
+.almanac-col { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.almanac-plot { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; border-bottom: 1px solid var(--line); }
+.almanac-bar { width: min(70%, 32px); background: var(--accent); border-radius: 4px 4px 0 0; }
+.almanac-value { font-size: 0.8rem; font-weight: 650; font-variant-numeric: tabular-nums; margin-bottom: 2px; }
+.almanac-month { text-align: center; font-size: 0.75rem; color: var(--ink-soft); padding: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.almanac-tip { display: none; position: absolute; bottom: calc(100% - 10px); left: 50%; transform: translateX(-50%); z-index: 2; white-space: nowrap; background: var(--ink); color: var(--bg); font-size: 0.8rem; padding: 6px 8px; border-radius: 8px; pointer-events: none; }
+.almanac-col:first-child .almanac-tip { left: 0; transform: none; }
+.almanac-col:last-child .almanac-tip { left: auto; right: 0; transform: none; }
+.almanac-col:hover .almanac-tip { display: block; }
+.almanac-table { margin-top: 12px; }
+.almanac-table summary { cursor: pointer; font-weight: 650; }
+.timelapse-controls { margin-bottom: 10px; }
+.timelapse-slider { margin: 0; }
+.timelapse-slider input { width: 100%; accent-color: var(--accent); }
+.timelapse-label { margin: 4px 0 8px; }
+.timelapse-scene { margin: 0; padding-top: 16px; min-height: 120px; }
+.postcard-option { align-items: flex-start; flex-wrap: nowrap; margin-bottom: 8px; }
+.postcard-option input { margin-top: 4px; }
+.postcard-preview { display: grid; place-items: center; min-height: 160px; margin-top: 8px; background: var(--bg-sunk); border-radius: 12px; padding: 8px; }
+.postcard-preview img { max-width: 100%; max-height: 46vh; border-radius: 6px; box-shadow: var(--shadow); }

@@ -32,6 +32,9 @@ export const LOOKS: Record<string, Look> = {
   Wildflower: { light: '#f7a1c4', deep: '#c2457a', centre: '#ffcd3c', petals: 8, shape: 'round' },
 };
 
+/** Every plant on a postcard that hides moods (D98): one flower in neutral colours. */
+const NEUTRAL: Look = { light: '#efe6d8', deep: '#8a7f70', centre: '#c9bca8', petals: 8, shape: 'round' };
+
 /** Each tier's colour (badges, ribbons, rims). */
 export const TIER_COLOURS = ['#6f655a', '#2e7d3e', '#2b62bd', '#7a3fc2', '#8f5c00', '#c23f17', '#7f6200', '#8a2f9e', '#1d6a85', '#55647f', '#127f69', '#3b2a8f', '#8a6d00', '#6b4a1f', '#1f6b3a'];
 
@@ -49,9 +52,9 @@ function seeded(id: string) {
 }
 
 /** Memoised: the garden page re-renders on every perk choice, its plants don't need to. */
-export const Plant = memo(function Plant({ plant }: { plant: PlantData }) {
+export const Plant = memo(function Plant({ plant, neutral = false }: { plant: PlantData; neutral?: boolean }) {
   const uid = useId().replace(/:/g, '');
-  const look = LOOKS[plant.species] ?? LOOKS['Wildflower']!;
+  const look = neutral ? NEUTRAL : (LOOKS[plant.species] ?? LOOKS['Wildflower']!);
   const t = plant.tier;
   const tree = plant.stage === SIZE_STAGES.length - 1;
   const h = plantHeight(plant.words) * (tree ? 1.3 : 1);

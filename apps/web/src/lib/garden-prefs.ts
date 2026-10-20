@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { GardenTab } from '../app/router.ts';
 
 /**
  * The garden's perks (D97) and the choices made with them. Every tier unlocks one; none changes
@@ -23,6 +24,8 @@ export interface GardenPrefs {
   ancient: boolean;
   /** The highest rank seen on this device (tier × 1000 + ring), for "your garden reached…". */
   seen: number;
+  /** The garden update last announced on this device (FEATURES' catalogue numbers). */
+  catalogue: number;
 }
 
 const DEFAULTS: GardenPrefs = {
@@ -41,6 +44,7 @@ const DEFAULTS: GardenPrefs = {
   goldSigns: false,
   ancient: false,
   seen: -1,
+  catalogue: 0,
 };
 
 export type Choice = { value: string; label: string; tier: number };
@@ -111,6 +115,27 @@ export const PERKS: Perk[] = [
   { tier: 14, kind: 'none', title: 'Keeper of the Worldbloom', text: 'The title, and a gold colour for the app (in Garden colours).' },
 ];
 
+/**
+ * Features garden updates added to tiers (D98): each tier's perk stays as it was, and these come
+ * with it. `catalogue` is the update that added one; a device that had already reached its tier
+ * hears about it once, in a "Garden update" card.
+ */
+export interface Feature {
+  tier: number;
+  catalogue: number;
+  title: string;
+  text: string;
+  /** Where it is: a garden page. */
+  view?: GardenTab;
+}
+
+export const FEATURES: Feature[] = [
+  { tier: 5, catalogue: 1, view: 'almanac', title: 'Garden history', text: 'The Almanac, your garden month by month, and the Time-lapse: watch it grow from its first plant.' },
+  { tier: 6, catalogue: 1, title: 'Postcards', text: 'Save a picture of a plant or a whole bed. Moods, titles and dates stay off it unless you add them.' },
+];
+/** The newest garden update. */
+export const CATALOGUE = Math.max(...FEATURES.map((f) => f.catalogue));
+
 const KEY = 'logbook.garden';
 const listeners = new Set<() => void>();
 let current: GardenPrefs = load();
@@ -122,6 +147,7 @@ function load(fallback: GardenPrefs = DEFAULTS): GardenPrefs {
     if (raw === null) return fallback;
     const prefs = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<GardenPrefs>) };
     if (!Number.isFinite(prefs.seen)) prefs.seen = -1;
+    if (!Number.isFinite(prefs.catalogue)) prefs.catalogue = 0;
     return prefs;
   } catch {
     return fallback;

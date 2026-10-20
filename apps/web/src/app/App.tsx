@@ -123,7 +123,7 @@ export function App() {
           {route.name === 'memories' && <Memories />}
           {route.name === 'search' && <SearchView tag={route.tag} />}
           {route.name === 'clock' && <ClockView />}
-          {route.name === 'garden' && <GardenView garden={garden} />}
+          {route.name === 'garden' && <GardenView garden={garden} view={route.view} />}
           {route.name === 'settings' && <SettingsView />}
         </div>
       </main>

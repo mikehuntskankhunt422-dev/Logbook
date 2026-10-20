@@ -1,6 +1,6 @@
 # The garden (design)
 
-Design for the journal garden game, from a design review on 2026-10-14. The first release (0.6.0, D97) builds a smaller part of it: plants, sizes, species, the 15 tiers, Growth and one perk per tier. Unlike this draft, it stores nothing in the journal: perk choices stay on each device. The rest is for later updates; numbers may change.
+Design for the journal garden game, from a design review on 2026-10-14. The first release (0.6.0, D97) builds a smaller part of it: plants, sizes, species, the 15 tiers, Growth and one perk per tier. Unlike this draft, it stores nothing in the journal: perk choices stay on each device. Garden update 1, "History" (0.6.1, D98), adds the Herbarium, the Almanac and Time-lapse (VI) and Postcards (VII), adapted to that release: they live on garden pages (#/garden/herbarium, #/garden/almanac), postcards start from a 📮 button on each month's sign rather than a peek card, the Almanac's chart is one series of Growth per month (its tiers are in the rarest-plant line, not stacked colours), and the catalogue number is kept on the device with the other choices. Photo centres at Close zoom wait for zoom levels. The rest is for later updates; numbers may change.
 
 ## Summary
 

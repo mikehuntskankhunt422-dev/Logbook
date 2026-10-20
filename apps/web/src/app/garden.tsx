@@ -3,7 +3,7 @@ import { growGarden, rankName, TIERS, type Entry, type Garden, type GardenCache 
 import { useJournal } from './journal-context.tsx';
 import { useToast } from './toasts.tsx';
 import { celebrate } from '../lib/motion.ts';
-import { gardenPrefs, PERKS, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
+import { CATALOGUE, FEATURES, gardenPrefs, PERKS, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
 
 /** Each entry's words, worked out once per saved version, so a save only re-reads that entry. */
 const cache: GardenCache = new Map();
@@ -58,12 +58,13 @@ export function useGardenEffects(garden: Garden | null): void {
     if (!garden || level < 0) return;
     const seen = gardenPrefs().seen;
     if (level <= seen) return;
-    setGardenPrefs({ seen: level });
-    // The first look only notes where the garden is: no fanfare for an existing journal.
+    // The first look only notes where the garden is: no fanfare for an existing journal, and no
+    // "Garden update" card for features it has never been without.
+    setGardenPrefs(seen < 0 ? { seen: level, catalogue: CATALOGUE } : { seen: level });
     if (seen < 0) return;
     const tier = garden.rank.tier;
-    const perk = garden.rank.ring > 1 ? null : PERKS.find((p) => p.tier === tier);
-    toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${perk ? ` New: ${perk.title}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
+    const news = garden.rank.ring > 1 ? [] : [...PERKS, ...FEATURES].filter((p) => p.tier === tier).map((p) => p.title);
+    toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${news.length ? ` New: ${news.join(', ')}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
     celebrate('streak');
   }, [level, garden, toast]);
 }

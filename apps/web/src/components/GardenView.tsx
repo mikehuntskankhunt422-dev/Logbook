@@ -1,9 +1,12 @@
 import { memo, useMemo, useState } from 'react';
 import { rankName, SIZE_STAGES, TIERS, type Garden, type Plant as PlantData } from '@logbook/core';
-import { href } from '../app/router.ts';
-import { PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
+import { href, type GardenTab } from '../app/router.ts';
+import { CATALOGUE, FEATURES, PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
 import { formatLongDate } from './common.tsx';
+import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
+import { Herbarium } from './garden/Herbarium.tsx';
 import { Plant, TIER_COLOURS } from './garden/Plant.tsx';
+import { POSTCARD_TIER, PostcardDialog } from './garden/Postcard.tsx';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
 
@@ -17,9 +20,12 @@ function skyNow(): 'dawn' | 'day' | 'golden' | 'night' {
 /** Months shown at first, and added by "Show earlier months": a long journal's garden opens fast. */
 const BEDS_AT_ONCE = 12;
 
-export function GardenView({ garden }: { garden: Garden | null }) {
+const TABS: { view?: GardenTab; label: string }[] = [{ label: 'Garden' }, { view: 'herbarium', label: 'Herbarium' }, { view: 'almanac', label: 'Almanac' }];
+
+export function GardenView({ garden, view }: { garden: Garden | null; view?: GardenTab }) {
   const prefs = useGardenPrefs();
   const [shown, setShown] = useState(BEDS_AT_ONCE);
+  const [postcard, setPostcard] = useState<string | null>(null);
   const beds = useMemo(() => {
     const byMonth = new Map<string, PlantData[]>();
     for (const p of garden?.plants ?? []) {
@@ -49,6 +55,10 @@ export function GardenView({ garden }: { garden: Garden | null }) {
   const sky = on(4, 'livingSky') ? skyNow() : 'day';
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
   const nextName = top ? `${TIERS[rank.tier]!.name} ★${rank.ring + 1}` : TIERS[rank.tier + 1]!.name;
+  // Features a garden update added to tiers this device had already reached: said once.
+  const fresh = FEATURES.filter((f) => f.catalogue > prefs.catalogue && has(f.tier));
+  const tryIt = fresh.find((f) => f.view);
+  const postcardBed = postcard ? beds.find((b) => b.month === postcard) : undefined;
 
   return (
     <div className="garden-page">
@@ -71,114 +81,168 @@ export function GardenView({ garden }: { garden: Garden | null }) {
         </div>
       </section>
 
-      <button type="button" className="btn garden-skip" onClick={() => document.getElementById('shed-h')?.focus()}>
-        Skip to the garden shed
-      </button>
-      <div
-        className="garden-scene"
-        data-sky={sky}
-        data-stars={on(9, 'stars') || undefined}
-        data-aurora={on(10, 'aurora') || undefined}
-        data-nebula={on(11, 'nebula') || undefined}
-        data-path={(has(5) && prefs.path) || undefined}
-        data-border={(has(7) && prefs.border) || undefined}
-        data-gold={on(12, 'goldSigns') || undefined}
-        data-ancient={on(13, 'ancient') || undefined}
-      >
-        <div className="garden-gate" aria-hidden="true">
-          <span>🚪</span>
-          {has(8) && prefs.ornament && <span>{ORNAMENTS[prefs.ornament]}</span>}
-        </div>
-        {on(2, 'visitors') && (
-          <div className="garden-visitors" aria-hidden="true">
-            {['🦋', '🐝', '🦋', '🐞', '🦋', '🦋'].map((v, i) => (
-              <span key={i} style={{ left: `${8 + i * 16}%`, animationDelay: `${i * 1.7}s` }}>
-                {v}
-              </span>
+      {fresh.length > 0 && (
+        <section className="panel garden-card" aria-labelledby="garden-update-h">
+          <h2 id="garden-update-h">🎁 Garden update</h2>
+          <p>Your {TIERS[open]!.name} garden now has {fresh.map((f) => f.title).join(' and ')}.</p>
+          <ul>
+            {fresh.map((f) => (
+              <li key={f.title}>
+                <strong>{f.title}:</strong> {f.text}
+              </li>
             ))}
+          </ul>
+          <div className="row">
+            {tryIt && (
+              <a className="btn btn-primary" href={href({ name: 'garden', view: tryIt.view })} onClick={() => setGardenPrefs({ catalogue: CATALOGUE })}>
+                Try it
+              </a>
+            )}
+            <button type="button" className="btn" onClick={() => setGardenPrefs({ catalogue: CATALOGUE })}>
+              Close
+            </button>
           </div>
-        )}
-        {beds.length === 0 ? (
-          <p className="garden-empty">Write your first entry to plant your first seed. 🌱</p>
-        ) : (
-          beds.slice(0, shown).map((bed) => <Bed key={bed.month} month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} />)
-        )}
-      </div>
-      {beds.length > shown && (
-        <button type="button" className="btn garden-more" onClick={() => setShown((n) => n + BEDS_AT_ONCE)}>
-          Show earlier months ({beds.length - shown} more)
-        </button>
+        </section>
       )}
 
-      <section className="panel garden-shed" aria-labelledby="shed-h">
-        <h2 id="shed-h" tabIndex={-1}>
-          Garden shed
-        </h2>
-        <p className="hint">Every tier unlocks a perk. Nothing changes until you choose it, and nothing is ever taken back.</p>
-        <ul className="perk-list">
-          {PERKS.map((perk) => {
-            const unlocked = has(perk.tier);
-            return (
-              <li key={perk.tier} className="perk" data-open={unlocked}>
-                <span className="perk-tier" style={{ background: TIER_COLOURS[perk.tier] }} aria-hidden="true">
-                  {TIERS[perk.tier]!.emoji}
-                </span>
-                <div className="perk-body">
-                  <strong>{perk.title}</strong> <span className="muted">· {TIERS[perk.tier]!.name}</span>
-                  <p className="hint">{unlocked ? perk.text : `🔒 Reach ${TIERS[perk.tier]!.name} (${TIERS[perk.tier]!.at.toLocaleString()} Growth).`}</p>
-                  {unlocked && perk.kind === 'toggle' && (
-                    <label className="row">
-                      <input type="checkbox" aria-label={perk.title} checked={Boolean(prefs[perk.pref])} onChange={(e) => setGardenPrefs({ [perk.pref]: e.target.checked })} /> On
-                    </label>
-                  )}
-                  {unlocked && perk.kind === 'choice' && (
-                    <div className="row" role="group" aria-label={perk.title}>
-                      <button type="button" className="chip" aria-pressed={!prefs[perk.pref]} onClick={() => setGardenPrefs({ [perk.pref]: '' })}>
-                        None
-                      </button>
-                      {perk.choices
-                        .filter((c) => has(c.tier))
-                        .map((c) => (
-                          <button key={c.value} type="button" className="chip" aria-pressed={prefs[perk.pref] === c.value} onClick={() => setGardenPrefs({ [perk.pref]: c.value })}>
-                            {c.label}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      <nav className="segmented garden-tabs" aria-label="Garden pages">
+        {TABS.map((t) => (
+          <a key={t.label} href={href({ name: 'garden', view: t.view })} aria-current={view === t.view ? 'page' : undefined}>
+            {t.label}
+          </a>
+        ))}
+      </nav>
 
-      <details className="panel garden-guide">
-        <summary>Field guide</summary>
-        <p>
-          <strong>Size is the entry; rarity is your whole garden.</strong> Each plant grows as big as its entry is long. Its flower comes from the mood you picked. Its rarity is your garden’s tier when you wrote it, and entries of 600 or 1,200 words bloom 1 or 2 tiers higher (a ribbon on the stem). Growth comes from the days you write: 100 for turning up and more for your words, though copied or repeated text, links and number lists add nothing. Plants never wilt.
-        </p>
-        <ol className="tier-list">
-          {TIERS.map((tier, i) => (
-            <li key={tier.name}>
-              <span aria-hidden="true">{tier.emoji}</span> <strong style={{ color: `var(--tier-${i})` }}>{tier.name}</strong> <span className="muted">{tier.at.toLocaleString()} Growth</span>
-            </li>
-          ))}
-        </ol>
-        <p className="hint">After Worldbloom, a ★ ring every 100,000 Growth. Sizes: {SIZE_STAGES.map((s) => `${s.name} (${s.from}+ words)`).join(', ')}.</p>
-      </details>
+      {view === 'herbarium' && <Herbarium plants={garden.plants} />}
+      {view === 'almanac' && <Almanac plants={garden.plants} unlocked={has(HISTORY_TIER)} />}
+      {!view && (
+        <>
+          <button type="button" className="btn garden-skip" onClick={() => document.getElementById('shed-h')?.focus()}>
+            Skip to the garden shed
+          </button>
+          <div
+            className="garden-scene"
+            data-sky={sky}
+            data-stars={on(9, 'stars') || undefined}
+            data-aurora={on(10, 'aurora') || undefined}
+            data-nebula={on(11, 'nebula') || undefined}
+            data-path={(has(5) && prefs.path) || undefined}
+            data-border={(has(7) && prefs.border) || undefined}
+            data-gold={on(12, 'goldSigns') || undefined}
+            data-ancient={on(13, 'ancient') || undefined}
+          >
+            <div className="garden-gate" aria-hidden="true">
+              <span>🚪</span>
+              {has(8) && prefs.ornament && <span>{ORNAMENTS[prefs.ornament]}</span>}
+            </div>
+            {on(2, 'visitors') && (
+              <div className="garden-visitors" aria-hidden="true">
+                {['🦋', '🐝', '🦋', '🐞', '🦋', '🦋'].map((v, i) => (
+                  <span key={i} style={{ left: `${8 + i * 16}%`, animationDelay: `${i * 1.7}s` }}>
+                    {v}
+                  </span>
+                ))}
+              </div>
+            )}
+            {beds.length === 0 ? (
+              <p className="garden-empty">Write your first entry to plant your first seed. 🌱</p>
+            ) : (
+              beds.slice(0, shown).map((bed) => <Bed key={bed.month} month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />)
+            )}
+          </div>
+          {beds.length > shown && (
+            <button type="button" className="btn garden-more" onClick={() => setShown((n) => n + BEDS_AT_ONCE)}>
+              Show earlier months ({beds.length - shown} more)
+            </button>
+          )}
+
+          <section className="panel garden-shed" aria-labelledby="shed-h">
+            <h2 id="shed-h" tabIndex={-1}>
+              Garden shed
+            </h2>
+            <p className="hint">Every tier unlocks a perk. Nothing changes until you choose it, and nothing is ever taken back.</p>
+            <ul className="perk-list">
+              {PERKS.map((perk) => {
+                const unlocked = has(perk.tier);
+                return (
+                  <li key={perk.tier} className="perk" data-open={unlocked}>
+                    <span className="perk-tier" style={{ background: TIER_COLOURS[perk.tier] }} aria-hidden="true">
+                      {TIERS[perk.tier]!.emoji}
+                    </span>
+                    <div className="perk-body">
+                      <strong>{perk.title}</strong> <span className="muted">· {TIERS[perk.tier]!.name}</span>
+                      <p className="hint">{unlocked ? perk.text : `🔒 Reach ${TIERS[perk.tier]!.name} (${TIERS[perk.tier]!.at.toLocaleString()} Growth).`}</p>
+                      {FEATURES.filter((f) => f.tier === perk.tier).map((f) => (
+                        <p key={f.title} className="hint">
+                          ➕ <strong>{f.title}</strong>
+                          {unlocked ? `: ${f.text}` : ' comes with it.'}{' '}
+                          {unlocked && f.view && <a href={href({ name: 'garden', view: f.view })}>Open it</a>}
+                        </p>
+                      ))}
+                      {unlocked && perk.kind === 'toggle' && (
+                        <label className="row">
+                          <input type="checkbox" aria-label={perk.title} checked={Boolean(prefs[perk.pref])} onChange={(e) => setGardenPrefs({ [perk.pref]: e.target.checked })} /> On
+                        </label>
+                      )}
+                      {unlocked && perk.kind === 'choice' && (
+                        <div className="row" role="group" aria-label={perk.title}>
+                          <button type="button" className="chip" aria-pressed={!prefs[perk.pref]} onClick={() => setGardenPrefs({ [perk.pref]: '' })}>
+                            None
+                          </button>
+                          {perk.choices
+                            .filter((c) => has(c.tier))
+                            .map((c) => (
+                              <button key={c.value} type="button" className="chip" aria-pressed={prefs[perk.pref] === c.value} onClick={() => setGardenPrefs({ [perk.pref]: c.value })}>
+                                {c.label}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <details className="panel garden-guide">
+            <summary>Field guide</summary>
+            <p>
+              <strong>Size is the entry; rarity is your whole garden.</strong> Each plant grows as big as its entry is long. Its flower comes from the mood you picked. Its rarity is your garden’s tier when you wrote it, and entries of 600 or 1,200 words bloom 1 or 2 tiers higher (a ribbon on the stem). Growth comes from the days you write: 100 for turning up and more for your words, though copied or repeated text, links and number lists add nothing. Plants never wilt.
+            </p>
+            <ol className="tier-list">
+              {TIERS.map((tier, i) => (
+                <li key={tier.name}>
+                  <span aria-hidden="true">{tier.emoji}</span> <strong style={{ color: `var(--tier-${i})` }}>{tier.name}</strong> <span className="muted">{tier.at.toLocaleString()} Growth</span>
+                </li>
+              ))}
+            </ol>
+            <p className="hint">After Worldbloom, a ★ ring every 100,000 Growth. Sizes: {SIZE_STAGES.map((s) => `${s.name} (${s.from}+ words)`).join(', ')}.</p>
+          </details>
+        </>
+      )}
+      {postcardBed && <PostcardDialog month={postcardBed.month} plants={postcardBed.plants} onClose={() => setPostcard(null)} />}
     </div>
   );
 }
 
 /** One month's bed. Memoised, so choosing a perk doesn't redraw every plant. */
-const Bed = memo(function Bed({ month, plants, lantern }: { month: string; plants: PlantData[]; lantern: boolean }) {
+const Bed = memo(function Bed({ month, plants, lantern, onPostcard }: { month: string; plants: PlantData[]; lantern: boolean; onPostcard?: (month: string) => void }) {
+  const name = new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   return (
     <section className="garden-bed" aria-labelledby={`bed-${month}`}>
-      <h2 className="garden-sign" id={`bed-${month}`}>
-        {lantern && <span aria-hidden="true">🏮 </span>}
-        {new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-        <span className="garden-count"> · {plants.length === 1 ? '1 plant' : `${plants.length} plants`}</span>
-      </h2>
+      <div className="garden-bed-head">
+        <h2 className="garden-sign" id={`bed-${month}`}>
+          {lantern && <span aria-hidden="true">🏮 </span>}
+          {name}
+          <span className="garden-count"> · {plants.length === 1 ? '1 plant' : `${plants.length} plants`}</span>
+        </h2>
+        {onPostcard && (
+          <button type="button" className="btn btn-small garden-postcard" aria-label={`Postcard of ${name}`} onClick={() => onPostcard(month)}>
+            📮 Postcard
+          </button>
+        )}
+      </div>
       <ul className="garden-ground">
         {plants.map((p) => (
           <li key={p.entry.id}>
