@@ -38,8 +38,26 @@ const PAD = 70;
 
 const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
+/** A plant drawn as an image: the image, its box, and how far its look reaches above the box. */
+interface PlantImage {
+  img: HTMLImageElement;
+  w: number;
+  h: number;
+  above: number;
+}
+
+/**
+ * How far above its box a plant's tier look reaches, in its own units, from Plant.tsx's geometry
+ * (r is its bloom radius): glows, rays and the aurora from Legendary, the nebula from Cosmic, and
+ * a Worldbloom's crown inside the nebula's reach.
+ */
+function reach(tier: number, h: number): number {
+  const r = 6 + 0.06 * h;
+  return tier >= 11 ? 3 * r + 4 : tier >= 4 ? Math.max(1.3 * r, tier >= 10 ? 0.1 * h : 0) + 4 : 0;
+}
+
 /** A plant drawn as an image, the size of its box plus PAD on the sides and top. */
-async function plantImage(plant: PlantData, neutral: boolean): Promise<{ img: HTMLImageElement; w: number; h: number }> {
+async function plantImage(plant: PlantData, neutral: boolean): Promise<PlantImage> {
   // Drawn by the same component as the garden, outside the page.
   const holder = document.createElement('div');
   const root = createRoot(holder);
@@ -59,14 +77,14 @@ async function plantImage(plant: PlantData, neutral: boolean): Promise<{ img: HT
     const img = new Image();
     img.src = url;
     await img.decode();
-    return { img, w, h };
+    return { img, w, h, above: reach(plant.tier, h) };
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
 /** Draws a plant standing at (x, ground), `scale` times its size. */
-function drawPlant(ctx: CanvasRenderingContext2D, p: { img: HTMLImageElement; w: number; h: number }, x: number, ground: number, scale: number) {
+function drawPlant(ctx: CanvasRenderingContext2D, p: PlantImage, x: number, ground: number, scale: number) {
   ctx.drawImage(p.img, x - (p.w / 2 + PAD) * scale, ground - (p.h + PAD) * scale, (p.w + 2 * PAD) * scale, (p.h + PAD) * scale);
 }
 
@@ -86,12 +104,12 @@ function ground(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, 
   ctx.fillRect(x, y, w, h);
 }
 
-/** Text cut short with "…" to fit `max` pixels. */
+/** Text cut short with "…" to fit `max` pixels, between whole letters and emoji. */
 function fit(ctx: CanvasRenderingContext2D, text: string, max: number): string {
   if (ctx.measureText(text).width <= max) return text;
-  let t = text;
-  while (t.length > 1 && ctx.measureText(`${t}…`).width > max) t = t.slice(0, -1);
-  return `${t.trimEnd()}…`;
+  const parts = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment) : [...text];
+  while (parts.length > 1 && ctx.measureText(`${parts.join('')}…`).width > max) parts.pop();
+  return `${parts.join('').trimEnd()}…`;
 }
 
 function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -109,8 +127,9 @@ export async function plantPostcard(plant: PlantData, opts: PostcardOptions): Pr
   sky(ctx, W, SCENE);
   ground(ctx, 0, 990, W, SCENE - 990);
   const p = await plantImage(plant, !opts.moods);
-  // Big enough to see, while a little sprout still looks little next to a tree.
-  const scale = Math.min(9, Math.max(2.5, 820 / p.h));
+  // Big enough to see, while a little sprout still looks little next to a tree; and never so big
+  // that a crown or a nebula runs off the top.
+  const scale = Math.min(9, Math.max(2.5, 820 / p.h), 990 / (p.h + p.above));
   drawPlant(ctx, p, W / 2, 1010, scale);
 
   ctx.fillStyle = PAPER;
@@ -145,12 +164,12 @@ export async function bedPostcard(month: string, plants: PlantData[], opts: Post
   const GROUND_H = 36;
   const HEAD = 140;
   const FOOT = 90;
-  const images = [];
+  const images: PlantImage[] = [];
   for (const p of plants) images.push(await plantImage(p, !opts.moods));
   const natural = images.reduce((n, p) => n + p.w * SCALE, 0) + GAP * Math.max(0, images.length - 1);
   const W = Math.min(2000, Math.max(1000, natural + 2 * MARGIN));
   // Rows left to right, oldest first, like the bed.
-  const rows: (typeof images)[] = [[]];
+  const rows: PlantImage[][] = [[]];
   let used = 0;
   for (const p of images) {
     const w = p.w * SCALE;
@@ -161,7 +180,8 @@ export async function bedPostcard(month: string, plants: PlantData[], opts: Post
     used += (rows.at(-1)!.length ? GAP : 0) + w;
     rows.at(-1)!.push(p);
   }
-  const rowHeights = rows.map((r) => Math.max(...r.map((p) => p.h * SCALE)) + GROUND_H + 40);
+  // Room for each row's tallest plant and whatever its look reaches above it.
+  const rowHeights = rows.map((r) => Math.max(...r.map((p) => (p.h + p.above) * SCALE)) + GROUND_H + 24);
   const H = HEAD + rowHeights.reduce((a, b) => a + b, 0) + FOOT;
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -231,6 +251,8 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
   useEffect(() => {
     let alive = true;
     let url = '';
+    // The picture of the old choices goes at once: it can't be saved while the new one draws.
+    setCard(null);
     setFailed(false);
     // After this render: the plants are drawn by React, outside the page.
     void Promise.resolve()
@@ -251,7 +273,8 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
     if (!card) return;
     setSaving(true);
     try {
-      const name = `garden-${plant ? plant.entry.date : month}.png`;
+      // The name gives the date away too, so it has one only when the picture does.
+      const name = opts.words ? `garden-${plant ? plant.entry.date : month}.png` : 'garden-postcard.png';
       if (await savePostcard(journal, card.blob, name)) toast('📮 Postcard saved.');
     } catch (err) {
       toast(`Couldn’t save the postcard: ${err instanceof Error ? err.message : String(err)}`);
@@ -267,10 +290,11 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
       title={`Postcard of ${monthName(month)}`}
       actions={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          {/* Closed as a dialog, so focus goes back to the button that opened it. */}
+          <button type="button" className="btn" onClick={(e) => e.currentTarget.closest('dialog')?.close()}>
             Close
           </button>
-          <button type="button" className="btn btn-primary" disabled={!card || saving} onClick={() => void save()}>
+          <button type="button" className="btn btn-primary" disabled={!card || saving || failed} onClick={() => void save()}>
             {saving ? 'Saving…' : 'Save picture'}
           </button>
         </>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { timeLapseDuration, timeLapseMonths, TIERS, type Plant as PlantData } from '@logbook/core';
+import { timeLapseDuration, timeLapseFrame, timeLapseMonths, TIERS, type Plant as PlantData } from '@logbook/core';
 import { useReducedMotion } from '../../lib/motion.ts';
 import { Plant, TIER_COLOURS } from './Plant.tsx';
 
@@ -23,14 +23,16 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
   const reduced = useReducedMotion();
   const months = useMemo(() => timeLapseMonths(plants, thisMonth()), [plants]);
   const count = months.length;
-  // How far it has played, in months: 2.5 is halfway through the third month. It opens on today.
-  const [pos, setPos] = useState(count);
+  // How far it has played, in months (2.5 is halfway through the third month); null is today, the
+  // end, which stays the end when a new month's entry adds a month.
+  const [at, setAt] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const pos = at ?? count;
   const posRef = useRef(pos);
-  const move = (to: number) => {
-    posRef.current = to;
-    setPos(to);
+  const move = (to: number | null) => {
+    posRef.current = to ?? count;
+    setAt(to);
   };
 
   useEffect(() => {
@@ -38,31 +40,32 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
     const perMonth = timeLapseDuration(count) / count;
     let last = performance.now();
     let frame = requestAnimationFrame(function tick(now) {
-      // A hidden page doesn't move on: it picks up where it was.
-      const step = document.hidden ? 0 : ((now - last) * speed) / perMonth;
+      // Frames stop while the page is hidden: the first one back moves on no more than a usual
+      // frame, so it picks up where it was.
+      const step = (Math.min(now - last, 100) * speed) / perMonth;
       last = now;
-      const next = Math.min(count, posRef.current + step);
-      posRef.current = next;
-      setPos(next);
-      if (next >= count) setPlaying(false);
-      else frame = requestAnimationFrame(tick);
+      const next = posRef.current + step;
+      if (next >= count) {
+        posRef.current = count;
+        setAt(null);
+        setPlaying(false);
+      } else {
+        posRef.current = next;
+        setAt(next);
+        frame = requestAnimationFrame(tick);
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [playing, reduced, speed, count]);
 
   if (!count) return <p>Write your first entry to plant your first seed. 🌱</p>;
 
-  const index = Math.min(Math.floor(pos), count - 1);
-  // Plants of a month come up through its second; months before it are full.
-  const shownIn = (i: number) => (i < Math.floor(pos) ? months[i]!.plants.length : i === Math.floor(pos) ? Math.ceil((pos - i) * months[i]!.plants.length) : 0);
-  let total = 0;
-  for (let i = 0; i <= index; i++) total += shownIn(i);
+  const { index, shown } = timeLapseFrame(months, pos);
+  const total = shown.reduce((a, b) => a + b, 0);
   const beds: { month: string; plants: PlantData[] }[] = [];
-  for (let i = index; i >= 0 && beds.length < BEDS_SHOWN; i--) {
-    const n = shownIn(i);
-    if (n) beds.push({ month: months[i]!.month, plants: months[i]!.plants.slice(0, n) });
-  }
-  const here = shownIn(index);
+  for (let i = index; i >= 0 && beds.length < BEDS_SHOWN; i--)
+    if (shown[i]) beds.push({ month: months[i]!.month, plants: months[i]!.plants.slice(0, shown[i]) });
+  const here = shown[index]!;
   const label = `${monthName(months[index]!.month)}: ${here === 1 ? '1 plant' : `${here} plants`}`;
   const play = () => {
     if (pos >= count) move(0);
@@ -101,7 +104,8 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
           aria-valuetext={label}
           onChange={(e) => {
             setPlaying(false);
-            move(Number(e.target.value) + 1);
+            const to = Number(e.target.value) + 1;
+            move(to >= count ? null : to);
           }}
         />
       </label>

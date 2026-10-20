@@ -2689,8 +2689,9 @@ dialog[open]::backdrop {
 .garden-plant { position: relative; display: block; text-decoration: none; border-radius: 10px; padding: 2px; }
 .garden-plant:hover { background: rgb(255 255 255 / 0.25); }
 .garden-plant:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.garden-scene[data-sky='night'] .garden-plant:focus-visible { outline-color: #8ab4ff; }
-.garden-scene[data-sky='dawn'] .garden-plant:focus-visible, .garden-scene[data-sky='golden'] .garden-plant:focus-visible { outline-color: #1f5fe0; }
+.garden-scene[data-sky='night'] .garden-plant:focus-visible, .garden-scene[data-sky='night'] .garden-postcard:focus-visible { outline-color: #8ab4ff; }
+.garden-scene[data-sky='dawn'] .garden-plant:focus-visible, .garden-scene[data-sky='golden'] .garden-plant:focus-visible,
+.garden-scene[data-sky='dawn'] .garden-postcard:focus-visible, .garden-scene[data-sky='golden'] .garden-postcard:focus-visible { outline-color: #1f5fe0; }
 /* For keyboard users: past a long garden's plants to the shed, shown when focused. */
 .garden-skip:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .garden-skip:focus { margin-bottom: 10px; }
@@ -2749,10 +2750,8 @@ dialog[open]::backdrop {
 .almanac-bar { width: min(70%, 32px); background: var(--accent); border-radius: 4px 4px 0 0; }
 .almanac-value { font-size: 0.8rem; font-weight: 650; font-variant-numeric: tabular-nums; margin-bottom: 2px; }
 .almanac-month { text-align: center; font-size: 0.75rem; color: var(--ink-soft); padding: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.almanac-tip { display: none; position: absolute; bottom: calc(100% - 10px); left: 50%; transform: translateX(-50%); z-index: 2; white-space: nowrap; background: var(--ink); color: var(--bg); font-size: 0.8rem; padding: 6px 8px; border-radius: 8px; pointer-events: none; }
-.almanac-col:first-child .almanac-tip { left: 0; transform: none; }
-.almanac-col:last-child .almanac-tip { left: auto; right: 0; transform: none; }
-.almanac-col:hover .almanac-tip { display: block; }
+.almanac-col[data-hover] .almanac-plot { background: var(--bg-sunk); border-radius: 6px 6px 0 0; }
+.almanac-readout { margin: 6px 0 0; min-height: 1.5em; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .almanac-table { margin-top: 12px; }
 .almanac-table summary { cursor: pointer; font-weight: 650; }
 .timelapse-controls { margin-bottom: 10px; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { almanac, entryFlags, growGarden, herbarium, timeLapseDuration, timeLapseMonths, weekdayOf } from '../src/index.ts';
+import { almanac, entryFlags, growGarden, herbarium, timeLapseDuration, timeLapseFrame, timeLapseMonths, weekdayOf } from '../src/index.ts';
 import type { Entry } from '../src/model.ts';
 import { emptyDoc } from '../src/richtext.ts';
 
@@ -48,6 +48,9 @@ describe('garden history (D98)', () => {
     ]);
     expect(weekdayOf('2026-01-05')).toBe(0);
     expect(weekdayOf('2026-03-22')).toBe(6);
+    // Two-digit years aren't read as the 1900s: 2 February 26 was a Monday.
+    expect(weekdayOf('0026-02-02')).toBe(0);
+    expect(weekdayOf('2024-02-29')).toBe(3);
     const a = almanac(g.plants);
     expect(a.year).toBe('2026');
     expect(a.years).toEqual(['2026', '2025']);
@@ -73,5 +76,30 @@ describe('garden history (D98)', () => {
     expect(timeLapseMonths(g.plants, '2025-12').at(-1)!.month).toBe('2026-01');
     expect(timeLapseMonths([], '2026-01')).toEqual([]);
     expect([3, 30, 90].map(timeLapseDuration)).toEqual([20_000, 30_000, 60_000]);
+  });
+
+  it('keeps odd years in order: a year before 1000 or a date in 9999', () => {
+    const g = growGarden([entry('early', at('0999-12-05')), entry('now', at('1000-02-01'))]);
+    expect(timeLapseMonths(g.plants, '1000-01').map((m) => [m.month, m.plants.length])).toEqual([
+      ['0999-12', 1],
+      ['1000-01', 0],
+      ['1000-02', 1],
+    ]);
+    const late = growGarden([entry('now', at('2026-10-01')), entry('far', at('9999-12-31'))]);
+    const months = timeLapseMonths(late.plants, '2026-10');
+    expect(months.at(-1)).toMatchObject({ month: '9999-12' });
+    expect(months).toHaveLength((9999 - 2026) * 12 + 3);
+  });
+
+  it('steps through the months: each month shown whole, and its plants coming up as it plays', () => {
+    const g = growGarden([entry('a', at('2026-01-03')), entry('b', at('2026-01-09')), entry('c', at('2026-03-01'))]);
+    const months = timeLapseMonths(g.plants, '2026-03');
+    // The slider's month v is position v + 1: that month whole, and the ones before it.
+    expect(timeLapseFrame(months, 1)).toEqual({ index: 0, shown: [2, 0, 0] });
+    expect(timeLapseFrame(months, 2)).toEqual({ index: 1, shown: [2, 0, 0] });
+    expect(timeLapseFrame(months, 3)).toEqual({ index: 2, shown: [2, 0, 1] });
+    // Playing: halfway through January, one of its two plants is up; it starts empty.
+    expect(timeLapseFrame(months, 0.5)).toEqual({ index: 0, shown: [1, 0, 0] });
+    expect(timeLapseFrame(months, 0)).toEqual({ index: 0, shown: [0, 0, 0] });
   });
 });

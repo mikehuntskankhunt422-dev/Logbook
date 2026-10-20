@@ -107,7 +107,10 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /** 0 = Monday … 6 = Sunday, from the date alone (no time zone). */
 export function weekdayOf(date: string): number {
   const [y, m, d] = date.split('-').map(Number);
-  return (new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay() + 6) % 7;
+  // Not Date.UTC, which reads the years 0–99 as 1900–1999.
+  const at = new Date(0);
+  at.setUTCFullYear(y!, m! - 1, d!);
+  return (at.getUTCDay() + 6) % 7;
 }
 
 /**
@@ -171,16 +174,27 @@ export function timeLapseMonths(plants: Plant[], until: string): TimeLapseMonth[
     byMonth.set(m, [...(byMonth.get(m) ?? []), p]);
   }
   const keys = [...byMonth.keys()].sort();
-  const last = cmp(keys[keys.length - 1]!, until) > 0 ? keys[keys.length - 1]! : until;
+  // Counted in months since year 0, so years before 1000 and after 9999 still line up.
+  const count = (key: string) => Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7)) - 1;
+  const last = Math.max(count(keys[keys.length - 1]!), count(until));
   const out: TimeLapseMonth[] = [];
-  let [y, m] = keys[0]!.split('-').map(Number) as [number, number];
-  for (;;) {
-    const month = `${y}-${String(m).padStart(2, '0')}`;
-    if (cmp(month, last) > 0) break;
+  for (let i = count(keys[0]!); i <= last; i++) {
+    const month = `${String(Math.floor(i / 12)).padStart(4, '0')}-${String((i % 12) + 1).padStart(2, '0')}`;
     out.push({ month, plants: (byMonth.get(month) ?? []).sort((a, b) => cmp(a.entry.date, b.entry.date) || cmp(a.entry.createdAt, b.entry.createdAt) || cmp(a.entry.id, b.entry.id)) });
-    if (++m > 12) [y, m] = [y + 1, 1];
   }
   return out;
+}
+
+/**
+ * What the time-lapse shows `pos` months in (2.5 is halfway through the third month): the month
+ * it's on, and how many of each month's plants are up. A month's plants come up through its
+ * second; at a whole number the month before is complete and shown.
+ */
+export function timeLapseFrame(months: TimeLapseMonth[], pos: number): { index: number; shown: number[] } {
+  const whole = Math.floor(pos);
+  const index = Math.max(0, Math.min(Math.ceil(pos) - 1, months.length - 1));
+  const shown = months.map((m, i) => (i < whole ? m.plants.length : i === whole ? Math.ceil((pos - whole) * m.plants.length) : 0));
+  return { index, shown };
 }
 
 /** How long a time-lapse of this many months plays at 1×: a second a month, from 20 to 60 s. */

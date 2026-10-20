@@ -51,48 +51,87 @@ test('entries grow plants, the garden ranks up with a perk, and plants open thei
 
 test('garden history and postcards (D98): the update card, the Almanac, the Time-lapse and a postcard', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  const now = new Date();
+  const before = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+  const monthLabel = (d: Date) => d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const [label, earlier] = [monthLabel(now), monthLabel(before)];
+
+  // One entry about last month, one about today.
   await writeEntry(page, 'Lake day', 'We swam out to the rocks and back before lunch.');
+  await page.getByLabel('Date', { exact: true }).fill(`${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, '0')}-15`);
+  await expect(page.getByText('Saved on this device')).toBeVisible();
   await writeEntry(page, 'Quiet one', 'Read on the porch all afternoon.');
   // A device that had reached Radiant before this update (perks open at the highest tier seen).
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 6000, catalogue: 0 })));
   await page.goto('/#/garden');
   await page.reload();
+  await expect(page.getByRole('heading', { level: 2, name: new RegExp(`^${earlier} · 1 plant$`) })).toBeVisible();
 
   const card = page.getByRole('region', { name: '🎁 Garden update' });
   await expect(card).toContainText('Your Radiant garden now has Garden history and Postcards.');
   await card.getByRole('link', { name: 'Try it' }).click();
   await expect(page).toHaveURL(/#\/garden\/almanac$/);
   await expect(card).toHaveCount(0);
+  // A page of its own: its title, and focus at the top of the page.
+  await expect(page).toHaveTitle('Almanac · Garden · Logbook');
+  await expect(page.locator('#main')).toBeFocused();
 
   const almanac = page.getByRole('region', { name: 'Almanac' });
-  await expect(almanac.locator('dl')).toContainText('Plants2');
   await expect(almanac.getByRole('img', { name: /^Growth by month\. The most was in / })).toBeVisible();
   await almanac.getByText('Show as a table').click();
-  const month = new Date().toLocaleDateString(undefined, { month: 'long' });
-  await expect(almanac.getByRole('row', { name: new RegExp(`^${month} \\d+ 2 `) })).toBeVisible();
+  const month = now.toLocaleDateString(undefined, { month: 'long' });
+  await expect(almanac.getByRole('row', { name: new RegExp(`^${month} \\d+ 1 `) })).toBeVisible();
 
-  // With reduced motion the Time-lapse doesn't play: the slider moves through the months.
+  // With reduced motion the Time-lapse doesn't play: the slider steps through the months, both ways.
   const lapse = page.getByRole('region', { name: 'Time-lapse' });
   await expect(lapse.getByRole('button', { name: '▶ Watch it grow' })).toHaveCount(0);
-  const label = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  await expect(lapse.getByRole('slider', { name: 'Month' })).toHaveAttribute('aria-valuetext', `${label}: 2 plants`);
-  await expect(lapse).toContainText(`${label}: 2 plants`);
+  const slider = lapse.getByRole('slider', { name: 'Month' });
+  await expect(slider).toHaveAttribute('aria-valuetext', `${label}: 1 plant`);
+  await expect(lapse).toContainText('2 plants in the garden');
+  await slider.press('ArrowLeft');
+  await expect(slider).toHaveAttribute('aria-valuetext', `${earlier}: 1 plant`);
+  await expect(lapse).toContainText('1 plant in the garden');
+  await slider.press('ArrowRight');
+  await expect(slider).toHaveAttribute('aria-valuetext', `${label}: 1 plant`);
+  await slider.press('Home');
+  await expect(slider).toHaveAttribute('aria-valuetext', `${earlier}: 1 plant`);
 
-  // A postcard of this month's bed: private by default, saved as a PNG.
+  // A postcard of this month's bed: private by default, even in its file name.
   await page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Garden' }).click();
-  await page.getByRole('button', { name: `Postcard of ${label}` }).click();
+  const opener = page.getByRole('button', { name: `Postcard of ${label}` });
+  await opener.click();
   const dialog = page.getByRole('dialog', { name: `Postcard of ${label}` });
   await expect(dialog.getByRole('checkbox', { name: /Show the flowers/ })).not.toBeChecked();
-  const choose = dialog.getByRole('combobox', { name: 'Picture of' });
-  await choose.selectOption({ index: 1 });
-  await expect(choose.locator('option:checked')).toHaveText(/^Lake day · /);
-  await dialog.getByRole('checkbox', { name: /Show the title and date/ }).check();
   const preview = dialog.getByRole('img', { name: 'Postcard preview' });
   await expect(preview).toBeVisible();
-  await expect.poll(() => preview.evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual([1200, 1500]);
-  const download = page.waitForEvent('download');
+  let download = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'Save picture' }).click();
-  const file = await download;
-  expect(file.suggestedFilename()).toMatch(/^garden-\d{4}-\d{2}-\d{2}\.png$/);
+  expect((await download).suggestedFilename()).toBe('garden-postcard.png');
   await expect(page.getByText('📮 Postcard saved.')).toBeVisible();
+
+  // One plant, with its title and date: a 1200 × 1500 picture named for its date.
+  const choose = dialog.getByRole('combobox', { name: 'Picture of' });
+  await choose.selectOption({ index: 1 });
+  await expect(choose.locator('option:checked')).toHaveText(/^Quiet one · /);
+  await dialog.getByRole('checkbox', { name: /Show the title and date/ }).check();
+  await expect.poll(() => preview.evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual([1200, 1500]);
+  download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Save picture' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^garden-\d{4}-\d{2}-\d{2}\.png$/);
+
+  // Close puts keyboard focus back on the button that opened it.
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test('a device that reaches a tier after the update hears of its features in the rank-up, not in a card', async ({ page }) => {
+  await writeEntry(page, 'A note', 'Just a few words today.');
+  // Updated at Epic: Garden history (Mythic) and Postcards (Radiant) weren't reached yet.
+  await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 3000, catalogue: 0 })));
+  await page.goto('/#/garden');
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Your garden' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(1);
+  await expect(page.getByRole('region', { name: '🎁 Garden update' })).toHaveCount(0);
 });

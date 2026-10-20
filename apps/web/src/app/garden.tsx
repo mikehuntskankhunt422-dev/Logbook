@@ -56,7 +56,10 @@ export function useGardenEffects(garden: Garden | null): void {
   const level = garden ? garden.rank.tier * 1000 + garden.rank.ring : -1;
   useEffect(() => {
     if (!garden || level < 0) return;
-    const seen = gardenPrefs().seen;
+    const { seen, catalogue } = gardenPrefs();
+    // A "Garden update" card tells of new features only at tiers this device had already reached.
+    // With none there, it has nothing to tell: rank-ups name those features with their perks.
+    if (seen >= 0 && catalogue < CATALOGUE && !FEATURES.some((f) => f.catalogue > catalogue && f.tier <= Math.floor(seen / 1000))) setGardenPrefs({ catalogue: CATALOGUE });
     if (level <= seen) return;
     // The first look only notes where the garden is: no fanfare for an existing journal, and no
     // "Garden update" card for features it has never been without.

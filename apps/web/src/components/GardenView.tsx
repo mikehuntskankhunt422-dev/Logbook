@@ -98,7 +98,15 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                 Try it
               </a>
             )}
-            <button type="button" className="btn" onClick={() => setGardenPrefs({ catalogue: CATALOGUE })}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setGardenPrefs({ catalogue: CATALOGUE });
+                // The card goes: keep keyboard focus on the page, on the garden's current tab.
+                document.querySelector<HTMLElement>('.garden-tabs [aria-current="page"]')?.focus();
+              }}
+            >
               Close
             </button>
           </div>

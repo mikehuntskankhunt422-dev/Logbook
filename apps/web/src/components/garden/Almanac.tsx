@@ -124,29 +124,36 @@ function PlantLink({ plant }: { plant: Plant }) {
 }
 
 /**
- * One bar per month, in the accent colour: one series, so no legend; the busiest month is
- * labelled, and hovering a month shows its numbers. The table above the chart holds them all.
+ * One bar per month, in the accent colour: one series, so no legend. The busiest month is
+ * labelled, and the month under the pointer is spelled out below the chart, where it covers
+ * nothing. The table below holds every number.
  */
 function GrowthChart({ months }: { months: AlmanacMonth[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(...months.map((m) => m.growth));
   const top = max > 0 ? months.findIndex((m) => m.growth === max) : -1;
   const summary = top >= 0 ? `Growth by month. The most was in ${monthName(months[top]!.month)}, with ${max.toLocaleString()}.` : 'Growth by month: none yet this year.';
+  const shown = months[hover ?? top];
   return (
-    <div className="almanac-chart" role="img" aria-label={summary}>
-      {months.map((m, i) => (
-        <div key={m.month} className="almanac-col" aria-hidden="true">
-          <div className="almanac-plot">
-            {i === top && <span className="almanac-value">{m.growth.toLocaleString()}</span>}
-            {m.growth > 0 && <span className="almanac-bar" style={{ height: `${Math.max(2, (m.growth / max) * 100)}%` }} />}
+    <>
+      <div className="almanac-chart" role="img" aria-label={summary} onPointerLeave={() => setHover(null)}>
+        {months.map((m, i) => (
+          <div key={m.month} className="almanac-col" aria-hidden="true" data-hover={hover === i || undefined} onPointerEnter={() => setHover(i)}>
+            <div className="almanac-plot">
+              {i === top && <span className="almanac-value">{m.growth.toLocaleString()}</span>}
+              {m.growth > 0 && <span className="almanac-bar" style={{ height: `${Math.max(2, (m.growth / max) * 100)}%` }} />}
+            </div>
+            <span className="almanac-month">{monthName(m.month, 'short')}</span>
           </div>
-          <span className="almanac-month">{monthName(m.month, 'short')}</span>
-          <span className="almanac-tip">
-            <strong>{monthName(m.month)}</strong>
-            <br />
-            {m.growth.toLocaleString()} Growth · {m.plants === 1 ? '1 plant' : `${m.plants.toLocaleString()} plants`}
-          </span>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      <p className="almanac-readout" aria-hidden="true">
+        {shown && (
+          <>
+            <strong>{monthName(shown.month)}</strong>: {shown.growth.toLocaleString()} Growth · {shown.plants === 1 ? '1 plant' : `${shown.plants.toLocaleString()} plants`}
+          </>
+        )}
+      </p>
+    </>
   );
 }

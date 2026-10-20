@@ -63,9 +63,10 @@ export function App() {
   }, [journal, locked, openEntry]);
 
   const firstRoute = useRef(true);
-  const routeKey = route.name === 'entry' ? route.id : '';
+  // The garden's own pages (D98) count as pages too.
+  const routeKey = route.name === 'entry' ? route.id : route.name === 'garden' ? (route.view ?? '') : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: 'Garden · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
