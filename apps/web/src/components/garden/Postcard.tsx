@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { SIZE_STAGES, TIERS, type Journal, type Plant as PlantData } from '@logbook/core';
@@ -255,6 +255,8 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
   const [card, setCard] = useState<{ blob: Blob; url: string; opts: PostcardOptions; plant?: PlantData; plants: PlantData[] } | null>(null);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Every picture address made, so none outlives the dialog.
+  const urls = useRef(new Set<string>());
   const plant = plants.find((p) => p.entry.id === plantId);
   const ready = card && card.opts === opts && card.plant === plant && card.plants === plants ? card : null;
 
@@ -264,7 +266,12 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
     // After this render: the plants are drawn by React, outside the page.
     void Promise.resolve()
       .then(() => (plant ? plantPostcard(plant, opts) : bedPostcard(month, plants, opts)))
-      .then((blob) => alive && setCard({ blob, url: URL.createObjectURL(blob), opts, plant, plants }))
+      .then((blob) => {
+        if (!alive) return;
+        const url = URL.createObjectURL(blob);
+        urls.current.add(url);
+        setCard({ blob, url, opts, plant, plants });
+      })
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
@@ -274,10 +281,20 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
   // closes. Going back to the choices it was drawn from shows it again at once.
   useEffect(
     () => () => {
-      if (card) URL.revokeObjectURL(card.url);
+      if (!card) return;
+      URL.revokeObjectURL(card.url);
+      urls.current.delete(card.url);
     },
     [card],
   );
+  // And one drawn just as the dialog closed, before it was ever shown.
+  useEffect(() => {
+    const made = urls.current;
+    return () => {
+      for (const url of made) URL.revokeObjectURL(url);
+      made.clear();
+    };
+  }, []);
 
   const save = async () => {
     if (!ready) return;

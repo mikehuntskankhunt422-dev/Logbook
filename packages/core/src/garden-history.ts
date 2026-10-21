@@ -165,6 +165,9 @@ export interface TimeLapseMonth {
   plants: Plant[];
 }
 
+/** "2026-10" in months since year 0, so years before 1000 and after 9999 still line up. */
+const monthCount = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+
 /** Every month from the garden's first to `until` ("2026-10") or its last, whichever is later. */
 export function timeLapseMonths(plants: Plant[], until: string): TimeLapseMonth[] {
   if (!plants.length) return [];
@@ -174,15 +177,33 @@ export function timeLapseMonths(plants: Plant[], until: string): TimeLapseMonth[
     byMonth.set(m, [...(byMonth.get(m) ?? []), p]);
   }
   const keys = [...byMonth.keys()].sort();
-  // Counted in months since year 0, so years before 1000 and after 9999 still line up.
-  const count = (key: string) => Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7)) - 1;
-  const last = Math.max(count(keys[keys.length - 1]!), count(until));
+  const last = Math.max(monthCount(keys[keys.length - 1]!), monthCount(until));
   const out: TimeLapseMonth[] = [];
-  for (let i = count(keys[0]!); i <= last; i++) {
+  for (let i = monthCount(keys[0]!); i <= last; i++) {
     const month = `${String(Math.floor(i / 12)).padStart(4, '0')}-${String((i % 12) + 1).padStart(2, '0')}`;
     out.push({ month, plants: (byMonth.get(month) ?? []).sort((a, b) => cmp(a.entry.date, b.entry.date) || cmp(a.entry.createdAt, b.entry.createdAt) || cmp(a.entry.id, b.entry.id)) });
   }
   return out;
+}
+
+/** A place in the time-lapse: how far it has played, in months, from the first month it had then. */
+export interface TimeLapseSpot {
+  pos: number;
+  first: string;
+}
+
+/**
+ * Where a spot is among the months now, from 0 to the end (`months.length`); null is the end.
+ * Counted from the spot's own first month, so the same month stays in view when an earlier one
+ * goes; a spot whose own month has gone shows the new first month whole.
+ */
+export function timeLapsePlace(spot: TimeLapseSpot | null, months: TimeLapseMonth[]): number {
+  const count = months.length;
+  if (!spot || !count) return count;
+  const first = months[0]!.month;
+  const at = spot.pos + monthCount(spot.first) - monthCount(first);
+  // 0 is the start of a play only while the first month is the same one.
+  return at <= 0 && spot.first !== first ? Math.min(1, count) : Math.min(count, Math.max(0, at));
 }
 
 /**

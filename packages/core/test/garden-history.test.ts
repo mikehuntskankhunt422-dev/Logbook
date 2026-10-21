@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { almanac, entryFlags, growGarden, herbarium, timeLapseDuration, timeLapseFrame, timeLapseMonths, weekdayOf } from '../src/index.ts';
+import { almanac, entryFlags, growGarden, herbarium, timeLapseDuration, timeLapseFrame, timeLapseMonths, timeLapsePlace, weekdayOf } from '../src/index.ts';
 import type { Entry } from '../src/model.ts';
 import { emptyDoc } from '../src/richtext.ts';
 
@@ -101,5 +101,21 @@ describe('garden history (D98)', () => {
     // Playing: halfway through January, one of its two plants is up; it starts empty.
     expect(timeLapseFrame(months, 0.5)).toEqual({ index: 0, shown: [1, 0, 0] });
     expect(timeLapseFrame(months, 0)).toEqual({ index: 0, shown: [0, 0, 0] });
+  });
+
+  it('keeps a paused or playing place on its month when the months change', () => {
+    const jan = entry('a', at('2026-01-03'));
+    const months = timeLapseMonths(growGarden([jan, entry('b', at('2026-02-09')), entry('c', at('2026-03-01'))]).plants, '2026-03');
+    const later = timeLapseMonths(growGarden([entry('b', at('2026-02-09')), entry('c', at('2026-03-01'))]).plants, '2026-03');
+    // Null is the end, whatever the months.
+    expect([timeLapsePlace(null, months), timeLapsePlace(null, later)]).toEqual([3, 2]);
+    // On February when January goes: still February, now the first month.
+    expect(timeLapsePlace({ pos: 2, first: '2026-01' }, later)).toBe(1);
+    // On January when it goes: February, whole, rather than an empty garden.
+    expect(timeLapsePlace({ pos: 1, first: '2026-01' }, later)).toBe(1);
+    expect(timeLapsePlace({ pos: 0.5, first: '2026-01' }, later)).toBe(1);
+    // The start of a play stays the start; a place past the end is the end.
+    expect(timeLapsePlace({ pos: 0, first: '2026-01' }, months)).toBe(0);
+    expect(timeLapsePlace({ pos: 3, first: '2026-01' }, later)).toBe(2);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { timeLapseDuration, timeLapseFrame, timeLapseMonths, TIERS, type Plant as PlantData } from '@logbook/core';
+import { timeLapseDuration, timeLapseFrame, timeLapseMonths, timeLapsePlace, TIERS, type Plant as PlantData, type TimeLapseSpot } from '@logbook/core';
 import { useReducedMotion } from '../../lib/motion.ts';
 import { Plant, TIER_COLOURS } from './Plant.tsx';
 
@@ -7,15 +7,6 @@ import { Plant, TIER_COLOURS } from './Plant.tsx';
 const BEDS_SHOWN = 3;
 const SPEEDS = [0.5, 1, 2];
 
-/** A place in the time-lapse, in months from its first month then. */
-interface Spot {
-  pos: number;
-  first: string;
-}
-/** "2026-10" as a count of months, to measure between two. */
-const monthNo = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
-/** Where a spot is among the months now, from the start (0) to the end (`count`); null is the end. */
-const place = (spot: Spot | null, first: string, count: number) => (spot ? Math.min(count, Math.max(0, spot.pos + monthNo(spot.first) - monthNo(first))) : count);
 
 const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const thisMonth = () => {
@@ -37,10 +28,10 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
   // How far it has played, in months (2.5 is halfway through the third month), counted from the
   // first month it had then, so the same month stays in view if an earlier one goes. Null is today,
   // the end, which stays the end when a new month's entry adds a month.
-  const [at, setAt] = useState<Spot | null>(null);
+  const [at, setAt] = useState<TimeLapseSpot | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const pos = place(at, first, count);
+  const pos = timeLapsePlace(at, months);
   const atRef = useRef(at);
   const move = (to: number | null) => {
     const spot = to === null ? null : { pos: to, first };
@@ -57,7 +48,7 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
       // frame, so it picks up where it was.
       const step = (Math.min(now - last, 100) * speed) / perMonth;
       last = now;
-      const next = place(atRef.current, first, count) + step;
+      const next = timeLapsePlace(atRef.current, months) + step;
       if (next >= count) {
         atRef.current = null;
         setAt(null);
@@ -69,7 +60,7 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [playing, reduced, speed, count, first]);
+  }, [playing, reduced, speed, count, first, months]);
 
   if (!count) return <p>Write your first entry to plant your first seed. 🌱</p>;
 
