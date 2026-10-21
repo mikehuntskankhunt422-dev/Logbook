@@ -3,7 +3,7 @@ import { growGarden, rankName, TIERS, type Entry, type Garden, type GardenCache 
 import { useJournal } from './journal-context.tsx';
 import { useToast } from './toasts.tsx';
 import { celebrate } from '../lib/motion.ts';
-import { gardenPrefs, noteUpdate, rankUpNews, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
+import { gardenPrefs, listed, noteUpdate, rankUpNews, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
 
 /** Each entry's words, worked out once per saved version, so a save only re-reads that entry. */
 const cache: GardenCache = new Map();
@@ -67,7 +67,7 @@ export function useGardenEffects(garden: Garden | null): void {
     if (seen < 0) return;
     const tier = garden.rank.tier;
     const news = rankUpNews(Math.floor(seen / 1000), tier);
-    toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${news.length ? ` New: ${news.join(', ')}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
+    toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${news.length ? ` New: ${listed(news)}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
     celebrate('streak');
   }, [level, garden, toast]);
 }
