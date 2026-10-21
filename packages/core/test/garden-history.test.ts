@@ -141,6 +141,9 @@ describe('garden history (D98)', () => {
     // A year without tags is named after itself (in the app); one with no entries has no stars.
     expect(starMap(growGarden([entry('x', at('2024-03-03'))]).plants, '2024')).toMatchObject({ tag: '', stars: [{ x: expect.any(Number) }] });
     expect(starMap(g.plants, '2023').stars).toEqual([]);
+    // Georgian names aren't capitalised; an astral first letter isn't cut in two.
+    const tagged = (tag: string) => starMap(growGarden([entry('x', { ...at('2024-03-03'), tags: [tag] })]).plants, '2024').tag;
+    expect([tagged('თბილისი'), tagged('𐐨𐐯𐐻'), tagged('éire')]).toEqual(['თბილისი', '𐐀𐐯𐐻', 'Éire']);
   });
 
   it('keeps stars apart, in date order and within the year, so each can be tapped', () => {

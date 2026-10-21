@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardFeatures, CATALOGUE, FEATURES, gardenPrefs, listed, noteUpdate, rankUpNews, type Feature, type GardenPrefs } from './garden-prefs.ts';
+import { cardFeatures, CATALOGUE, clampText, FEATURES, gardenPrefs, listed, noteUpdate, rankUpNews, type Feature, type GardenPrefs } from './garden-prefs.ts';
 
 /** A device's choices: what it has seen (tier × 1000) and the updates it has run. */
 const device = (patch: Partial<GardenPrefs>): GardenPrefs => ({ ...gardenPrefs(), seen: -1, catalogue: 0, noted: {}, ...patch });
@@ -60,6 +60,13 @@ describe('garden updates (D98)', () => {
   it('tells a 0.7.0 device at Primordial only what the companions add', () => {
     const prefs = updated({ ...device({ seen: 13000, catalogue: 2, noted: { 1: 13, 2: 13 } }) });
     expect(titles(prefs)).toEqual(['A garden pet', 'Star map', 'A second pet', 'Ancient companions']);
+  });
+
+  it('cuts a pet’s name at 20 characters as people count them, never inside an emoji', () => {
+    expect(clampText('abcdefghijklmnopqr🐱🐱', 20)).toBe('abcdefghijklmnopqr🐱🐱');
+    expect(clampText('abcdefghijklmnopqrs🐱🐱', 20)).toBe('abcdefghijklmnopqrs🐱');
+    expect(clampText('👨‍👩‍👧‍👦'.repeat(21), 20)).toBe('👨‍👩‍👧‍👦'.repeat(20));
+    expect(clampText('Biscuit', 20)).toBe('Biscuit');
   });
 
   it('notes an update once, and a closed card stays closed', () => {

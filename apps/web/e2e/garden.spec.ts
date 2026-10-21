@@ -235,7 +235,7 @@ test('companions (D100): pets beside the newest plant, a second pet, and each ye
   await expect(page.locator('.garden-pet')).toHaveCount(0);
 
   await pets.getByRole('button', { name: 'Cat' }).click();
-  await shed.getByRole('textbox', { name: 'Its name' }).first().fill('Biscuit');
+  await shed.getByRole('textbox', { name: 'Pet’s name', exact: true }).fill('Biscuit');
   const cat = page.getByRole('button', { name: 'Your cat, Biscuit, napping' });
   // In the newest bed, beside its newest plant.
   await expect(page.locator('.garden-bed').first().getByRole('button', { name: 'Your cat, Biscuit, napping' })).toBeVisible();
@@ -264,4 +264,26 @@ test('companions (D100): pets beside the newest plant, a second pet, and each ye
   await page.getByRole('region', { name: 'Garden shed' }).getByRole('group', { name: 'Pet', exact: true }).getByRole('button', { name: 'Baby dragon' }).click();
   await expect(page.getByRole('button', { name: 'Your baby dragon, Biscuit, napping' })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}'))).toMatchObject({ pet: 'dragon', petName: 'Biscuit', pet2: 'hedgehog', starMap: true });
+});
+
+test('on a narrow phone, stars stay a tap apart and pets stay beside the newest plant (D100)', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  // Twelve entries today: twelve stars on one day, and a bed that wraps.
+  for (let i = 0; i < 12; i++) await writeEntry(page, `Note ${i}`, `A few words for note number ${i}.`);
+  await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 13000, catalogue: 3, noted: { 3: 13 }, pet: 'cat', pet2: 'tortoise', starMap: true })));
+  await page.goto('/#/garden');
+  await page.reload();
+  const stars = page.locator('.garden-star');
+  await expect(stars).toHaveCount(12);
+  const centres = await stars.evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
+  for (let i = 1; i < centres.length; i++) expect(Math.hypot(centres[i]![0]! - centres[i - 1]![0]!, centres[i]![1]! - centres[i - 1]![1]!)).toBeGreaterThanOrEqual(24);
+  // Both pets on the newest plant's row, just after it.
+  const newest = await page.locator('.garden-bed').first().locator('a.garden-plant').last().boundingBox();
+  for (const name of ['Your cat, napping', 'Your tortoise, napping']) {
+    const pet = await page.getByRole('button', { name }).boundingBox();
+    expect(pet!.x).toBeGreaterThan(newest!.x);
+    expect(Math.abs(pet!.y + pet!.height - (newest!.y + newest!.height))).toBeLessThan(12);
+  }
+  // No sideways scroll for the page itself.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });

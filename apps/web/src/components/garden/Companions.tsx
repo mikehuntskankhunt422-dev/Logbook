@@ -59,22 +59,25 @@ export function StarSky({ map }: { map: StarMap }) {
         {map.tag ? `The ${map.tag} Cluster` : `The ${map.year} Cluster`}
         <span className="garden-starmap-year"> · {map.year}</span>
       </h2>
+      {/* At least wide enough that stars sit 24 px apart, each one tappable; narrower phones scroll it. */}
       <div className="garden-starmap-sky">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <polyline points={points} fill="none" stroke="currentColor" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        </svg>
-        <ol>
-          {map.stars.map((s) => {
-            const label = `${s.plant.entry.title || 'Untitled'}, ${formatLongDate(s.plant.entry.date)}`;
-            return (
-              <li key={s.plant.entry.id}>
-                <a className="garden-star" href={href({ name: 'entry', id: s.plant.entry.id })} style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%` }} aria-label={label} title={label}>
-                  <span aria-hidden="true">✦</span>
-                </a>
-              </li>
-            );
-          })}
-        </ol>
+        <div className="garden-starmap-field">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points={points} fill="none" stroke="currentColor" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          </svg>
+          <ol>
+            {map.stars.map((s) => {
+              const label = `${s.plant.entry.title || 'Untitled'}, ${formatLongDate(s.plant.entry.date)}`;
+              return (
+                <li key={s.plant.entry.id}>
+                  <a className="garden-star" href={href({ name: 'entry', id: s.plant.entry.id })} style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%` }} aria-label={label} title={label}>
+                    <span aria-hidden="true">✦</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       </div>
     </section>
   );

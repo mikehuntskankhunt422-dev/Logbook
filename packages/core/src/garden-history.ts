@@ -271,7 +271,16 @@ export function starMap(plants: Plant[], year: string): StarMap {
   const chosen = [...own].sort((a, b) => b.words - a.words || byDate(a, b)).slice(0, STARS).sort(byDate);
   const xs = spread(chosen.map((p) => yearFraction(p.entry.date)));
   const stars = chosen.map((plant, i) => ({ plant, x: xs[i]!, y: 0.2 + ((fnv1a32(plant.entry.id) % 1000) / 1000) * 0.6 }));
-  return { year, tag: top && top.charAt(0).toUpperCase() + top.slice(1), stars };
+  return { year, tag: capitalised(top), stars };
+}
+
+/**
+ * A tag with its first letter capitalised, as a name: not in scripts without capitals at the start
+ * of a name (Georgian has capitals, but not for that), and never cutting a character in two.
+ */
+function capitalised(tag: string): string {
+  const [first = ''] = tag;
+  return /\p{Script=Georgian}/u.test(first) ? tag : first.toUpperCase() + tag.slice(first.length);
 }
 
 /**

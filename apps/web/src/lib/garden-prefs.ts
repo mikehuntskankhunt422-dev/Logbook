@@ -171,8 +171,14 @@ export const PETS: { value: PetKind; label: string; emoji: string; tier: number 
   { value: 'dragon', label: 'Baby dragon', emoji: '🐉', tier: 13 },
   { value: 'dinosaur', label: 'Little dinosaur', emoji: '🦕', tier: 13 },
 ];
-/** A pet's name: at most this many characters. */
+/** A pet's name: at most this many characters (as people count them: an emoji is one). */
 export const PET_NAME_MAX = 20;
+
+/** Text cut to `max` characters as people count them, never inside one (an emoji, a flag). */
+export function clampText(text: string, max: number): string {
+  const parts = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment) : [...text];
+  return parts.length > max ? parts.slice(0, max).join('') : text;
+}
 const NAME_HINT = 'Kept on this device only, outside your journal and its passcode.';
 
 export const FEATURES: Feature[] = [
@@ -222,7 +228,7 @@ export const FEATURES: Feature[] = [
     text: 'A cat, fox, hedgehog or tortoise naps beside your newest plant. Tap it to see it stretch.',
     controls: [
       { kind: 'choice', pref: 'pet', label: 'Pet', none: 'None', choices: PETS },
-      { kind: 'text', pref: 'petName', label: 'Its name', max: PET_NAME_MAX, hint: NAME_HINT },
+      { kind: 'text', pref: 'petName', label: 'Pet’s name', max: PET_NAME_MAX, hint: NAME_HINT },
     ],
   },
   {
@@ -239,7 +245,7 @@ export const FEATURES: Feature[] = [
     text: 'Room for another companion.',
     controls: [
       { kind: 'choice', pref: 'pet2', label: 'Second pet', none: 'None', choices: PETS },
-      { kind: 'text', pref: 'pet2Name', label: 'Its name', max: PET_NAME_MAX, hint: NAME_HINT },
+      { kind: 'text', pref: 'pet2Name', label: 'Second pet’s name', max: PET_NAME_MAX, hint: NAME_HINT },
     ],
   },
   { tier: 13, catalogue: 3, title: 'Ancient companions', text: 'A baby dragon and a little dinosaur join the pets.' },
@@ -306,7 +312,7 @@ function load(fallback: GardenPrefs = DEFAULTS): GardenPrefs {
     if (!Number.isFinite(prefs.catalogue)) prefs.catalogue = 0;
     if (!prefs.noted || typeof prefs.noted !== 'object') prefs.noted = {};
     if (!(prefs.soundVolume >= 0 && prefs.soundVolume <= 1)) prefs.soundVolume = DEFAULTS.soundVolume;
-    for (const key of ['petName', 'pet2Name'] as const) if (typeof prefs[key] !== 'string') prefs[key] = '';
+    for (const key of ['petName', 'pet2Name'] as const) prefs[key] = typeof prefs[key] === 'string' ? clampText(prefs[key], PET_NAME_MAX) : '';
     return prefs;
   } catch {
     return fallback;

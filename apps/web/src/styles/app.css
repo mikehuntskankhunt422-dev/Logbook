@@ -2719,7 +2719,7 @@ dialog[open]::backdrop {
 }
 
 /* Garden update 3, "Companions" (D100): pets beside the newest plant, and each year's star map. */
-.garden-pet-spot { align-self: flex-end; }
+.garden-newest { display: flex; align-items: flex-end; gap: 6px; }
 .garden-pet { position: relative; border: 0; background: none; color: inherit; padding: 4px; min-width: 44px; min-height: 44px; font-size: 1.9rem; line-height: 1; cursor: pointer; border-radius: 12px; }
 .garden-pet:hover { background: rgb(255 255 255 / 0.25); }
 .garden-pet:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -2732,10 +2732,12 @@ dialog[open]::backdrop {
 .garden-pet-zzz { position: absolute; top: 0; right: 2px; font-size: 0.8rem; font-weight: 700; opacity: 0.7; animation: pet-zzz 3.6s ease-in-out infinite; }
 @keyframes pet-zzz { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: 0.8; } 100% { opacity: 0; transform: translate(4px, -8px); } }
 .garden-starmap { position: relative; margin: 18px 0 6px; border-radius: 14px; background: linear-gradient(#0b1020, #1d2a4d); padding: 8px 12px 10px; }
-.garden-starmap-name { margin: 0 0 4px; font-size: 1rem; color: #fff8ec; }
+.garden-starmap-name { margin: 0 0 4px; font-size: 1rem; color: #fff8ec; overflow-wrap: anywhere; }
 .garden-starmap-year { color: #c9d2f0; font-weight: 500; }
-.garden-starmap-sky { position: relative; height: 110px; color: rgb(223 230 255 / 0.55); }
-.garden-starmap-sky svg, .garden-starmap-sky ol { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); overflow: visible; }
+.garden-starmap-sky { height: 110px; color: rgb(223 230 255 / 0.55); overflow-x: auto; overflow-y: hidden; }
+/* 24 px between stars at STAR_GAP (0.085) of the field less its 28 px of insets: 24 / 0.085 + 28. */
+.garden-starmap-field { position: relative; height: 100%; min-width: 312px; }
+.garden-starmap-field svg, .garden-starmap-field ol { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); overflow: visible; }
 .garden-starmap-sky ol { list-style: none; margin: 0; padding: 0; }
 .garden-star { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; display: grid; place-items: center; color: #fff4c2; text-decoration: none; font-size: 0.95rem; border-radius: 50%; }
 .garden-star:hover { color: #ffffff; background: rgb(255 255 255 / 0.12); }

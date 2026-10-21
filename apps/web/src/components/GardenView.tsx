@@ -1,7 +1,7 @@
 import { Fragment, memo, useMemo, useRef, useState } from 'react';
 import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
-import { cardFeatures, CATALOGUE, FEATURES, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
+import { cardFeatures, CATALOGUE, clampText, FEATURES, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
 import { Pet, PET_TIER, SECOND_PET_TIER, STAR_TIER, StarSky } from './garden/Companions.tsx';
 import { formatLongDate } from './common.tsx';
 import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
@@ -253,7 +253,14 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                               ) : c.kind === 'text' ? (
                                 <div key={c.pref} className="field feature-control feature-text">
                                   <label htmlFor={`garden-${c.pref}`}>{c.label}</label>
-                                  <input id={`garden-${c.pref}`} className="text-input" type="text" maxLength={c.max} value={String(prefs[c.pref] ?? '')} aria-describedby={`garden-${c.pref}-hint`} onChange={(e) => setGardenPrefs({ [c.pref]: e.target.value })} />
+                                  <input
+                                    id={`garden-${c.pref}`}
+                                    className="text-input"
+                                    type="text"
+                                    value={String(prefs[c.pref] ?? '')}
+                                    aria-describedby={`garden-${c.pref}-hint`}
+                                    onChange={(e) => setGardenPrefs({ [c.pref]: clampText(e.target.value, c.max) })}
+                                  />
                                   <span id={`garden-${c.pref}-hint`} className="hint">
                                     {c.hint}
                                   </span>
@@ -332,8 +339,9 @@ const Bed = memo(function Bed({
         )}
       </div>
       <ul className="garden-ground">
-        {plants.map((p) => (
-          <li key={p.entry.id}>
+        {plants.map((p, i) => (
+          // The pets nap beside the newest plant (D100), in its place, so they wrap with it.
+          <li key={p.entry.id} className={pets?.length && i === plants.length - 1 ? 'garden-newest' : undefined}>
             <a
               className="garden-plant"
               href={href({ name: 'entry', id: p.entry.id })}
@@ -343,12 +351,7 @@ const Bed = memo(function Bed({
               <Plant plant={p} />
               <span className="garden-tier-dot" style={{ background: TIER_COLOURS[p.tier] }} aria-hidden="true" />
             </a>
-          </li>
-        ))}
-        {/* The pets nap beside the newest plant (D100). */}
-        {pets?.map((p, i) => (
-          <li key={`pet-${i}`} className="garden-pet-spot">
-            <Pet kind={p.kind} name={p.name} />
+            {i === plants.length - 1 && pets?.map((pet, k) => <Pet key={k} kind={pet.kind} name={pet.name} />)}
           </li>
         ))}
       </ul>
