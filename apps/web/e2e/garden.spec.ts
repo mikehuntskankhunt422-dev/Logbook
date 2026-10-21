@@ -68,7 +68,7 @@ test('garden history and postcards (D98): the update card, the Almanac, the Time
   await expect(page.getByRole('heading', { level: 2, name: new RegExp(`^${earlier} · 1 plant$`) })).toBeVisible();
 
   const card = page.getByRole('region', { name: '🎁 Garden update' });
-  await expect(card).toContainText('Your Radiant garden now has Garden history and Postcards.');
+  await expect(card).toContainText('Your Radiant garden now has Garden sounds, Garden history and Postcards.');
   await card.getByRole('link', { name: 'Try it' }).click();
   await expect(page).toHaveURL(/#\/garden\/almanac$/);
   await expect(card).toHaveCount(0);
@@ -127,24 +127,94 @@ test('garden history and postcards (D98): the update card, the Almanac, the Time
 
 test('a garden update tells in a card only of tiers reached before it; later tiers come with their rank-up', async ({ page }) => {
   await writeEntry(page, 'A note', 'Just a few words today.');
-  // Updated at Mythic: Garden history was already reached, Postcards (Radiant) not yet.
+  // Updated at Mythic: Garden sounds and Garden history were already reached, Postcards (Radiant) not yet.
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 5000, catalogue: 0 })));
   await page.goto('/#/garden/almanac');
   await page.reload();
   const card = page.getByRole('region', { name: '🎁 Garden update' });
-  await expect(card).toContainText('now has Garden history.');
+  await expect(card).toContainText('now has Garden sounds and Garden history.');
   await expect(card).not.toContainText('Postcards');
   // Already on the Almanac: no Try it, which would only take focus away.
   await expect(card.getByRole('link', { name: 'Try it' })).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 1: 5 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 2: 5 });
   await card.getByRole('button', { name: 'Close' }).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Almanac' })).toBeFocused();
 
-  // Updated at Epic: nothing to tell yet, so no card, now or once Mythic comes.
+  // Updated at Epic: nothing to tell yet, so no card, now or once Legendary comes.
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 3000, catalogue: 0 })));
   await page.reload();
   await expect(page.getByRole('region', { name: 'Your garden' })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(1);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(2);
   await expect(card).toHaveCount(0);
+});
+
+test('seasons, weather and garden sounds (D99): chosen in the shed, never on by themselves', async ({ page }) => {
+  await writeEntry(page, 'Autumn walk', 'Leaves everywhere along the river path today.');
+  // A device at Prismatic that closed the 0.6.1 card: it hears of 0.7.0's features once.
+  await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 7000, catalogue: 1, noted: { 1: 7 } })));
+  await page.goto('/#/garden');
+  await page.reload();
+  const card = page.getByRole('region', { name: '🎁 Garden update' });
+  await expect(card).toContainText('now has Garden sounds and Seasons and weather.');
+  await card.getByRole('button', { name: 'Close' }).click();
+
+  // Nothing changes until chosen: no seasons, no weather, no sound.
+  const scene = page.locator('.garden-scene');
+  const bed = page.locator('.garden-bed').first();
+  await expect(bed).not.toHaveAttribute('data-season');
+  await expect(scene).not.toHaveAttribute('data-weather');
+  const sounds = page.getByRole('group', { name: 'Garden sounds' }).getByRole('button', { name: 'Garden sounds' });
+  await expect(sounds).toHaveAttribute('aria-pressed', 'false');
+
+  const shed = page.getByRole('region', { name: 'Garden shed' });
+  await shed.getByRole('checkbox', { name: 'Seasons' }).check();
+  await shed.getByRole('group', { name: 'Hemisphere' }).getByRole('button', { name: 'North', exact: true }).click();
+  // The bed is this month's, by the local date, as entries' dates are.
+  const month = new Date().getMonth() + 1;
+  const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+  await expect(bed).toHaveAttribute('data-season', north[month - 1]!);
+  await shed.getByRole('group', { name: 'Hemisphere' }).getByRole('button', { name: 'South', exact: true }).click();
+  await expect(bed).toHaveAttribute('data-season', north[(month + 5) % 12]!);
+
+  // Weather: drawn on a canvas over the garden, and lying on the ground.
+  await shed.getByRole('group', { name: 'Weather' }).getByRole('button', { name: 'Snow' }).click();
+  await expect(scene).toHaveAttribute('data-weather', 'snow');
+  // On the page's body, where the page's own animation can't move it.
+  await expect(page.locator('body > canvas.garden-weather')).toHaveCount(1);
+  // With reduced motion nothing moves: the snow only lies on the ground.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('canvas.garden-weather')).toHaveCount(0);
+  await expect(scene).toHaveAttribute('data-weather', 'snow');
+  await shed.getByRole('group', { name: 'Weather' }).getByRole('button', { name: 'Off' }).click();
+  await expect(scene).not.toHaveAttribute('data-weather');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}'))).toMatchObject({ seasons: true, weather: '', hemisphere: 'south' });
+
+  // Sounds play only when pressed, and stop when the garden page is left.
+  await sounds.click();
+  await expect(sounds).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('group', { name: 'Garden sounds' }).getByRole('slider', { name: 'Volume' }).fill('0.2');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').soundVolume)).toBe(0.2);
+  await page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Herbarium' }).click();
+  await expect(sounds).toHaveCount(0);
+  await page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Garden' }).click();
+  await expect(sounds).toHaveAttribute('aria-pressed', 'false');
+});
+
+test.describe('in a southern time zone', () => {
+  // Chromium reports this zone as America/Buenos_Aires: the guess must still be south.
+  test.use({ timezoneId: 'America/Argentina/Buenos_Aires' });
+
+  test('the shed names the hemisphere guessed from the time zone, and the seasons follow it', async ({ page }) => {
+    await writeEntry(page, 'A note', 'Just a few words today.');
+    await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 7000, catalogue: 2, noted: { 2: 7 }, seasons: true })));
+    await page.goto('/#/garden');
+    await page.reload();
+    const hemisphere = page.getByRole('region', { name: 'Garden shed' }).getByRole('group', { name: 'Hemisphere' });
+    await expect(hemisphere.getByRole('button', { name: 'From my time zone (South)' })).toHaveAttribute('aria-pressed', 'true');
+    // This month where the page is, in its time zone.
+    const month = await page.evaluate(() => new Date().getMonth() + 1);
+    const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+    await expect(page.locator('.garden-bed').first()).toHaveAttribute('data-season', north[(month + 5) % 12]!);
+  });
 });

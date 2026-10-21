@@ -1,12 +1,14 @@
-import { memo, useMemo, useState } from 'react';
-import { rankName, SIZE_STAGES, TIERS, type Garden, type Plant as PlantData } from '@logbook/core';
+import { memo, useMemo, useRef, useState } from 'react';
+import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
-import { cardFeatures, CATALOGUE, FEATURES, PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
+import { cardFeatures, CATALOGUE, FEATURES, listed, PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
 import { formatLongDate } from './common.tsx';
 import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
 import { Herbarium } from './garden/Herbarium.tsx';
 import { Plant, TIER_COLOURS } from './garden/Plant.tsx';
 import { POSTCARD_TIER, PostcardDialog } from './garden/Postcard.tsx';
+import { SEASONS_TIER, SOUNDS_TIER, SoundControls, useGardenNow, WeatherLayer } from './garden/Weather.tsx';
+import { useForcedColors, useReducedMotion } from '../lib/motion.ts';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
 
@@ -26,6 +28,10 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const prefs = useGardenPrefs();
   const [shown, setShown] = useState(BEDS_AT_ONCE);
   const [postcard, setPostcard] = useState<string | null>(null);
+  const scene = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+  const forced = useForcedColors();
+  const now = useGardenNow();
   const beds = useMemo(() => {
     const byMonth = new Map<string, PlantData[]>();
     for (const p of garden?.plants ?? []) {
@@ -53,6 +59,12 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const has = (tier: number) => open >= tier;
   const on = (tier: number, pref: keyof GardenPrefs) => has(tier) && Boolean(prefs[pref]);
   const sky = on(4, 'livingSky') ? skyNow() : 'day';
+  // Seasons and weather (D99), from the date alone, in this device's hemisphere.
+  const guessed = hemisphereOf(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const hemisphere = prefs.hemisphere || guessed;
+  const seasons = has(SEASONS_TIER) && prefs.seasons;
+  const { weather, rainbow } = weatherOn(has(SEASONS_TIER) ? prefs.weather : '', now.day, hemisphere);
+  const night = sky === 'night' || (sky === 'day' && now.dark);
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
   const nextName = top ? `${TIERS[rank.tier]!.name} ★${rank.ring + 1}` : TIERS[rank.tier + 1]!.name;
   // Features a garden update added to tiers this device had already reached: said once.
@@ -85,7 +97,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
       {fresh.length > 0 && (
         <section className="panel garden-card" aria-labelledby="garden-update-h">
           <h2 id="garden-update-h">🎁 Garden update</h2>
-          <p>Your {TIERS[open]!.name} garden now has {fresh.map((f) => f.title).join(' and ')}.</p>
+          <p>Your {TIERS[open]!.name} garden now has {listed(fresh.map((f) => f.title))}.</p>
           <ul>
             {fresh.map((f) => (
               <li key={f.title}>
@@ -129,9 +141,13 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
           <button type="button" className="btn garden-skip" onClick={() => document.getElementById('shed-h')?.focus()}>
             Skip to the garden shed
           </button>
+          {has(SOUNDS_TIER) && <SoundControls night={night} rain={weather === 'rain'} volume={prefs.soundVolume} />}
           <div
+            ref={scene}
             className="garden-scene"
             data-sky={sky}
+            data-seasons={seasons || undefined}
+            data-weather={weather === 'clear' ? undefined : weather}
             data-stars={on(9, 'stars') || undefined}
             data-aurora={on(10, 'aurora') || undefined}
             data-nebula={on(11, 'nebula') || undefined}
@@ -140,6 +156,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
             data-gold={on(12, 'goldSigns') || undefined}
             data-ancient={on(13, 'ancient') || undefined}
           >
+            {rainbow && <div className="garden-rainbow" aria-hidden="true" />}
+            {!reduced && !forced && <WeatherLayer weather={weather} night={night} scene={scene} />}
             <div className="garden-gate" aria-hidden="true">
               <span>🚪</span>
               {has(8) && prefs.ornament && <span>{ORNAMENTS[prefs.ornament]}</span>}
@@ -156,7 +174,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
             {beds.length === 0 ? (
               <p className="garden-empty">Write your first entry to plant your first seed. 🌱</p>
             ) : (
-              beds.slice(0, shown).map((bed) => <Bed key={bed.month} month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />)
+              beds.slice(0, shown).map((bed) => <Bed key={bed.month} month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />)
             )}
           </div>
           {beds.length > shown && (
@@ -181,13 +199,6 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                     <div className="perk-body">
                       <strong>{perk.title}</strong> <span className="muted">· {TIERS[perk.tier]!.name}</span>
                       <p className="hint">{unlocked ? perk.text : `🔒 Reach ${TIERS[perk.tier]!.name} (${TIERS[perk.tier]!.at.toLocaleString()} Growth).`}</p>
-                      {FEATURES.filter((f) => f.tier === perk.tier).map((f) => (
-                        <p key={f.title} className="hint">
-                          ➕ <strong>{f.title}</strong>
-                          {unlocked ? `: ${f.text}` : ' comes with it.'}{' '}
-                          {unlocked && f.view && <a href={href({ name: 'garden', view: f.view })}>Open it</a>}
-                        </p>
-                      ))}
                       {unlocked && perk.kind === 'toggle' && (
                         <label className="row">
                           <input type="checkbox" aria-label={perk.title} checked={Boolean(prefs[perk.pref])} onChange={(e) => setGardenPrefs({ [perk.pref]: e.target.checked })} /> On
@@ -207,6 +218,33 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                             ))}
                         </div>
                       )}
+                      {FEATURES.filter((f) => f.tier === perk.tier).map((f) => (
+                        <div key={f.title}>
+                          <p className="hint">
+                            ➕ <strong>{f.title}</strong>
+                            {unlocked ? `: ${f.text}` : ' comes with it.'}{' '}
+                            {unlocked && f.view && <a href={href({ name: 'garden', view: f.view })}>Open it</a>}
+                          </p>
+                          {unlocked &&
+                            f.controls?.map((c) =>
+                              c.kind === 'toggle' ? (
+                                <label key={c.pref} className="row feature-control">
+                                  <input type="checkbox" checked={Boolean(prefs[c.pref])} onChange={(e) => setGardenPrefs({ [c.pref]: e.target.checked })} /> {c.label}
+                                </label>
+                              ) : (
+                                <div key={c.pref} className="row feature-control" role="group" aria-label={c.label}>
+                                  <span className="muted">{c.label}:</span>
+                                  {/* The time zone's guess is named, so a wrong one shows. */}
+                                  {[{ value: '', label: c.pref === 'hemisphere' ? `${c.none} (${guessed === 'south' ? 'South' : 'North'})` : c.none }, ...c.choices].map((o) => (
+                                    <button key={o.value} type="button" className="chip" aria-pressed={(prefs[c.pref] || '') === o.value} onClick={() => setGardenPrefs({ [c.pref]: o.value })}>
+                                      {o.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ),
+                            )}
+                        </div>
+                      ))}
                     </div>
                   </li>
                 );
@@ -236,10 +274,10 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
 }
 
 /** One month's bed. Memoised, so choosing a perk doesn't redraw every plant. */
-const Bed = memo(function Bed({ month, plants, lantern, onPostcard }: { month: string; plants: PlantData[]; lantern: boolean; onPostcard?: (month: string) => void }) {
+const Bed = memo(function Bed({ month, plants, lantern, season, onPostcard }: { month: string; plants: PlantData[]; lantern: boolean; season?: Season; onPostcard?: (month: string) => void }) {
   const name = new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   return (
-    <section className="garden-bed" aria-labelledby={`bed-${month}`}>
+    <section className="garden-bed" aria-labelledby={`bed-${month}`} data-season={season}>
       <div className="garden-bed-head">
         <h2 className="garden-sign" id={`bed-${month}`}>
           {lantern && <span aria-hidden="true">🏮 </span>}

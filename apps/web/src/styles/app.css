@@ -2718,6 +2718,43 @@ dialog[open]::backdrop {
   .g-sway, .g-spin, .g-drift, .g-ember, .g-twinkle, .garden-visitors span, .garden-scene[data-aurora]::after { animation: none; }
 }
 
+/* Garden update 2, "Weather" (D99): seasons on each bed, weather over the garden, its sounds. */
+.garden-bed[data-season='winter'] { --ground: #e4ebf0; --ground-deep: #c7d4de; --ground-decor: linear-gradient(#ffffff, #ffffff) 0 calc(100% - 20px) / 100% 2px no-repeat, radial-gradient(circle, #ffffff 0 1.5px, transparent 2px) 0 calc(100% - 9px) / 17px 9px repeat-x; }
+.garden-bed[data-season='spring'] { --ground: #a6d77f; --ground-deep: #8bc263; --ground-decor: radial-gradient(circle, #ffc6dd 0 2px, transparent 2.5px) 0 calc(100% - 7px) / 23px 12px repeat-x, radial-gradient(circle, #ffffff 0 1.5px, transparent 2px) 11px calc(100% - 13px) / 29px 10px repeat-x; }
+.garden-bed[data-season='summer'] { --ground: #74b957; --ground-deep: #5c9f43; --ground-decor: radial-gradient(circle, #ffe066 0 1.5px, transparent 2px) 5px calc(100% - 9px) / 37px 10px repeat-x; }
+.garden-bed[data-season='autumn'] { --ground: #d39a4a; --ground-deep: #b7813a; --ground-decor: radial-gradient(ellipse 4px 2px, #b5541f 0 90%, transparent) 0 calc(100% - 8px) / 19px 10px repeat-x, radial-gradient(ellipse 3px 2px, #7a4a1e 0 90%, transparent) 9px calc(100% - 14px) / 27px 9px repeat-x; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .garden-bed[data-season='winter'] { --ground: #2b333b; --ground-deep: #222930; --ground-decor: linear-gradient(#9fb2c4, #9fb2c4) 0 calc(100% - 20px) / 100% 2px no-repeat, radial-gradient(circle, #c9d6e2 0 1.5px, transparent 2px) 0 calc(100% - 9px) / 17px 9px repeat-x; }
+  :root:not([data-theme='light']) .garden-bed[data-season='spring'] { --ground: #2f4a2a; --ground-deep: #263d22; }
+  :root:not([data-theme='light']) .garden-bed[data-season='summer'] { --ground: #24401f; --ground-deep: #1c3318; }
+  :root:not([data-theme='light']) .garden-bed[data-season='autumn'] { --ground: #4a3520; --ground-deep: #3b2a19; }
+}
+:root[data-theme='dark'] .garden-bed[data-season='winter'] { --ground: #2b333b; --ground-deep: #222930; --ground-decor: linear-gradient(#9fb2c4, #9fb2c4) 0 calc(100% - 20px) / 100% 2px no-repeat, radial-gradient(circle, #c9d6e2 0 1.5px, transparent 2px) 0 calc(100% - 9px) / 17px 9px repeat-x; }
+:root[data-theme='dark'] .garden-bed[data-season='spring'] { --ground: #2f4a2a; --ground-deep: #263d22; }
+:root[data-theme='dark'] .garden-bed[data-season='summer'] { --ground: #24401f; --ground-deep: #1c3318; }
+:root[data-theme='dark'] .garden-bed[data-season='autumn'] { --ground: #4a3520; --ground-deep: #3b2a19; }
+.garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
+/* Ancient ground keeps its amber soil through the seasons; the season's frost, blossom or leaves lie on it. */
+.garden-scene[data-ancient] .garden-bed[data-season] { --ground: #b98c4e; --ground-deep: #8a6234; }
+/* The weather on the ground: snow lying, puddles, fallen petals. With reduced motion, all there is. */
+.garden-scene[data-weather] .garden-ground { position: relative; }
+/* Behind the plants, so it never hides their stems or tier dots. */
+.garden-scene[data-weather] .garden-ground > li { position: relative; z-index: 1; }
+.garden-scene[data-weather] .garden-ground::after { content: ''; position: absolute; left: 0; right: 0; bottom: 15px; height: 7px; pointer-events: none; z-index: 0; }
+.garden-scene[data-weather='snow'] .garden-ground::after { background: linear-gradient(rgb(255 255 255 / 0.95), rgb(235 242 250 / 0.9)); border-radius: 4px 4px 0 0; }
+.garden-scene[data-weather='rain'] .garden-ground::after { background: radial-gradient(ellipse 14px 3px, rgb(170 205 245 / 0.75) 0 70%, transparent) 4px 50% / 53px 7px repeat-x; }
+.garden-scene[data-weather='petals'] .garden-ground::after { background: radial-gradient(ellipse 3px 2px, #ff8fab 0 90%, transparent) 0 50% / 21px 7px repeat-x, radial-gradient(ellipse 3px 2px, #fbcfe8 0 90%, transparent) 10px 30% / 33px 7px repeat-x; }
+.garden-weather { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.garden-rainbow {
+  position: absolute; top: 14px; right: 28px; width: 190px; height: 95px; border-radius: 190px 190px 0 0; pointer-events: none; opacity: 0.6;
+  background: radial-gradient(circle at 50% 100%, transparent 54%, #ff5f6d 54% 58%, #ffc371 58% 62%, #fff36b 62% 66%, #5be37b 66% 70%, #4fb8ff 70% 74%, #a66bff 74% 78%, transparent 78%);
+}
+.garden-sound { margin: 0 0 8px; }
+.garden-volume { gap: 8px; font-size: 0.9rem; }
+.garden-volume input { accent-color: var(--accent); }
+.feature-control { margin: 2px 0 8px; gap: 6px; }
+@media (forced-colors: active) { .garden-weather, .garden-rainbow { display: none; } }
+
 /* Garden update 1, "History" (D98): the pages, the Herbarium, the Almanac, the Time-lapse, postcards. */
 .garden-tabs { display: flex; width: fit-content; max-width: 100%; margin: 0 0 4px; }
 .garden-tabs a { border-radius: 999px; padding: 8px 16px; min-height: 38px; display: inline-flex; align-items: center; font-weight: 650; color: inherit; text-decoration: none; }

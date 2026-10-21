@@ -6,6 +6,7 @@ export * from './embeds.ts';
 export * from './music-links.ts';
 export * from './garden.ts';
 export * from './garden-history.ts';
+export * from './garden-weather.ts';
 export * from './storage.ts';
 export * from './crypto.ts';
 export * from './journal.ts';

@@ -1,3 +1,11 @@
+**Seasons and weather.** From **Prismatic**, the **Garden shed** can give each month's bed its season: frost in winter, blossom in spring, flowers in summer and fallen leaves in autumn, turned around for the southern hemisphere. Weather brings rain, snow or petals over the garden. **Auto** rains on about one day in five (snow in winter) and shows a rainbow the day after. With reduced motion, nothing falls: the snow, puddles or petals just lie on the ground.
+
+**Garden sounds.** From **Legendary**, **🔈 Garden sounds** above the garden plays a breeze, birdsong by day, crickets at night and rain when it's raining, with its own volume. It never starts by itself, and it stops when you leave the garden.
+
+Nothing changes until you choose it in the shed.
+
+What came in 0.6.1:
+
 **Garden history.** The garden has two new pages. The **Herbarium** lists the flowers you've grown, with how many, the rarest and the first, the sizes your entries have reached, and the countries you've flagged. From **Mythic**, the **Almanac** shows each year month by month: Growth, plants, your busiest weekday, longest entry and rarest plant. The **Time-lapse** replays your garden from its first plant to today. With reduced motion turned on it doesn't play: a slider steps through the months.
 
 **Postcards.** From **Radiant**, **📮 Postcard** on a month's sign saves a picture of that month's bed or of one plant. A postcard starts private: every flower in the same colour, no titles or dates. Add only what you want to share.
