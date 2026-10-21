@@ -19,6 +19,19 @@ export function useReducedMotion(): boolean {
   return reduced;
 }
 
+/** Forced colours (Windows contrast themes): decoration that can't follow them is left out. */
+export function useForcedColors(): boolean {
+  const query = '(forced-colors: active)';
+  const [forced, setForced] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(query).matches);
+  useEffect(() => {
+    const mq = matchMedia(query);
+    const on = () => setForced(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return forced;
+}
+
 /** Spring presets for motion/react. Collapsed to instant when the user prefers reduced motion. */
 export function spring(reduced: boolean) {
   return reduced ? { duration: 0 } : { type: 'spring' as const, stiffness: 420, damping: 26, mass: 0.8 };

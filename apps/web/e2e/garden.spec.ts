@@ -169,18 +169,19 @@ test('seasons, weather and garden sounds (D99): chosen in the shed, never on by 
 
   const shed = page.getByRole('region', { name: 'Garden shed' });
   await shed.getByRole('checkbox', { name: 'Seasons' }).check();
-  await shed.getByRole('group', { name: 'Hemisphere' }).getByRole('button', { name: 'North' }).click();
+  await shed.getByRole('group', { name: 'Hemisphere' }).getByRole('button', { name: 'North', exact: true }).click();
   // The bed is this month's, by the local date, as entries' dates are.
   const month = new Date().getMonth() + 1;
   const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
   await expect(bed).toHaveAttribute('data-season', north[month - 1]!);
-  await shed.getByRole('group', { name: 'Hemisphere' }).getByRole('button', { name: 'South' }).click();
+  await shed.getByRole('group', { name: 'Hemisphere' }).getByRole('button', { name: 'South', exact: true }).click();
   await expect(bed).toHaveAttribute('data-season', north[(month + 5) % 12]!);
 
   // Weather: drawn on a canvas over the garden, and lying on the ground.
   await shed.getByRole('group', { name: 'Weather' }).getByRole('button', { name: 'Snow' }).click();
   await expect(scene).toHaveAttribute('data-weather', 'snow');
-  await expect(page.locator('canvas.garden-weather')).toHaveCount(1);
+  // On the page's body, where the page's own animation can't move it.
+  await expect(page.locator('body > canvas.garden-weather')).toHaveCount(1);
   // With reduced motion nothing moves: the snow only lies on the ground.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(page.locator('canvas.garden-weather')).toHaveCount(0);
@@ -198,4 +199,22 @@ test('seasons, weather and garden sounds (D99): chosen in the shed, never on by 
   await expect(sounds).toHaveCount(0);
   await page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Garden' }).click();
   await expect(sounds).toHaveAttribute('aria-pressed', 'false');
+});
+
+test.describe('in a southern time zone', () => {
+  // Chromium reports this zone as America/Buenos_Aires: the guess must still be south.
+  test.use({ timezoneId: 'America/Argentina/Buenos_Aires' });
+
+  test('the shed names the hemisphere guessed from the time zone, and the seasons follow it', async ({ page }) => {
+    await writeEntry(page, 'A note', 'Just a few words today.');
+    await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 7000, catalogue: 2, noted: { 2: 7 }, seasons: true })));
+    await page.goto('/#/garden');
+    await page.reload();
+    const hemisphere = page.getByRole('region', { name: 'Garden shed' }).getByRole('group', { name: 'Hemisphere' });
+    await expect(hemisphere.getByRole('button', { name: 'From my time zone (South)' })).toHaveAttribute('aria-pressed', 'true');
+    // This month where the page is, in its time zone.
+    const month = await page.evaluate(() => new Date().getMonth() + 1);
+    const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+    await expect(page.locator('.garden-bed').first()).toHaveAttribute('data-season', north[(month + 5) % 12]!);
+  });
 });

@@ -7,8 +7,8 @@ import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
 import { Herbarium } from './garden/Herbarium.tsx';
 import { Plant, TIER_COLOURS } from './garden/Plant.tsx';
 import { POSTCARD_TIER, PostcardDialog } from './garden/Postcard.tsx';
-import { isDark, SEASONS_TIER, SOUNDS_TIER, SoundControls, today, WeatherLayer } from './garden/Weather.tsx';
-import { useReducedMotion } from '../lib/motion.ts';
+import { SEASONS_TIER, SOUNDS_TIER, SoundControls, useGardenNow, WeatherLayer } from './garden/Weather.tsx';
+import { useForcedColors, useReducedMotion } from '../lib/motion.ts';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
 
@@ -30,6 +30,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const [postcard, setPostcard] = useState<string | null>(null);
   const scene = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const forced = useForcedColors();
+  const now = useGardenNow();
   const beds = useMemo(() => {
     const byMonth = new Map<string, PlantData[]>();
     for (const p of garden?.plants ?? []) {
@@ -58,10 +60,11 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const on = (tier: number, pref: keyof GardenPrefs) => has(tier) && Boolean(prefs[pref]);
   const sky = on(4, 'livingSky') ? skyNow() : 'day';
   // Seasons and weather (D99), from the date alone, in this device's hemisphere.
-  const hemisphere = prefs.hemisphere || hemisphereOf(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const guessed = hemisphereOf(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const hemisphere = prefs.hemisphere || guessed;
   const seasons = has(SEASONS_TIER) && prefs.seasons;
-  const { weather, rainbow } = weatherOn(has(SEASONS_TIER) ? prefs.weather : '', today(), hemisphere);
-  const night = sky === 'night' || (sky === 'day' && isDark());
+  const { weather, rainbow } = weatherOn(has(SEASONS_TIER) ? prefs.weather : '', now.day, hemisphere);
+  const night = sky === 'night' || (sky === 'day' && now.dark);
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
   const nextName = top ? `${TIERS[rank.tier]!.name} ★${rank.ring + 1}` : TIERS[rank.tier + 1]!.name;
   // Features a garden update added to tiers this device had already reached: said once.
@@ -154,7 +157,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
             data-ancient={on(13, 'ancient') || undefined}
           >
             {rainbow && <div className="garden-rainbow" aria-hidden="true" />}
-            {!reduced && <WeatherLayer weather={weather} night={night} scene={scene} />}
+            {!reduced && !forced && <WeatherLayer weather={weather} night={night} scene={scene} />}
             <div className="garden-gate" aria-hidden="true">
               <span>🚪</span>
               {has(8) && prefs.ornament && <span>{ORNAMENTS[prefs.ornament]}</span>}
@@ -231,7 +234,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                               ) : (
                                 <div key={c.pref} className="row feature-control" role="group" aria-label={c.label}>
                                   <span className="muted">{c.label}:</span>
-                                  {[{ value: '', label: c.none }, ...c.choices].map((o) => (
+                                  {/* The time zone's guess is named, so a wrong one shows. */}
+                                  {[{ value: '', label: c.pref === 'hemisphere' ? `${c.none} (${guessed === 'south' ? 'South' : 'North'})` : c.none }, ...c.choices].map((o) => (
                                     <button key={o.value} type="button" className="chip" aria-pressed={(prefs[c.pref] || '') === o.value} onClick={() => setGardenPrefs({ [c.pref]: o.value })}>
                                       {o.label}
                                     </button>

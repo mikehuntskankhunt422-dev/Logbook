@@ -20,8 +20,21 @@ export function seasonOf(month: string, hemisphere: Hemisphere): Season {
   return NORTH[i] ?? 'summer';
 }
 
-/** Time zones whose places are south of the equator, for the hemisphere a device starts with. */
-const SOUTHERN = [/^Australia\//, /^Antarctica\//, /^America\/Argentina\//, /^Pacific\/(Auckland|Chatham)$/, /^America\/(Santiago|Sao_Paulo|Montevideo|Asuncion)$/, /^Africa\/(Johannesburg|Windhoek|Maputo)$/];
+/**
+ * Time zones whose places are south of the equator, for the hemisphere a device starts with. Under
+ * both their IANA names and the shorter ones browser engines report (Chromium gives
+ * America/Buenos_Aires for America/Argentina/Buenos_Aires).
+ */
+const SOUTHERN = [
+  /^Australia\//,
+  /^Antarctica\//,
+  /^America\/(Argentina\/.+|Buenos_Aires|Catamarca|Cordoba|Jujuy|Mendoza|Rosario)$/,
+  /^America\/(Santiago|Punta_Arenas|Sao_Paulo|Montevideo|Asuncion|La_Paz|Lima|Campo_Grande|Cuiaba)$/,
+  /^Pacific\/(Auckland|Chatham|Easter|Fiji|Noumea|Tongatapu|Apia|Tahiti|Norfolk|Efate)$/,
+  /^Africa\/(Johannesburg|Windhoek|Maputo|Harare|Lusaka|Gaborone|Maseru|Mbabane|Blantyre|Luanda|Lubumbashi)$/,
+  /^Indian\/(Antananarivo|Mauritius|Reunion|Mayotte|Comoro)$/,
+  /^Atlantic\/(Stanley|South_Georgia|St_Helena)$/,
+];
 
 /** South when the time zone is one of SOUTHERN's, else north. A guess: it can be chosen in the shed. */
 export function hemisphereOf(timeZone: string): Hemisphere {

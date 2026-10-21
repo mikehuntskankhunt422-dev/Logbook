@@ -1,14 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type { Weather } from '@logbook/core';
 import { playGardenSounds, type GardenSounds } from '../../lib/garden-sound.ts';
 import { setGardenPrefs } from '../../lib/garden-prefs.ts';
-
-/**
- * The weather over the garden (D99): rain, snow or petals on one canvas the size of the window,
- * drawn only where the garden is on screen, so a long garden costs no more than a short one. At
- * most 120 at a time, 30 frames a second; nothing moves with reduced motion (the beds' still
- * snow, puddles or petals show the weather instead), and nothing is drawn while the page is hidden.
- */
 
 /** The tiers that open Seasons and weather (Prismatic) and Garden sounds (Legendary). */
 export const SEASONS_TIER = 7;
@@ -25,6 +19,15 @@ export function isDark(): boolean {
   const theme = document.documentElement.getAttribute('data-theme');
   return theme ? theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
 }
+
+/**
+ * The weather over the garden (D99): rain, snow or petals on one canvas covering the window,
+ * drawn only where the garden is on screen, so a long garden costs no more than a short one. It
+ * hangs off the document's body, where no animated page can move it. At most 120 at a time, 30
+ * frames a second, and only while the garden is on screen: nothing runs when it's scrolled away or
+ * the page is hidden. With reduced motion or forced colours it isn't there at all (the beds' still
+ * snow, puddles or petals show the weather).
+ */
 
 const MAX = 120;
 const FRAME_MS = 1000 / 30;
@@ -55,31 +58,42 @@ export function WeatherLayer({ weather, night, scene }: { weather: Weather; nigh
   useEffect(() => {
     const c = canvas.current;
     const ctx = c?.getContext('2d');
-    if (!c || !ctx || weather === 'clear') return;
+    const garden = scene.current;
+    if (!c || !ctx || !garden || weather === 'clear') return;
     let drops: Drop[] = [];
+    let dpr = 0;
+    // The drawing surface matches the canvas's own box, at the screen's density (which changes
+    // when a window moves to another screen, with no resize).
     const fit = () => {
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      c.width = Math.round(innerWidth * dpr);
-      c.height = Math.round(innerHeight * dpr);
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      c.width = Math.round(c.clientWidth * dpr);
+      c.height = Math.round(c.clientHeight * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     fit();
-    addEventListener('resize', fit);
+    const sizes = new ResizeObserver(fit);
+    sizes.observe(c);
 
-    let last = performance.now();
-    let frame = requestAnimationFrame(function tick(now) {
+    let frame = 0;
+    let last = 0;
+    let drawn = false;
+    const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
-      if (now - last < FRAME_MS) return;
+      // Two frames of a 60 Hz screen can measure a little under 33.3 ms: a frame is due a bit early.
+      if (now - last < FRAME_MS - 4) return;
       // Frames stop while the page is hidden; the first one back doesn't jump.
       const dt = Math.min(now - last, 100) / 1000;
       last = now;
-      ctx.clearRect(0, 0, innerWidth, innerHeight);
-      const box = scene.current?.getBoundingClientRect();
-      if (!box) return;
+      if (Math.min(2, window.devicePixelRatio || 1) !== dpr) fit();
+      const width0 = c.clientWidth;
+      const height0 = c.clientHeight;
+      if (drawn) ctx.clearRect(0, 0, width0, height0);
+      drawn = false;
+      const box = garden.getBoundingClientRect();
       const left = Math.max(0, box.left);
       const top = Math.max(0, box.top);
-      const width = Math.min(innerWidth, box.right) - left;
-      const height = Math.min(innerHeight, box.bottom) - top;
+      const width = Math.min(width0, box.right) - left;
+      const height = Math.min(height0, box.bottom) - top;
       if (width <= 0 || height <= 0) return;
       // As many as suit the garden on screen, up to MAX.
       const want = Math.min(MAX, Math.round((width * height) / 9000));
@@ -93,8 +107,9 @@ export function WeatherLayer({ weather, night, scene }: { weather: Weather; nigh
         d.x += d.vx * dt;
         d.y += d.vy * dt;
         d.turn += d.spin * dt;
-        // Out of the garden on screen: back in at its top, anywhere along it.
-        if (d.y > top + height + 20 || d.x < left - 20 || d.x > left + width + 20) Object.assign(d, drop(weather, left, width, top - 20, 0));
+        // Blown out at one side, back in at the other; fallen past the bottom, back in at the top.
+        if (d.x < left || d.x > left + width) d.x = left + ((((d.x - left) % width) + width) % width);
+        if (d.y > top + height + 20 || d.y < top - 40) Object.assign(d, drop(weather, left, width, top - 20, 0));
         if (weather === 'rain') {
           ctx.strokeStyle = night ? 'rgb(190 210 245 / 0.55)' : 'rgb(70 120 190 / 0.45)';
           ctx.lineWidth = 1.2;
@@ -118,16 +133,53 @@ export function WeatherLayer({ weather, night, scene }: { weather: Weather; nigh
         }
       }
       ctx.restore();
-    });
-    return () => {
+      drawn = true;
+    };
+    // Only while the garden is on screen.
+    const seen = new IntersectionObserver(([e]) => {
       cancelAnimationFrame(frame);
-      removeEventListener('resize', fit);
-      ctx.clearRect(0, 0, c.width, c.height);
+      if (e?.isIntersecting) {
+        last = performance.now();
+        frame = requestAnimationFrame(tick);
+      } else if (drawn) {
+        ctx.clearRect(0, 0, c.clientWidth, c.clientHeight);
+        drawn = false;
+      }
+    });
+    seen.observe(garden);
+    return () => {
+      seen.disconnect();
+      sizes.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, [weather, night, scene]);
 
   if (weather === 'clear') return null;
-  return <canvas ref={canvas} className="garden-weather" aria-hidden="true" />;
+  return createPortal(<canvas ref={canvas} className="garden-weather" aria-hidden="true" />, document.body);
+}
+
+/**
+ * Today's date and whether the app is dark, kept current while the garden is open: a page left
+ * open past midnight gets the new day's weather, and one that turns dark at sunset its night.
+ */
+export function useGardenNow(): { day: string; dark: boolean } {
+  const [, refresh] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const timer = setInterval(refresh, 60_000);
+    const scheme = matchMedia('(prefers-color-scheme: dark)');
+    scheme.addEventListener('change', refresh);
+    const theme = new MutationObserver(refresh);
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const back = () => !document.hidden && refresh();
+    document.addEventListener('visibilitychange', back);
+    return () => {
+      clearInterval(timer);
+      scheme.removeEventListener('change', refresh);
+      theme.disconnect();
+      document.removeEventListener('visibilitychange', back);
+    };
+  }, []);
+  return { day: today(), dark: isDark() };
 }
 
 /**

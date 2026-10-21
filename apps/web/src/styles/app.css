@@ -2734,13 +2734,17 @@ dialog[open]::backdrop {
 :root[data-theme='dark'] .garden-bed[data-season='summer'] { --ground: #24401f; --ground-deep: #1c3318; }
 :root[data-theme='dark'] .garden-bed[data-season='autumn'] { --ground: #4a3520; --ground-deep: #3b2a19; }
 .garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
+/* Ancient ground keeps its amber soil through the seasons; the season's frost, blossom or leaves lie on it. */
+.garden-scene[data-ancient] .garden-bed[data-season] { --ground: #b98c4e; --ground-deep: #8a6234; }
 /* The weather on the ground: snow lying, puddles, fallen petals. With reduced motion, all there is. */
 .garden-scene[data-weather] .garden-ground { position: relative; }
-.garden-scene[data-weather] .garden-ground::after { content: ''; position: absolute; left: 0; right: 0; bottom: 15px; height: 7px; pointer-events: none; }
+/* Behind the plants, so it never hides their stems or tier dots. */
+.garden-scene[data-weather] .garden-ground > li { position: relative; z-index: 1; }
+.garden-scene[data-weather] .garden-ground::after { content: ''; position: absolute; left: 0; right: 0; bottom: 15px; height: 7px; pointer-events: none; z-index: 0; }
 .garden-scene[data-weather='snow'] .garden-ground::after { background: linear-gradient(rgb(255 255 255 / 0.95), rgb(235 242 250 / 0.9)); border-radius: 4px 4px 0 0; }
 .garden-scene[data-weather='rain'] .garden-ground::after { background: radial-gradient(ellipse 14px 3px, rgb(170 205 245 / 0.75) 0 70%, transparent) 4px 50% / 53px 7px repeat-x; }
 .garden-scene[data-weather='petals'] .garden-ground::after { background: radial-gradient(ellipse 3px 2px, #ff8fab 0 90%, transparent) 0 50% / 21px 7px repeat-x, radial-gradient(ellipse 3px 2px, #fbcfe8 0 90%, transparent) 10px 30% / 33px 7px repeat-x; }
-.garden-weather { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1; }
+.garden-weather { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .garden-rainbow {
   position: absolute; top: 14px; right: 28px; width: 190px; height: 95px; border-radius: 190px 190px 0 0; pointer-events: none; opacity: 0.6;
   background: radial-gradient(circle at 50% 100%, transparent 54%, #ff5f6d 54% 58%, #ffc371 58% 62%, #fff36b 62% 66%, #5be37b 66% 70%, #4fb8ff 70% 74%, #a66bff 74% 78%, transparent 78%);
