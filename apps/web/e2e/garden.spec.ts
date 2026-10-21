@@ -235,7 +235,14 @@ test('companions (D100): pets beside the newest plant, a second pet, and each ye
   await expect(page.locator('.garden-pet')).toHaveCount(0);
 
   await pets.getByRole('button', { name: 'Cat' }).click();
-  await shed.getByRole('textbox', { name: 'Pet’s name', exact: true }).fill('Biscuit');
+  // A full name stays as it was when more is typed in its middle.
+  const petName = shed.getByRole('textbox', { name: 'Pet’s name', exact: true });
+  await petName.fill('abcdefghijklmnopqrst');
+  await petName.press('Home');
+  for (let i = 0; i < 5; i++) await petName.press('ArrowRight');
+  await petName.press('X');
+  await expect(petName).toHaveValue('abcdefghijklmnopqrst');
+  await petName.fill('Biscuit');
   const cat = page.getByRole('button', { name: 'Your cat, Biscuit, napping' });
   // In the newest bed, beside its newest plant.
   await expect(page.locator('.garden-bed').first().getByRole('button', { name: 'Your cat, Biscuit, napping' })).toBeVisible();
@@ -268,8 +275,13 @@ test('companions (D100): pets beside the newest plant, a second pet, and each ye
 
 test('on a narrow phone, stars stay a tap apart and pets stay beside the newest plant (D100)', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
-  // Twelve entries today: twelve stars on one day, and a bed that wraps.
-  for (let i = 0; i < 12; i++) await writeEntry(page, `Note ${i}`, `A few words for note number ${i}.`);
+  // Twelve entries today: twelve stars on one day, and a bed that wraps; the newest a Flowering tree.
+  for (let i = 0; i < 11; i++) await writeEntry(page, `Note ${i}`, `A few words for note number ${i}.`);
+  await page.goto('/#/new');
+  await page.getByLabel('Title').fill('Big day');
+  await page.getByRole('textbox', { name: 'Entry text' }).click();
+  await page.keyboard.insertText('So much happened. ' + Array.from({ length: 2600 }, (_, k) => `w${k}x`).join(' '));
+  await expect(page.getByText('Saved on this device')).toBeVisible();
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 13000, catalogue: 3, noted: { 3: 13 }, pet: 'cat', pet2: 'tortoise', starMap: true })));
   await page.goto('/#/garden');
   await page.reload();
@@ -277,12 +289,14 @@ test('on a narrow phone, stars stay a tap apart and pets stay beside the newest 
   await expect(stars).toHaveCount(12);
   const centres = await stars.evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
   for (let i = 1; i < centres.length; i++) expect(Math.hypot(centres[i]![0]! - centres[i - 1]![0]!, centres[i]![1]! - centres[i - 1]![1]!)).toBeGreaterThanOrEqual(24);
-  // Both pets on the newest plant's row, just after it.
-  const newest = await page.locator('.garden-bed').first().locator('a.garden-plant').last().boundingBox();
+  // Both pets with the newest plant, a tree too wide to share its row: below it, whole, in the bed.
+  const bed = await page.locator('.garden-bed').first().boundingBox();
+  const newest = page.locator('.garden-bed').first().locator('li.garden-newest');
   for (const name of ['Your cat, napping', 'Your tortoise, napping']) {
-    const pet = await page.getByRole('button', { name }).boundingBox();
-    expect(pet!.x).toBeGreaterThan(newest!.x);
-    expect(Math.abs(pet!.y + pet!.height - (newest!.y + newest!.height))).toBeLessThan(12);
+    const pet = newest.getByRole('button', { name });
+    const box = await pet.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(bed!.x);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(bed!.x + bed!.width);
   }
   // No sideways scroll for the page itself.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

@@ -174,10 +174,31 @@ export const PETS: { value: PetKind; label: string; emoji: string; tier: number 
 /** A pet's name: at most this many characters (as people count them: an emoji is one). */
 export const PET_NAME_MAX = 20;
 
+/** Text as the characters people count: an emoji, a flag or a letter with its accent is one. */
+function characters(text: string): string[] {
+  return typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment) : [...text];
+}
+
 /** Text cut to `max` characters as people count them, never inside one (an emoji, a flag). */
 export function clampText(text: string, max: number): string {
-  const parts = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment) : [...text];
+  const parts = characters(text);
   return parts.length > max ? parts.slice(0, max).join('') : text;
+}
+
+/**
+ * A text field's new value kept to `max` characters, by dropping only what was just typed or pasted
+ * (the text before the caret), not the end of what was already there; and where the caret goes.
+ */
+export function fitText(text: string, caret: number, max: number): { text: string; caret: number } {
+  if (characters(text).length <= max) return { text, caret };
+  const after = text.slice(caret);
+  const room = max - characters(after).length;
+  if (room < 0) {
+    const cut = clampText(text, max);
+    return { text: cut, caret: Math.min(caret, cut.length) };
+  }
+  const before = clampText(text.slice(0, caret), room);
+  return { text: before + after, caret: before.length };
 }
 const NAME_HINT = 'Kept on this device only, outside your journal and its passcode.';
 

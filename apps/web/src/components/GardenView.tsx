@@ -1,7 +1,7 @@
 import { Fragment, memo, useMemo, useRef, useState } from 'react';
 import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
-import { cardFeatures, CATALOGUE, clampText, FEATURES, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
+import { cardFeatures, CATALOGUE, FEATURES, fitText, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
 import { Pet, PET_TIER, SECOND_PET_TIER, STAR_TIER, StarSky } from './garden/Companions.tsx';
 import { formatLongDate } from './common.tsx';
 import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
@@ -18,6 +18,13 @@ const ORNAMENTS: Record<string, string> = { sundial: '🕰️', birdbath: '⛲',
 function skyNow(): 'dawn' | 'day' | 'golden' | 'night' {
   const h = new Date().getHours();
   return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'golden' : 'night';
+}
+
+/** A name field's text kept to its limit, the caret where it was (D100). */
+function fitName(input: HTMLInputElement, pref: keyof GardenPrefs, max: number) {
+  const { text, caret } = fitText(input.value, input.selectionStart ?? input.value.length, max);
+  setGardenPrefs({ [pref]: text });
+  if (text !== input.value) requestAnimationFrame(() => input.setSelectionRange(caret, caret));
 }
 
 /** Months shown at first, and added by "Show earlier months": a long journal's garden opens fast. */
@@ -259,7 +266,12 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                                     type="text"
                                     value={String(prefs[c.pref] ?? '')}
                                     aria-describedby={`garden-${c.pref}-hint`}
-                                    onChange={(e) => setGardenPrefs({ [c.pref]: clampText(e.target.value, c.max) })}
+                                    onChange={(e) => {
+                                      // While an input method composes, its text isn't final: it's fitted once done.
+                                      if ((e.nativeEvent as InputEvent).isComposing) setGardenPrefs({ [c.pref]: e.target.value });
+                                      else fitName(e.target, c.pref, c.max);
+                                    }}
+                                    onCompositionEnd={(e) => fitName(e.currentTarget, c.pref, c.max)}
                                   />
                                   <span id={`garden-${c.pref}-hint`} className="hint">
                                     {c.hint}

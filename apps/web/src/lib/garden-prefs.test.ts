@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardFeatures, CATALOGUE, clampText, FEATURES, gardenPrefs, listed, noteUpdate, rankUpNews, type Feature, type GardenPrefs } from './garden-prefs.ts';
+import { cardFeatures, CATALOGUE, clampText, FEATURES, fitText, gardenPrefs, listed, noteUpdate, rankUpNews, type Feature, type GardenPrefs } from './garden-prefs.ts';
 
 /** A device's choices: what it has seen (tier × 1000) and the updates it has run. */
 const device = (patch: Partial<GardenPrefs>): GardenPrefs => ({ ...gardenPrefs(), seen: -1, catalogue: 0, noted: {}, ...patch });
@@ -67,6 +67,17 @@ describe('garden updates (D98)', () => {
     expect(clampText('abcdefghijklmnopqrs🐱🐱', 20)).toBe('abcdefghijklmnopqrs🐱');
     expect(clampText('👨‍👩‍👧‍👦'.repeat(21), 20)).toBe('👨‍👩‍👧‍👦'.repeat(20));
     expect(clampText('Biscuit', 20)).toBe('Biscuit');
+  });
+
+  it('keeps a full name as it was when more is typed mid-way, and cuts a paste to what fits', () => {
+    // 'X' typed after 'e' in a full name: nothing changes, the caret stays.
+    expect(fitText('abcdeXfghijklmnopqrst', 6, 20)).toEqual({ text: 'abcdefghijklmnopqrst', caret: 5 });
+    // '12' pasted after 'c' in a 19-character name: only '1' fits, and the end is kept.
+    expect(fitText('abc12defghijklmnopqrs', 5, 20)).toEqual({ text: 'abc1defghijklmnopqrs', caret: 4 });
+    // Within the limit: as typed.
+    expect(fitText('Biscuit', 7, 20)).toEqual({ text: 'Biscuit', caret: 7 });
+    // An emoji is one character, and never cut in two.
+    expect(fitText('abcdefghijklmnopqrs🐱🐱', 21, 20).text).toBe('abcdefghijklmnopqrs🐱');
   });
 
   it('notes an update once, and a closed card stays closed', () => {
