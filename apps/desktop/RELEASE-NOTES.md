@@ -1,3 +1,9 @@
+**Garden history.** The garden has two new pages. The **Herbarium** lists the flowers you've grown, with how many, the rarest and the first, the sizes your entries have reached, and the countries you've flagged. From **Mythic**, the **Almanac** shows each year month by month: Growth, plants, your busiest weekday, longest entry and rarest plant. The **Time-lapse** replays your garden from its first plant to today. With reduced motion turned on it doesn't play: a slider steps through the months.
+
+**Postcards.** From **Radiant**, **📮 Postcard** on a month's sign saves a picture of that month's bed or of one plant. A postcard starts private: every flower in the same colour, no titles or dates. Add only what you want to share.
+
+What came in 0.6.0:
+
 **A garden for your journal.** **🌱 Garden** in the menu grows a plant for every entry you write, in a flower bed for each month. The longer the entry, the bigger the plant, from a little sprout to a flowering tree, and its mood picks the flower (😄 a sunflower, 🥰 a rose, no mood a wildflower). Tap a plant to open its entry.
 
 **15 rarity tiers.** Writing earns your garden Growth, which takes it from 🌱 Common through Uncommon, Rare, Epic, Legendary, Mythic, Radiant, Prismatic, Crystal, Celestial, Aurora, Cosmic, Eternal and Primordial to 🌳 Worldbloom, and then ★ rings. Each new plant blooms at your garden's tier, and entries of 600 or 1,200 words bloom one or two tiers higher. Rarer plants get dew, gold, flames, rainbows, crystals, halos and a crown. Growth comes from the days you write: copied text, links and filler don't count, and plants never wilt. Your existing entries are planted straight away.

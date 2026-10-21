@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { GardenTab } from '../app/router.ts';
 
 /**
  * The garden's perks (D97) and the choices made with them. Every tier unlocks one; none changes
@@ -23,6 +24,10 @@ export interface GardenPrefs {
   ancient: boolean;
   /** The highest rank seen on this device (tier × 1000 + ring), for "your garden reached…". */
   seen: number;
+  /** The garden update last announced on this device (FEATURES' catalogue numbers). */
+  catalogue: number;
+  /** For each garden update this device has run, the tier it had reached when it first ran it. */
+  noted: Record<string, number>;
 }
 
 const DEFAULTS: GardenPrefs = {
@@ -41,6 +46,8 @@ const DEFAULTS: GardenPrefs = {
   goldSigns: false,
   ancient: false,
   seen: -1,
+  catalogue: 0,
+  noted: {},
 };
 
 export type Choice = { value: string; label: string; tier: number };
@@ -111,6 +118,64 @@ export const PERKS: Perk[] = [
   { tier: 14, kind: 'none', title: 'Keeper of the Worldbloom', text: 'The title, and a gold colour for the app (in Garden colours).' },
 ];
 
+/**
+ * Features garden updates added to tiers (D98): each tier's perk stays as it was, and these come
+ * with it. `catalogue` is the update that added one; a device that had already reached its tier
+ * hears about it once, in a "Garden update" card.
+ */
+export interface Feature {
+  tier: number;
+  catalogue: number;
+  title: string;
+  text: string;
+  /** Where it is: a garden page. */
+  view?: GardenTab;
+}
+
+export const FEATURES: Feature[] = [
+  { tier: 5, catalogue: 1, view: 'almanac', title: 'Garden history', text: 'The Almanac, your garden month by month, and the Time-lapse: watch it grow from its first plant.' },
+  { tier: 6, catalogue: 1, title: 'Postcards', text: 'Save a picture of a plant or a whole bed. Moods, titles and dates stay off it unless you add them.' },
+];
+/** The newest garden update. */
+export const CATALOGUE = Math.max(...FEATURES.map((f) => f.catalogue));
+
+const newest = (features: Feature[]) => Math.max(...features.map((f) => f.catalogue));
+
+/** The tier this device had when it first ran a version with this feature, if it has run one. */
+function tierWhenAdded(prefs: GardenPrefs, f: Feature): number | undefined {
+  const runs = Object.keys(prefs.noted)
+    .map(Number)
+    .filter((c) => c >= f.catalogue)
+    .sort((a, b) => a - b);
+  return runs.length ? prefs.noted[runs[0]!] : undefined;
+}
+
+/**
+ * What to remember the first time this device runs a new garden update: the tier it had reached
+ * then. Features at those tiers are told in a "Garden update" card; features at tiers reached
+ * later are told by the rank-up, so with none due, the update counts as told. A garden never seen
+ * here has nothing to be told: all of it is new. Null once noted.
+ */
+export function noteUpdate(prefs: GardenPrefs, features: Feature[] = FEATURES): Partial<GardenPrefs> | null {
+  const latest = newest(features);
+  if (String(latest) in prefs.noted) return null;
+  const noted = { ...prefs.noted, [latest]: prefs.seen < 0 ? -1 : Math.floor(prefs.seen / 1000) };
+  return { noted, ...(cardFeatures({ ...prefs, noted }, features).length ? {} : { catalogue: latest }) };
+}
+
+/** The features a "Garden update" card tells of: new since the last card, at tiers reached before their update came. */
+export function cardFeatures(prefs: GardenPrefs, features: Feature[] = FEATURES): Feature[] {
+  return features.filter((f) => {
+    const tier = tierWhenAdded(prefs, f);
+    return f.catalogue > prefs.catalogue && tier !== undefined && f.tier <= tier;
+  });
+}
+
+/** A rank-up's news from one tier to another: the new tier's perk, and the features of every tier passed. A ring adds none. */
+export function rankUpNews(from: number, to: number, features: Feature[] = FEATURES): string[] {
+  return [...PERKS.filter((p) => p.tier === to && to > from), ...features.filter((f) => f.tier > from && f.tier <= to)].map((p) => p.title);
+}
+
 const KEY = 'logbook.garden';
 const listeners = new Set<() => void>();
 let current: GardenPrefs = load();
@@ -122,6 +187,8 @@ function load(fallback: GardenPrefs = DEFAULTS): GardenPrefs {
     if (raw === null) return fallback;
     const prefs = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<GardenPrefs>) };
     if (!Number.isFinite(prefs.seen)) prefs.seen = -1;
+    if (!Number.isFinite(prefs.catalogue)) prefs.catalogue = 0;
+    if (!prefs.noted || typeof prefs.noted !== 'object') prefs.noted = {};
     return prefs;
   } catch {
     return fallback;

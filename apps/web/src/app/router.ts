@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+/** The garden's other pages (D98): its species, and its history. */
+export type GardenTab = 'herbarium' | 'almanac';
+
 export type Route =
   | { name: 'home' }
   | { name: 'entry'; id: string }
@@ -8,7 +11,7 @@ export type Route =
   | { name: 'memories' }
   | { name: 'search'; tag?: string }
   | { name: 'clock' }
-  | { name: 'garden' }
+  | { name: 'garden'; view?: GardenTab }
   | { name: 'settings' };
 
 export function parseHash(hash: string): Route {
@@ -29,7 +32,7 @@ export function parseHash(hash: string): Route {
     case 'clock':
       return { name: 'clock' };
     case 'garden':
-      return { name: 'garden' };
+      return seg[1] === 'herbarium' || seg[1] === 'almanac' ? { name: 'garden', view: seg[1] } : { name: 'garden' };
     case 'settings':
       return { name: 'settings' };
     default:
@@ -54,7 +57,7 @@ export function href(route: Route): string {
     case 'clock':
       return '#/clock';
     case 'garden':
-      return '#/garden';
+      return route.view ? `#/garden/${route.view}` : '#/garden';
     case 'settings':
       return '#/settings';
   }

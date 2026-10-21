@@ -3,7 +3,7 @@ import { growGarden, rankName, TIERS, type Entry, type Garden, type GardenCache 
 import { useJournal } from './journal-context.tsx';
 import { useToast } from './toasts.tsx';
 import { celebrate } from '../lib/motion.ts';
-import { gardenPrefs, PERKS, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
+import { gardenPrefs, noteUpdate, rankUpNews, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
 
 /** Each entry's words, worked out once per saved version, so a save only re-reads that entry. */
 const cache: GardenCache = new Map();
@@ -56,14 +56,18 @@ export function useGardenEffects(garden: Garden | null): void {
   const level = garden ? garden.rank.tier * 1000 + garden.rank.ring : -1;
   useEffect(() => {
     if (!garden || level < 0) return;
-    const seen = gardenPrefs().seen;
+    const prefs = gardenPrefs();
+    const seen = prefs.seen;
+    // Before any rank-up: which tiers a new garden update finds this device at.
+    const note = noteUpdate(prefs);
+    if (note) setGardenPrefs(note);
     if (level <= seen) return;
     setGardenPrefs({ seen: level });
     // The first look only notes where the garden is: no fanfare for an existing journal.
     if (seen < 0) return;
     const tier = garden.rank.tier;
-    const perk = garden.rank.ring > 1 ? null : PERKS.find((p) => p.tier === tier);
-    toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${perk ? ` New: ${perk.title}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
+    const news = rankUpNews(Math.floor(seen / 1000), tier);
+    toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${news.length ? ` New: ${news.join(', ')}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
     celebrate('streak');
   }, [level, garden, toast]);
 }

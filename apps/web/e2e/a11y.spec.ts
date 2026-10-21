@@ -11,7 +11,7 @@ async function expectNoSeriousViolations(page: Page, label: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   test(`no serious accessibility violations across views (${theme})`, async ({ page }) => {
-    // Ten axe scans: more than the default 60 s on a CI runner.
+    // Thirteen axe scans: more than the default 60 s on a CI runner.
     test.slow();
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await page.goto('/');
@@ -37,6 +37,19 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
       await expectNoSeriousViolations(page, path);
     }
+
+    // The garden's other pages (D98), with Garden history and Postcards open.
+    await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 6000, catalogue: 1 })));
+    for (const path of ['/#/garden/herbarium', '/#/garden/almanac']) {
+      await page.goto(path);
+      await page.reload();
+      await expect(page.getByRole('heading', { level: 2, name: path.endsWith('almanac') ? 'Almanac' : 'Herbarium' })).toBeVisible();
+      await expectNoSeriousViolations(page, path);
+    }
+    await page.goto('/#/garden');
+    await page.getByRole('button', { name: /^Postcard of / }).click();
+    await expect(page.getByRole('img', { name: 'Postcard preview' })).toBeVisible();
+    await expectNoSeriousViolations(page, 'postcard dialog');
   });
 }
 
