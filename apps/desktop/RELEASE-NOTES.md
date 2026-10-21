@@ -1,3 +1,9 @@
+**Companions.** From **Crystal**, the **Garden shed** gives your garden a pet: a cat, fox, hedgehog or tortoise that naps beside your newest plant, with a name if you like. Tap it to see it stretch. From **Eternal** there's room for a second pet, and from **Primordial** a baby dragon and a little dinosaur join them.
+
+**Star map.** From **Celestial**, each year's twelve longest entries become a constellation in the night sky above its months, named after the year's most-used tag ("The Lisbon Cluster"). Tap a star to open its entry.
+
+What came in 0.7.0:
+
 **Seasons and weather.** From **Prismatic**, the **Garden shed** can give each month's bed its season: frost in winter, blossom in spring, flowers in summer and fallen leaves in autumn, turned around for the southern hemisphere. Weather brings rain, snow or petals over the garden. **Auto** rains on about one day in five (snow in winter) and shows a rainbow the day after. With reduced motion, nothing falls: the snow, puddles or petals just lie on the ground.
 
 **Garden sounds.** From **Legendary**, **🔈 Garden sounds** above the garden plays a breeze, birdsong by day, crickets at night and rain when it's raining, with its own volume. It never starts by itself, and it stops when you leave the garden.

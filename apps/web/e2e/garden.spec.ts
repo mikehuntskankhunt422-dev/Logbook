@@ -136,7 +136,7 @@ test('a garden update tells in a card only of tiers reached before it; later tie
   await expect(card).not.toContainText('Postcards');
   // Already on the Almanac: no Try it, which would only take focus away.
   await expect(card.getByRole('link', { name: 'Try it' })).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 2: 5 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 3: 5 });
   await card.getByRole('button', { name: 'Close' }).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Almanac' })).toBeFocused();
@@ -145,7 +145,7 @@ test('a garden update tells in a card only of tiers reached before it; later tie
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 3000, catalogue: 0 })));
   await page.reload();
   await expect(page.getByRole('region', { name: 'Your garden' })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(2);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(3);
   await expect(card).toHaveCount(0);
 });
 
@@ -217,4 +217,51 @@ test.describe('in a southern time zone', () => {
     const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
     await expect(page.locator('.garden-bed').first()).toHaveAttribute('data-season', north[(month + 5) % 12]!);
   });
+});
+
+test('companions (D100): pets beside the newest plant, a second pet, and each year’s star map', async ({ page }) => {
+  await writeEntry(page, 'River walk', 'We followed the river path all the way to the old mill and back.');
+  await page.getByLabel('Add a tag').fill('lisbon');
+  await page.getByLabel('Add a tag').press('Enter');
+  await expect(page.getByText('Saved on this device')).toBeVisible();
+  await writeEntry(page, 'Quiet one', 'Read on the porch.');
+  // A device at Eternal: one pet and the star map, a second pet, but not yet the ancient ones.
+  await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 12000, catalogue: 3, noted: { 3: 12 } })));
+  await page.goto('/#/garden');
+  await page.reload();
+  const shed = page.getByRole('region', { name: 'Garden shed' });
+  const pets = shed.getByRole('group', { name: 'Pet', exact: true });
+  await expect(pets.getByRole('button', { name: 'Baby dragon' })).toHaveCount(0);
+  await expect(page.locator('.garden-pet')).toHaveCount(0);
+
+  await pets.getByRole('button', { name: 'Cat' }).click();
+  await shed.getByRole('textbox', { name: 'Its name' }).first().fill('Biscuit');
+  const cat = page.getByRole('button', { name: 'Your cat, Biscuit, napping' });
+  // In the newest bed, beside its newest plant.
+  await expect(page.locator('.garden-bed').first().getByRole('button', { name: 'Your cat, Biscuit, napping' })).toBeVisible();
+  await cat.click();
+  await expect(page.getByRole('button', { name: 'Your cat, Biscuit, stretching' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Your cat, Biscuit, napping' })).toBeVisible();
+  await shed.getByRole('group', { name: 'Second pet' }).getByRole('button', { name: 'Hedgehog' }).click();
+  await expect(page.getByRole('button', { name: 'Your hedgehog, napping' })).toBeVisible();
+
+  // The star map: this year's constellation, named after its most-used tag; each star opens its entry.
+  await expect(page.locator('.garden-starmap')).toHaveCount(0);
+  await shed.getByRole('checkbox', { name: 'Star map' }).check();
+  const year = String(new Date().getFullYear());
+  const map = page.getByRole('region', { name: `The Lisbon Cluster · ${year}` });
+  await expect(map.getByRole('link')).toHaveCount(2);
+  await map.getByRole('link', { name: /^River walk, / }).click();
+  await expect(page.getByLabel('Title')).toHaveValue('River walk');
+
+  // Ancient companions come with Primordial.
+  await page.evaluate(() => {
+    const prefs = JSON.parse(localStorage.getItem('logbook.garden') ?? '{}');
+    localStorage.setItem('logbook.garden', JSON.stringify({ ...prefs, seen: 13000 }));
+  });
+  await page.goto('/#/garden');
+  await page.reload();
+  await page.getByRole('region', { name: 'Garden shed' }).getByRole('group', { name: 'Pet', exact: true }).getByRole('button', { name: 'Baby dragon' }).click();
+  await expect(page.getByRole('button', { name: 'Your baby dragon, Biscuit, napping' })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}'))).toMatchObject({ pet: 'dragon', petName: 'Biscuit', pet2: 'hedgehog', starMap: true });
 });

@@ -15,10 +15,10 @@ describe('garden updates (D98)', () => {
     expect(titles(updated(device({ seen: 5001 })))).toEqual(['Garden sounds', 'Garden history']);
   });
 
-  it('tells a 0.6.1 device only what 0.7.0 adds, once its 0.6.1 card was closed', () => {
+  it('tells a 0.6.1 device only what later updates add, once its 0.6.1 card was closed', () => {
     // Closed the 0.6.1 card at Radiant; Prismatic since.
     const prefs = updated({ ...device({ seen: 6000, catalogue: 1, noted: { 1: 6 } }), seen: 7000 });
-    expect(prefs.noted).toEqual({ 1: 6, 2: 7 });
+    expect(prefs.noted).toEqual({ 1: 6, [CATALOGUE]: 7 });
     expect(titles(prefs)).toEqual(['Garden sounds', 'Seasons and weather']);
     // Left it open: the 0.6.1 features are still told as before, with 0.7.0's.
     expect(titles(updated(device({ seen: 5000, noted: { 1: 5 } })))).toEqual(['Garden sounds', 'Garden history']);
@@ -41,7 +41,8 @@ describe('garden updates (D98)', () => {
     expect(rankUpNews(6, 7)).toEqual(['Bed borders', 'Seasons and weather']);
     expect(rankUpNews(0, 1)).toEqual(['Petal celebrations']);
     // Straight to a ring past Worldbloom: its perk and every feature passed; a ring alone adds nothing.
-    expect(rankUpNews(3, 14)).toEqual(['Keeper of the Worldbloom', 'Garden sounds', 'Garden history', 'Postcards', 'Seasons and weather']);
+    expect(rankUpNews(3, 14)).toEqual(['Keeper of the Worldbloom', 'Garden sounds', 'Garden history', 'Postcards', 'Seasons and weather', 'A garden pet', 'Star map', 'A second pet', 'Ancient companions']);
+    expect(rankUpNews(7, 8)).toEqual(['Gate ornament', 'A garden pet']);
     expect(rankUpNews(14, 14)).toEqual([]);
     expect([listed([]), listed(['A']), listed(['A', 'B']), listed(['A', 'B', 'C'])]).toEqual(['', 'A', 'A and B', 'A, B and C']);
   });
@@ -54,6 +55,11 @@ describe('garden updates (D98)', () => {
     expect(titles(second, LATER)).toEqual(['Later', 'Garden sounds', 'Garden history']);
     // A device that skipped this update hears of its features at the tier it had for the next.
     expect(titles(updated(device({ seen: 6000 }), LATER), LATER)).toEqual(['Later', 'Garden sounds', 'Garden history', 'Postcards']);
+  });
+
+  it('tells a 0.7.0 device at Primordial only what the companions add', () => {
+    const prefs = updated({ ...device({ seen: 13000, catalogue: 2, noted: { 1: 13, 2: 13 } }) });
+    expect(titles(prefs)).toEqual(['A garden pet', 'Star map', 'A second pet', 'Ancient companions']);
   });
 
   it('notes an update once, and a closed card stays closed', () => {

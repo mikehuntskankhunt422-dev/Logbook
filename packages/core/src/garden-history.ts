@@ -1,4 +1,5 @@
 import { SIZE_STAGES, type Plant } from './garden.ts';
+import { fnv1a32 } from './garden-weather.ts';
 import { richTextToPlain } from './richtext.ts';
 
 /**
@@ -221,4 +222,66 @@ export function timeLapseFrame(months: TimeLapseMonth[], pos: number): { index: 
 /** How long a time-lapse of this many months plays at 1×: a second a month, from 20 to 60 s. */
 export function timeLapseDuration(months: number): number {
   return Math.min(60_000, Math.max(20_000, months * 1_000));
+}
+
+// ── the Star map ───────────────────────────────────────────────────────────────────────────────
+
+export interface Star {
+  plant: Plant;
+  /** Across the year, by its date: 0 is 1 January, 1 is 31 December. */
+  x: number;
+  /** Down the sky, from its entry's id: the same place on every device. */
+  y: number;
+}
+
+export interface StarMap {
+  year: string;
+  /** "Lisbon", the year's most-used tag (its first letter capitalised), or '' with no tags. */
+  tag: string;
+  /** Up to 12 stars, in date order: the year's entries with the most plant words. */
+  stars: Star[];
+}
+
+/** How many of a year's entries become stars. */
+export const STARS = 12;
+
+const byDate = (a: Plant, b: Plant) => cmp(a.entry.date, b.entry.date) || cmp(a.entry.createdAt, b.entry.createdAt) || cmp(a.entry.id, b.entry.id);
+
+/** Where in its year a date falls, from 0 to 1. */
+function yearFraction(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  const at = (month: number, day: number) => {
+    const t = new Date(0);
+    t.setUTCFullYear(y!, month, day);
+    return t.getTime();
+  };
+  const start = at(0, 1);
+  return Math.min(1, Math.max(0, (at(m! - 1, d!) - start) / (at(12, 1) - start)));
+}
+
+/**
+ * A year's constellation (D100): its twelve longest entries as stars, joined in date order, named
+ * after the year's most-used tag. Placed by date and id alone, so every device draws the same sky.
+ */
+export function starMap(plants: Plant[], year: string): StarMap {
+  const own = plants.filter((p) => p.entry.date.slice(0, 4) === year);
+  const tags = new Map<string, number>();
+  for (const p of own) for (const t of new Set(p.entry.tags)) tags.set(t, (tags.get(t) ?? 0) + 1);
+  const top = [...tags].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))[0]?.[0] ?? '';
+  const chosen = [...own].sort((a, b) => b.words - a.words || byDate(a, b)).slice(0, STARS).sort(byDate);
+  const xs = spread(chosen.map((p) => yearFraction(p.entry.date)));
+  const stars = chosen.map((plant, i) => ({ plant, x: xs[i]!, y: 0.2 + ((fnv1a32(plant.entry.id) % 1000) / 1000) * 0.6 }));
+  return { year, tag: top && top.charAt(0).toUpperCase() + top.slice(1), stars };
+}
+
+/**
+ * Stars at least STAR_GAP of the sky apart, so each can be tapped on a phone (entries of one day
+ * would otherwise share a place), in the same order, and all still within the year.
+ */
+export const STAR_GAP = 0.085;
+function spread(xs: number[]): number[] {
+  const out = [...xs];
+  for (let i = 1; i < out.length; i++) out[i] = Math.max(out[i]!, out[i - 1]! + STAR_GAP);
+  for (let i = out.length - 1; i >= 0; i--) out[i] = Math.min(out[i]!, 1 - (out.length - 1 - i) * STAR_GAP);
+  return out;
 }

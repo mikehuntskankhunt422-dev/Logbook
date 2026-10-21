@@ -29,6 +29,12 @@ export interface GardenPrefs {
   hemisphere: '' | Hemisphere;
   /** Garden sounds' volume, 0 to 1. They never play by themselves, so whether they play isn't kept. */
   soundVolume: number;
+  /** Companions (D100): up to two pets and their names, and the star map. */
+  pet: '' | PetKind;
+  petName: string;
+  pet2: '' | PetKind;
+  pet2Name: string;
+  starMap: boolean;
   /** The highest rank seen on this device (tier × 1000 + ring), for "your garden reached…". */
   seen: number;
   /** The garden update last announced on this device (FEATURES' catalogue numbers). */
@@ -56,6 +62,11 @@ const DEFAULTS: GardenPrefs = {
   weather: '',
   hemisphere: '',
   soundVolume: 0.5,
+  pet: '',
+  petName: '',
+  pet2: '',
+  pet2Name: '',
+  starMap: false,
   seen: -1,
   catalogue: 0,
   noted: {},
@@ -147,7 +158,22 @@ export interface Feature {
 
 export type FeatureControl =
   | { kind: 'toggle'; pref: keyof GardenPrefs; label: string }
-  | { kind: 'choice'; pref: keyof GardenPrefs; label: string; none: string; choices: { value: string; label: string }[] };
+  | { kind: 'choice'; pref: keyof GardenPrefs; label: string; none: string; choices: { value: string; label: string; tier?: number }[] }
+  | { kind: 'text'; pref: keyof GardenPrefs; label: string; max: number; hint: string };
+
+/** The garden's pets (D100), each with the tier that brings it. */
+export type PetKind = 'cat' | 'fox' | 'hedgehog' | 'tortoise' | 'dragon' | 'dinosaur';
+export const PETS: { value: PetKind; label: string; emoji: string; tier: number }[] = [
+  { value: 'cat', label: 'Cat', emoji: '🐈', tier: 8 },
+  { value: 'fox', label: 'Fox', emoji: '🦊', tier: 8 },
+  { value: 'hedgehog', label: 'Hedgehog', emoji: '🦔', tier: 8 },
+  { value: 'tortoise', label: 'Tortoise', emoji: '🐢', tier: 8 },
+  { value: 'dragon', label: 'Baby dragon', emoji: '🐉', tier: 13 },
+  { value: 'dinosaur', label: 'Little dinosaur', emoji: '🦕', tier: 13 },
+];
+/** A pet's name: at most this many characters. */
+export const PET_NAME_MAX = 20;
+const NAME_HINT = 'Kept on this device only, outside your journal and its passcode.';
 
 export const FEATURES: Feature[] = [
   { tier: 5, catalogue: 1, view: 'almanac', title: 'Garden history', text: 'The Almanac, your garden month by month, and the Time-lapse: watch it grow from its first plant.' },
@@ -189,6 +215,34 @@ export const FEATURES: Feature[] = [
       },
     ],
   },
+  {
+    tier: 8,
+    catalogue: 3,
+    title: 'A garden pet',
+    text: 'A cat, fox, hedgehog or tortoise naps beside your newest plant. Tap it to see it stretch.',
+    controls: [
+      { kind: 'choice', pref: 'pet', label: 'Pet', none: 'None', choices: PETS },
+      { kind: 'text', pref: 'petName', label: 'Its name', max: PET_NAME_MAX, hint: NAME_HINT },
+    ],
+  },
+  {
+    tier: 9,
+    catalogue: 3,
+    title: 'Star map',
+    text: 'Each year’s twelve longest entries become a constellation in the night sky above its months, named after its most-used tag. Each star opens its entry.',
+    controls: [{ kind: 'toggle', pref: 'starMap', label: 'Star map' }],
+  },
+  {
+    tier: 12,
+    catalogue: 3,
+    title: 'A second pet',
+    text: 'Room for another companion.',
+    controls: [
+      { kind: 'choice', pref: 'pet2', label: 'Second pet', none: 'None', choices: PETS },
+      { kind: 'text', pref: 'pet2Name', label: 'Its name', max: PET_NAME_MAX, hint: NAME_HINT },
+    ],
+  },
+  { tier: 13, catalogue: 3, title: 'Ancient companions', text: 'A baby dragon and a little dinosaur join the pets.' },
 ];
 /** The newest garden update. */
 export const CATALOGUE = Math.max(...FEATURES.map((f) => f.catalogue));
@@ -252,6 +306,7 @@ function load(fallback: GardenPrefs = DEFAULTS): GardenPrefs {
     if (!Number.isFinite(prefs.catalogue)) prefs.catalogue = 0;
     if (!prefs.noted || typeof prefs.noted !== 'object') prefs.noted = {};
     if (!(prefs.soundVolume >= 0 && prefs.soundVolume <= 1)) prefs.soundVolume = DEFAULTS.soundVolume;
+    for (const key of ['petName', 'pet2Name'] as const) if (typeof prefs[key] !== 'string') prefs[key] = '';
     return prefs;
   } catch {
     return fallback;

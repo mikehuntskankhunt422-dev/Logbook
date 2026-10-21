@@ -2718,6 +2718,38 @@ dialog[open]::backdrop {
   .g-sway, .g-spin, .g-drift, .g-ember, .g-twinkle, .garden-visitors span, .garden-scene[data-aurora]::after { animation: none; }
 }
 
+/* Garden update 3, "Companions" (D100): pets beside the newest plant, and each year's star map. */
+.garden-pet-spot { align-self: flex-end; }
+.garden-pet { position: relative; border: 0; background: none; color: inherit; padding: 4px; min-width: 44px; min-height: 44px; font-size: 1.9rem; line-height: 1; cursor: pointer; border-radius: 12px; }
+.garden-pet:hover { background: rgb(255 255 255 / 0.25); }
+.garden-pet:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.garden-scene[data-sky='night'] .garden-pet:focus-visible { outline-color: #8ab4ff; }
+.garden-scene[data-sky='dawn'] .garden-pet:focus-visible, .garden-scene[data-sky='golden'] .garden-pet:focus-visible { outline-color: #1f5fe0; }
+.garden-pet-body { display: inline-block; transform-origin: 50% 100%; animation: pet-nap 3.6s ease-in-out infinite; }
+@keyframes pet-nap { 50% { transform: scale(1.04, 0.95); } }
+.garden-pet[data-stretching] .garden-pet-body { animation: pet-stretch 1.2s ease-in-out; }
+@keyframes pet-stretch { 25% { transform: scaleX(1.25) scaleY(0.9); } 55% { transform: translateY(-8px); } 80% { transform: translateY(0) scaleX(1.05); } }
+.garden-pet-zzz { position: absolute; top: 0; right: 2px; font-size: 0.8rem; font-weight: 700; opacity: 0.7; animation: pet-zzz 3.6s ease-in-out infinite; }
+@keyframes pet-zzz { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: 0.8; } 100% { opacity: 0; transform: translate(4px, -8px); } }
+.garden-starmap { position: relative; margin: 18px 0 6px; border-radius: 14px; background: linear-gradient(#0b1020, #1d2a4d); padding: 8px 12px 10px; }
+.garden-starmap-name { margin: 0 0 4px; font-size: 1rem; color: #fff8ec; }
+.garden-starmap-year { color: #c9d2f0; font-weight: 500; }
+.garden-starmap-sky { position: relative; height: 110px; color: rgb(223 230 255 / 0.55); }
+.garden-starmap-sky svg, .garden-starmap-sky ol { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); overflow: visible; }
+.garden-starmap-sky ol { list-style: none; margin: 0; padding: 0; }
+.garden-star { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; display: grid; place-items: center; color: #fff4c2; text-decoration: none; font-size: 0.95rem; border-radius: 50%; }
+.garden-star:hover { color: #ffffff; background: rgb(255 255 255 / 0.12); }
+.garden-star:focus-visible { outline: 3px solid #8ab4ff; outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .garden-pet-body, .garden-pet-zzz, .garden-pet[data-stretching] .garden-pet-body { animation: none; }
+}
+@media (forced-colors: active) {
+  .garden-starmap { border: 1px solid CanvasText; }
+  .garden-starmap-sky { color: CanvasText; }
+  .garden-starmap-name, .garden-starmap-year { color: CanvasText; }
+  .garden-star { color: LinkText; }
+}
+
 /* Garden update 2, "Weather" (D99): seasons on each bed, weather over the garden, its sounds. */
 .garden-bed[data-season='winter'] { --ground: #e4ebf0; --ground-deep: #c7d4de; --ground-decor: linear-gradient(#ffffff, #ffffff) 0 calc(100% - 20px) / 100% 2px no-repeat, radial-gradient(circle, #ffffff 0 1.5px, transparent 2px) 0 calc(100% - 9px) / 17px 9px repeat-x; }
 .garden-bed[data-season='spring'] { --ground: #a6d77f; --ground-deep: #8bc263; --ground-decor: radial-gradient(circle, #ffc6dd 0 2px, transparent 2.5px) 0 calc(100% - 7px) / 23px 12px repeat-x, radial-gradient(circle, #ffffff 0 1.5px, transparent 2px) 11px calc(100% - 13px) / 29px 10px repeat-x; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { almanac, entryFlags, growGarden, herbarium, timeLapseDuration, timeLapseFrame, timeLapseMonths, timeLapsePlace, weekdayOf } from '../src/index.ts';
+import { almanac, entryFlags, growGarden, herbarium, STAR_GAP, starMap, STARS, timeLapseDuration, timeLapseFrame, timeLapseMonths, timeLapsePlace, weekdayOf } from '../src/index.ts';
 import type { Entry } from '../src/model.ts';
 import { emptyDoc } from '../src/richtext.ts';
 
@@ -117,5 +117,39 @@ describe('garden history (D98)', () => {
     // The start of a play stays the start; a place past the end is the end.
     expect(timeLapsePlace({ pos: 0, first: '2026-01' }, months)).toBe(0);
     expect(timeLapsePlace({ pos: 3, first: '2026-01' }, later)).toBe(2);
+  });
+
+  it('makes a year’s twelve longest entries its constellation, in date order, named after its most-used tag', () => {
+    const year = Array.from({ length: 15 }, (_, i) => entry(words(10 + i * 10, `s${i}`), { ...at(`2026-${String(1 + (i % 12)).padStart(2, '0')}-${String(1 + i).padStart(2, '0')}`), tags: i % 3 ? ['lisbon'] : ['home'] }));
+    const g = growGarden([...year, entry('other year', { ...at('2025-06-01'), tags: ['far'] })]);
+    const map = starMap(g.plants, '2026');
+    expect(map.stars).toHaveLength(STARS);
+    expect(map.tag).toBe('Lisbon');
+    // The three shortest are left out, and the stars run in date order.
+    expect(Math.min(...map.stars.map((s) => s.plant.words))).toBeGreaterThan(Math.max(...g.plants.filter((p) => !map.stars.some((s) => s.plant === p) && p.entry.date.startsWith('2026')).map((p) => p.words)));
+    const dates = map.stars.map((s) => s.plant.entry.date);
+    expect(dates).toEqual([...dates].sort());
+    // Placed by date across the year and by id down the sky, the same every time.
+    for (const s of map.stars) {
+      expect(s.x).toBeGreaterThanOrEqual(0);
+      expect(s.x).toBeLessThan(1);
+      expect(s.y).toBeGreaterThanOrEqual(0.2);
+      expect(s.y).toBeLessThanOrEqual(0.8);
+    }
+    expect(starMap(g.plants, '2026')).toEqual(map);
+    expect(starMap(g.plants, '2026').stars[0]!.x).toBeLessThan(starMap(g.plants, '2026').stars.at(-1)!.x);
+    // A year without tags is named after itself (in the app); one with no entries has no stars.
+    expect(starMap(growGarden([entry('x', at('2024-03-03'))]).plants, '2024')).toMatchObject({ tag: '', stars: [{ x: expect.any(Number) }] });
+    expect(starMap(g.plants, '2023').stars).toEqual([]);
+  });
+
+  it('keeps stars apart, in date order and within the year, so each can be tapped', () => {
+    // Twelve entries in the last week of December, some on one day.
+    const late = Array.from({ length: 12 }, (_, i) => entry(words(30, `late${i}`), at(`2026-12-${String(20 + Math.floor(i / 2)).padStart(2, '0')}`)));
+    const xs = starMap(growGarden(late).plants, '2026').stars.map((s) => s.x);
+    expect(xs).toHaveLength(12);
+    for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(STAR_GAP - 1e-9);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(1);
   });
 });
