@@ -19,12 +19,13 @@ describe('seasons and weather (D99)', () => {
   it('guesses the hemisphere from the time zone, under the name the engine reports', () => {
     // The names Intl gives back, which can differ from the IANA name (America/Buenos_Aires).
     const reported = (zone: string) => new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone;
-    const south = ['Australia/Adelaide', 'Pacific/Auckland', 'America/Argentina/Buenos_Aires', 'America/Argentina/Cordoba', 'America/Argentina/Mendoza', 'America/Sao_Paulo', 'America/Punta_Arenas', 'Africa/Johannesburg', 'Africa/Harare', 'Pacific/Fiji', 'Indian/Mauritius'];
+    const south = ['Australia/Adelaide', 'Pacific/Auckland', 'America/Argentina/Buenos_Aires', 'America/Argentina/Cordoba', 'America/Argentina/Mendoza', 'America/Sao_Paulo', 'America/Punta_Arenas', 'Africa/Johannesburg', 'Africa/Harare', 'Pacific/Fiji', 'Indian/Mauritius', 'America/Bahia', 'America/Manaus', 'Africa/Dar_es_Salaam', 'Asia/Jakarta', 'Pacific/Port_Moresby', 'Pacific/Rarotonga', 'Indian/Kerguelen'];
     for (const zone of south) {
       expect(hemisphereOf(zone), zone).toBe('south');
       expect(hemisphereOf(reported(zone)), reported(zone)).toBe('south');
     }
-    expect(['Europe/London', 'America/New_York', 'Asia/Tokyo', 'UTC', ''].map(hemisphereOf)).toEqual(['north', 'north', 'north', 'north', 'north']);
+    const north = ['Europe/London', 'America/New_York', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Kolkata', 'Africa/Lagos', 'America/Bogota', 'America/Boa_Vista', 'UTC', ''];
+    for (const zone of north) expect(hemisphereOf(zone), zone).toBe('north');
   });
 
   it('shows the weather chosen, or none', () => {

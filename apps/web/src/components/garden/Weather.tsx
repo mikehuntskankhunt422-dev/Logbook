@@ -90,26 +90,34 @@ export function WeatherLayer({ weather, night, scene }: { weather: Weather; nigh
       if (drawn) ctx.clearRect(0, 0, width0, height0);
       drawn = false;
       const box = garden.getBoundingClientRect();
-      const left = Math.max(0, box.left);
-      const top = Math.max(0, box.top);
-      const width = Math.min(width0, box.right) - left;
-      const height = Math.min(height0, box.bottom) - top;
+      // The part of the garden on screen, in the garden's own coordinates: drops are kept in
+      // those, so scrolling carries them with the garden.
+      const left = Math.max(0, -box.left);
+      const top = Math.max(0, -box.top);
+      const width = Math.min(width0, box.right) - Math.max(0, box.left);
+      const height = Math.min(height0, box.bottom) - Math.max(0, box.top);
       if (width <= 0 || height <= 0) return;
       // As many as suit the garden on screen, up to MAX.
       const want = Math.min(MAX, Math.round((width * height) / 9000));
       while (drops.length < want) drops.push(drop(weather, left, width, top, height));
       if (drops.length > want) drops = drops.slice(0, want);
       ctx.save();
+      ctx.translate(box.left, box.top);
       ctx.beginPath();
       ctx.rect(left, top, width, height);
       ctx.clip();
       for (const d of drops) {
+        const was = d.y;
         d.x += d.vx * dt;
         d.y += d.vy * dt;
         d.turn += d.spin * dt;
-        // Blown out at one side, back in at the other; fallen past the bottom, back in at the top.
+        // Blown out at one side, back in at the other.
         if (d.x < left || d.x > left + width) d.x = left + ((((d.x - left) % width) + width) % width);
-        if (d.y > top + height + 20 || d.y < top - 40) Object.assign(d, drop(weather, left, width, top - 20, 0));
+        const bottom = top + height + 20;
+        // Fallen past the bottom: back in at the top. Left out of view by a scroll: back in
+        // anywhere on screen, so they don't all come in at once along one line.
+        if (d.y > bottom) Object.assign(d, was <= bottom ? drop(weather, left, width, top - 20, 0) : drop(weather, left, width, top, height));
+        else if (d.y < top - 40) Object.assign(d, drop(weather, left, width, top, height));
         if (weather === 'rain') {
           ctx.strokeStyle = night ? 'rgb(190 210 245 / 0.55)' : 'rgb(70 120 190 / 0.45)';
           ctx.lineWidth = 1.2;

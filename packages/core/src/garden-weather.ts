@@ -29,10 +29,12 @@ const SOUTHERN = [
   /^Australia\//,
   /^Antarctica\//,
   /^America\/(Argentina\/.+|Buenos_Aires|Catamarca|Cordoba|Jujuy|Mendoza|Rosario)$/,
-  /^America\/(Santiago|Punta_Arenas|Sao_Paulo|Montevideo|Asuncion|La_Paz|Lima|Campo_Grande|Cuiaba)$/,
-  /^Pacific\/(Auckland|Chatham|Easter|Fiji|Noumea|Tongatapu|Apia|Tahiti|Norfolk|Efate)$/,
-  /^Africa\/(Johannesburg|Windhoek|Maputo|Harare|Lusaka|Gaborone|Maseru|Mbabane|Blantyre|Luanda|Lubumbashi)$/,
-  /^Indian\/(Antananarivo|Mauritius|Reunion|Mayotte|Comoro)$/,
+  /^America\/(Santiago|Punta_Arenas|Montevideo|Asuncion|La_Paz|Lima|Guayaquil)$/,
+  /^America\/(Sao_Paulo|Campo_Grande|Cuiaba|Bahia|Recife|Maceio|Fortaleza|Belem|Manaus|Porto_Velho|Rio_Branco|Araguaina|Santarem|Noronha|Eirunepe)$/,
+  /^Pacific\/(Auckland|Chatham|Easter|Galapagos|Fiji|Noumea|Tongatapu|Apia|Pago_Pago|Tahiti|Marquesas|Gambier|Pitcairn|Rarotonga|Niue|Norfolk|Efate|Port_Moresby|Bougainville|Guadalcanal|Wallis|Funafuti|Fakaofo|Nauru)$/,
+  /^Africa\/(Johannesburg|Windhoek|Maputo|Harare|Lusaka|Gaborone|Maseru|Mbabane|Blantyre|Luanda|Lubumbashi|Kinshasa|Brazzaville|Dar_es_Salaam|Nairobi|Kigali|Bujumbura)$/,
+  /^Asia\/(Jakarta|Makassar|Jayapura|Dili)$/,
+  /^Indian\/(Antananarivo|Mauritius|Reunion|Mayotte|Comoro|Mahe|Chagos|Cocos|Christmas|Kerguelen)$/,
   /^Atlantic\/(Stanley|South_Georgia|St_Helena)$/,
 ];
 
