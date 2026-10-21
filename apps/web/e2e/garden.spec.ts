@@ -136,7 +136,7 @@ test('a garden update tells in a card only of tiers reached before it; later tie
   await expect(card).not.toContainText('Postcards');
   // Already on the Almanac: no Try it, which would only take focus away.
   await expect(card.getByRole('link', { name: 'Try it' })).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').updateTier)).toBe(5);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 1: 5 });
   await card.getByRole('button', { name: 'Close' }).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Almanac' })).toBeFocused();

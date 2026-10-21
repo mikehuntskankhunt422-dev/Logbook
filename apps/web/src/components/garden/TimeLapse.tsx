@@ -14,6 +14,8 @@ interface Spot {
 }
 /** "2026-10" as a count of months, to measure between two. */
 const monthNo = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
+/** Where a spot is among the months now, from the start (0) to the end (`count`); null is the end. */
+const place = (spot: Spot | null, first: string, count: number) => (spot ? Math.min(count, Math.max(0, spot.pos + monthNo(spot.first) - monthNo(first))) : count);
 
 const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const thisMonth = () => {
@@ -38,7 +40,7 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
   const [at, setAt] = useState<Spot | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const pos = at ? Math.min(count, Math.max(0, at.pos + monthNo(at.first) - monthNo(first))) : count;
+  const pos = place(at, first, count);
   const atRef = useRef(at);
   const move = (to: number | null) => {
     const spot = to === null ? null : { pos: to, first };
@@ -55,8 +57,7 @@ export function TimeLapse({ plants }: { plants: PlantData[] }) {
       // frame, so it picks up where it was.
       const step = (Math.min(now - last, 100) * speed) / perMonth;
       last = now;
-      const spot = atRef.current;
-      const next = (spot ? spot.pos + monthNo(spot.first) - monthNo(first) : count) + step;
+      const next = place(atRef.current, first, count) + step;
       if (next >= count) {
         atRef.current = null;
         setAt(null);

@@ -136,10 +136,11 @@ function GrowthChart({ months }: { months: AlmanacMonth[] }) {
   const shown = months[hover ?? top];
   return (
     <>
-      {/* A mouse shows a month while over it; a tap keeps the month it chose, as touch has no hover. */}
-      <div className="almanac-chart" role="img" aria-label={summary} onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}>
+      {/* A mouse or pen shows a month while over it; a tap keeps the month it chose, as touch has no
+          hover, while a swipe to scroll changes nothing. */}
+      <div className="almanac-chart" role="img" aria-label={summary} onPointerLeave={(e) => e.pointerType !== 'touch' && setHover(null)}>
         {months.map((m, i) => (
-          <div key={m.month} className="almanac-col" aria-hidden="true" data-hover={hover === i || undefined} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
+          <div key={m.month} className="almanac-col" aria-hidden="true" data-hover={hover === i || undefined} onPointerEnter={(e) => e.pointerType !== 'touch' && setHover(i)} onClick={() => setHover(i)}>
             <div className="almanac-plot">
               {i === top && <span className="almanac-value">{m.growth.toLocaleString()}</span>}
               {m.growth > 0 && <span className="almanac-bar" style={{ height: `${Math.max(2, (m.growth / max) * 100)}%` }} />}

@@ -260,22 +260,24 @@ export function PostcardDialog({ month, plants, onClose }: { month: string; plan
 
   useEffect(() => {
     let alive = true;
-    let url = '';
     setFailed(false);
     // After this render: the plants are drawn by React, outside the page.
     void Promise.resolve()
       .then(() => (plant ? plantPostcard(plant, opts) : bedPostcard(month, plants, opts)))
-      .then((blob) => {
-        if (!alive) return;
-        url = URL.createObjectURL(blob);
-        setCard({ blob, url, opts, plant, plants });
-      })
+      .then((blob) => alive && setCard({ blob, url: URL.createObjectURL(blob), opts, plant, plants }))
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
-      if (url) URL.revokeObjectURL(url);
     };
   }, [plant, plants, month, opts]);
+  // A picture's address lasts as long as the picture: until a new one replaces it, or the dialog
+  // closes. Going back to the choices it was drawn from shows it again at once.
+  useEffect(
+    () => () => {
+      if (card) URL.revokeObjectURL(card.url);
+    },
+    [card],
+  );
 
   const save = async () => {
     if (!ready) return;

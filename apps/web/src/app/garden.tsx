@@ -66,7 +66,7 @@ export function useGardenEffects(garden: Garden | null): void {
     // The first look only notes where the garden is: no fanfare for an existing journal.
     if (seen < 0) return;
     const tier = garden.rank.tier;
-    const news = garden.rank.ring > 1 ? [] : rankUpNews(Math.floor(seen / 1000), tier);
+    const news = rankUpNews(Math.floor(seen / 1000), tier);
     toast(`${TIERS[tier]!.emoji} Your garden reached ${rankName(garden.rank)}!${news.length ? ` New: ${news.join(', ')}.` : ''}`, { label: 'See it', run: () => (location.hash = '#/garden') }, 8000);
     celebrate('streak');
   }, [level, garden, toast]);
