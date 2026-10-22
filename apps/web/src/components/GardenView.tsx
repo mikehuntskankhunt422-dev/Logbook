@@ -1,7 +1,8 @@
-import { memo, useMemo, useRef, useState } from 'react';
-import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
+import { Fragment, memo, useMemo, useRef, useState } from 'react';
+import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
-import { cardFeatures, CATALOGUE, FEATURES, listed, PERKS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs } from '../lib/garden-prefs.ts';
+import { cardFeatures, CATALOGUE, FEATURES, fitText, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
+import { Pet, PET_TIER, SECOND_PET_TIER, STAR_TIER, StarSky } from './garden/Companions.tsx';
 import { formatLongDate } from './common.tsx';
 import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
 import { Herbarium } from './garden/Herbarium.tsx';
@@ -17,6 +18,13 @@ const ORNAMENTS: Record<string, string> = { sundial: '🕰️', birdbath: '⛲',
 function skyNow(): 'dawn' | 'day' | 'golden' | 'night' {
   const h = new Date().getHours();
   return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'golden' : 'night';
+}
+
+/** A name field's text kept to its limit, the caret where it was (D100). */
+function fitName(input: HTMLInputElement, pref: keyof GardenPrefs, max: number) {
+  const { text, caret } = fitText(input.value, input.selectionStart ?? input.value.length, max);
+  setGardenPrefs({ [pref]: text });
+  if (text !== input.value) requestAnimationFrame(() => input.setSelectionRange(caret, caret));
 }
 
 /** Months shown at first, and added by "Show earlier months": a long journal's garden opens fast. */
@@ -40,6 +48,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
     }
     return [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([month, plants]) => ({ month, plants: plants.sort((a, b) => a.entry.date.localeCompare(b.entry.date)) }));
   }, [garden]);
+  // Each year's constellation (D100), worked out once per garden.
+  const skies = useMemo(() => new Map([...new Set(beds.map((b) => b.month.slice(0, 4)))].map((y) => [y, starMap(garden?.plants ?? [], y)])), [beds, garden]);
 
   if (prefs.hidden)
     return (
@@ -65,6 +75,13 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const seasons = has(SEASONS_TIER) && prefs.seasons;
   const { weather, rainbow } = weatherOn(has(SEASONS_TIER) ? prefs.weather : '', now.day, hemisphere);
   const night = sky === 'night' || (sky === 'day' && now.dark);
+  // Companions (D100): the pets chosen, each only once its tier is reached.
+  const allowed = (kind: '' | PetKind, tier: number): '' | PetKind => (has(tier) && kind && has(PETS.find((p) => p.value === kind)?.tier ?? Infinity) ? kind : '');
+  const pets = [
+    { kind: allowed(prefs.pet, PET_TIER), name: prefs.petName },
+    { kind: allowed(prefs.pet2, SECOND_PET_TIER), name: prefs.pet2Name },
+  ].flatMap((p): { kind: PetKind; name: string }[] => (p.kind ? [{ kind: p.kind, name: p.name }] : []));
+  const stars = has(STAR_TIER) && prefs.starMap;
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
   const nextName = top ? `${TIERS[rank.tier]!.name} ★${rank.ring + 1}` : TIERS[rank.tier + 1]!.name;
   // Features a garden update added to tiers this device had already reached: said once.
@@ -174,7 +191,16 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
             {beds.length === 0 ? (
               <p className="garden-empty">Write your first entry to plant your first seed. 🌱</p>
             ) : (
-              beds.slice(0, shown).map((bed) => <Bed key={bed.month} month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />)
+              beds.slice(0, shown).map((bed, i, list) => {
+                const year = bed.month.slice(0, 4);
+                const sky = stars && (i === 0 || list[i - 1]!.month.slice(0, 4) !== year) ? skies.get(year) : undefined;
+                return (
+                  <Fragment key={bed.month}>
+                    {sky && <StarSky map={sky} />}
+                    <Bed month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} pets={i === 0 ? pets : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />
+                  </Fragment>
+                );
+              })
             )}
           </div>
           {beds.length > shown && (
@@ -231,11 +257,31 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                                 <label key={c.pref} className="row feature-control">
                                   <input type="checkbox" checked={Boolean(prefs[c.pref])} onChange={(e) => setGardenPrefs({ [c.pref]: e.target.checked })} /> {c.label}
                                 </label>
+                              ) : c.kind === 'text' ? (
+                                <div key={c.pref} className="field feature-control feature-text">
+                                  <label htmlFor={`garden-${c.pref}`}>{c.label}</label>
+                                  <input
+                                    id={`garden-${c.pref}`}
+                                    className="text-input"
+                                    type="text"
+                                    value={String(prefs[c.pref] ?? '')}
+                                    aria-describedby={`garden-${c.pref}-hint`}
+                                    onChange={(e) => {
+                                      // While an input method composes, its text isn't final: it's fitted once done.
+                                      if ((e.nativeEvent as InputEvent).isComposing) setGardenPrefs({ [c.pref]: e.target.value });
+                                      else fitName(e.target, c.pref, c.max);
+                                    }}
+                                    onCompositionEnd={(e) => fitName(e.currentTarget, c.pref, c.max)}
+                                  />
+                                  <span id={`garden-${c.pref}-hint`} className="hint">
+                                    {c.hint}
+                                  </span>
+                                </div>
                               ) : (
                                 <div key={c.pref} className="row feature-control" role="group" aria-label={c.label}>
                                   <span className="muted">{c.label}:</span>
                                   {/* The time zone's guess is named, so a wrong one shows. */}
-                                  {[{ value: '', label: c.pref === 'hemisphere' ? `${c.none} (${guessed === 'south' ? 'South' : 'North'})` : c.none }, ...c.choices].map((o) => (
+                                  {[{ value: '', label: c.pref === 'hemisphere' ? `${c.none} (${guessed === 'south' ? 'South' : 'North'})` : c.none }, ...c.choices.filter((o) => has(o.tier ?? 0))].map((o) => (
                                     <button key={o.value} type="button" className="chip" aria-pressed={(prefs[c.pref] || '') === o.value} onClick={() => setGardenPrefs({ [c.pref]: o.value })}>
                                       {o.label}
                                     </button>
@@ -274,7 +320,21 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
 }
 
 /** One month's bed. Memoised, so choosing a perk doesn't redraw every plant. */
-const Bed = memo(function Bed({ month, plants, lantern, season, onPostcard }: { month: string; plants: PlantData[]; lantern: boolean; season?: Season; onPostcard?: (month: string) => void }) {
+const Bed = memo(function Bed({
+  month,
+  plants,
+  lantern,
+  season,
+  pets,
+  onPostcard,
+}: {
+  month: string;
+  plants: PlantData[];
+  lantern: boolean;
+  season?: Season;
+  pets?: { kind: PetKind; name: string }[];
+  onPostcard?: (month: string) => void;
+}) {
   const name = new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   return (
     <section className="garden-bed" aria-labelledby={`bed-${month}`} data-season={season}>
@@ -291,8 +351,9 @@ const Bed = memo(function Bed({ month, plants, lantern, season, onPostcard }: { 
         )}
       </div>
       <ul className="garden-ground">
-        {plants.map((p) => (
-          <li key={p.entry.id}>
+        {plants.map((p, i) => (
+          // The pets nap beside the newest plant (D100), in its place, so they wrap with it.
+          <li key={p.entry.id} className={pets?.length && i === plants.length - 1 ? 'garden-newest' : undefined}>
             <a
               className="garden-plant"
               href={href({ name: 'entry', id: p.entry.id })}
@@ -302,6 +363,7 @@ const Bed = memo(function Bed({ month, plants, lantern, season, onPostcard }: { 
               <Plant plant={p} />
               <span className="garden-tier-dot" style={{ background: TIER_COLOURS[p.tier] }} aria-hidden="true" />
             </a>
+            {i === plants.length - 1 && pets?.map((pet, k) => <Pet key={k} kind={pet.kind} name={pet.name} />)}
           </li>
         ))}
       </ul>

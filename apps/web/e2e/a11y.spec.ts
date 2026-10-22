@@ -39,11 +39,13 @@ for (const theme of ['light', 'dark'] as const) {
     }
 
     // The garden's other pages (D98), with Garden history and Postcards open; and the garden with
-    // seasons, rain and its sound controls (D99).
-    await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 7000, catalogue: 2, noted: { 2: 7 }, seasons: true, weather: 'rain' })));
+    // seasons, rain and its sound controls (D99), pets and the star map (D100).
+    await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 13000, catalogue: 3, noted: { 3: 13 }, seasons: true, weather: 'rain', pet: 'cat', petName: 'Biscuit', pet2: 'dragon', starMap: true })));
     await page.goto('/#/garden');
     await page.reload();
     await expect(page.getByRole('group', { name: 'Garden sounds' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Your cat, Biscuit, napping' })).toBeVisible();
+    await expect(page.locator('.garden-starmap')).toBeVisible();
     await expectNoSeriousViolations(page, 'garden with seasons and weather');
     for (const path of ['/#/garden/herbarium', '/#/garden/almanac']) {
       await page.goto(path);

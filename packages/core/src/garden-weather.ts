@@ -43,8 +43,8 @@ export function hemisphereOf(timeZone: string): Hemisphere {
   return SOUTHERN.some((re) => re.test(timeZone)) ? 'south' : 'north';
 }
 
-/** FNV-1a, 32 bits: the same number for the same day everywhere. */
-function fnv1a32(s: string): number {
+/** FNV-1a, 32 bits: the same number for the same text everywhere (a day, an entry's id). */
+export function fnv1a32(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
   return h >>> 0;
