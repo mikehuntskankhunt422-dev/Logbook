@@ -193,8 +193,9 @@ try {
   check((await placed()) === 'Centred', 'the square starts centred');
   await type(s, across, END);
   check((await placed()) === 'At the right', 'the keyboard moves the square to the right');
-  // Once the dialog has faded in: halfway, its colours are paler than they end up.
-  await until('the dialog to settle', () => run(s, "return document.getAnimations().every((a) => a.playState !== 'running')"));
+  // Once the dialog has faded in (0.3 s): partway, its colours are paler than they end up.
+  await sleep(500);
+  await until('the dialog to settle', () => run(s, "return document.getAnimations().every((a) => a.playState !== 'running') && getComputedStyle(document.querySelector('dialog[open]')).opacity === '1'"));
   const problems = await axeProblems(s, 'dialog[open]');
   check(problems.length === 0, `the crop has no serious accessibility problems${problems.length ? `: ${problems.join('; ')}` : ''}`);
   await click(s, await find(s, 'xpath', "//dialog[@open]//button[normalize-space(.)='Use this picture']"));

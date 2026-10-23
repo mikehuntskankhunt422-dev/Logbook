@@ -15,7 +15,7 @@ const WHERE: Record<AppIconStatus['os'], string> = {
 const DONE: Record<AppIconStatus['os'], [string, string]> = {
   windows: [
     'Logbook’s icon is now your picture. If the taskbar still shows the old one, it changes when you next sign in to Windows.',
-    'Logbook’s window shows your picture, but some of its shortcuts couldn’t be changed, so they keep the usual icon.',
+    'Logbook’s window shows your picture, but its shortcuts on the Start menu, the desktop or the taskbar couldn’t all be changed, so they may keep the usual icon.',
   ],
   macos: [
     'Logbook’s icon is now your picture. The Dock and Finder can take a moment to catch up.',
@@ -23,7 +23,7 @@ const DONE: Record<AppIconStatus['os'], [string, string]> = {
   ],
   linux: [
     'Logbook’s icon is now your picture. The dock and app menu catch up within a few seconds; the dock may show the old one for this window until you restart Logbook.',
-    'Logbook’s window shows your picture. This copy of Logbook isn’t in your app menu, so there’s no menu icon to change.',
+    'Logbook’s window shows your picture, but its entry in the app menu couldn’t be changed, so the dock and app menu keep the usual icon.',
   ],
 };
 
@@ -39,23 +39,34 @@ export function AppIconPanel() {
   const [picture, setPicture] = useState<Picture | null>(null);
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState('');
+  /** In the crop: why the icon couldn't be made, to try again. */
+  const [cropProblem, setCropProblem] = useState('');
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const chooseButton = useRef<HTMLButtonElement>(null);
+  /** The crop was closed (by a second Escape) while the icon was being made. */
+  const dismissed = useRef(false);
 
   useEffect(() => {
     void appIconStatus().then(setStatus, () => {});
   }, []);
   if (!status) return null;
 
+  /** Back to the button that started it: the crop and the buttons it disabled are gone. */
+  const refocus = () => requestAnimationFrame(() => chooseButton.current?.focus());
+
   const choose = async (file: File | undefined) => {
     if (!file) return;
     setProblem('');
     setNote('');
+    setCropProblem('');
     setBusy(true);
     try {
+      dismissed.current = false;
       setPicture(await loadPicture(file));
     } catch (err) {
       setProblem(err instanceof PictureError ? err.message : 'Logbook couldn’t open that picture.');
+      refocus();
     } finally {
       setBusy(false);
     }
@@ -64,6 +75,28 @@ export function AppIconPanel() {
   const closeCrop = () => {
     picture?.release();
     setPicture(null);
+    refocus();
+  };
+
+  /** Made and sent here, not in the crop, so closing the crop can't leave it half done. */
+  const use = async (crop: IconCrop, shape: IconShape) => {
+    if (!picture || busy) return;
+    setBusy(true);
+    setCropProblem('');
+    try {
+      const { everywhere } = await setAppIcon(await renderIcons(picture, crop, shape, status.sizes));
+      setNote(DONE[status.os][everywhere ? 0 : 1]);
+      closeCrop();
+      setStatus(await appIconStatus());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (dismissed.current) {
+        setProblem(message);
+        closeCrop();
+      } else setCropProblem(message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const reset = async () => {
@@ -78,6 +111,7 @@ export function AppIconPanel() {
       setProblem((err as Error).message);
     } finally {
       setBusy(false);
+      refocus();
     }
   };
 
@@ -91,7 +125,7 @@ export function AppIconPanel() {
         </p>
       </div>
       <div className="row">
-        <button type="button" className="btn" disabled={busy} onClick={() => input.current?.click()}>
+        <button ref={chooseButton} type="button" className="btn" disabled={busy} onClick={() => input.current?.click()}>
           {status.picture ? 'Choose another picture…' : 'Choose a picture…'}
         </button>
         {status.picture && (
@@ -117,19 +151,20 @@ export function AppIconPanel() {
         </p>
       )}
       <p className="hint" role="status">
-        {note}
+        {busy && !picture ? 'Opening the picture…' : note}
       </p>
       <p className="hint">Your picture is kept on this computer, outside your journal: your passcode doesn’t lock it, and backups don’t include it.</p>
       {picture && (
         <CropDialog
           picture={picture}
-          sizes={status.sizes}
-          onCancel={closeCrop}
-          onDone={(everywhere) => {
-            closeCrop();
-            setNote(DONE[status.os][everywhere ? 0 : 1]);
-            void appIconStatus().then(setStatus, () => {});
+          busy={busy}
+          problem={cropProblem}
+          onCancel={() => {
+            // Escape twice can close it while the icon is being made: that finishes, and says so here.
+            if (busy) dismissed.current = true;
+            else closeCrop();
           }}
+          onUse={(crop, shape) => void use(crop, shape)}
         />
       )}
     </section>
@@ -144,11 +179,9 @@ const PREVIEWS = [16, 32, 64] as const;
  * Where the square goes on the picture, by sliders (and dragging, as well), with the corners and
  * how it looks small. Every control is a native one, so it works by keyboard and screen reader.
  */
-function CropDialog({ picture, sizes, onCancel, onDone }: { picture: Picture; sizes: number[]; onCancel: () => void; onDone: (everywhere: boolean) => void }) {
+function CropDialog({ picture, busy, problem, onCancel, onUse }: { picture: Picture; busy: boolean; problem: string; onCancel: () => void; onUse: (crop: IconCrop, shape: IconShape) => void }) {
   const [crop, setCrop] = useState<IconCrop>(CENTRED);
   const [shape, setShape] = useState<IconShape>('rounded');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState('');
   const frame = useRef<HTMLCanvasElement>(null);
   const small = useRef<(HTMLCanvasElement | null)[]>([]);
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -156,6 +189,7 @@ function CropDialog({ picture, sizes, onCancel, onDone }: { picture: Picture; si
   const { width: w, height: h } = picture;
   const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
 
+  // Drawn again when the canvases are resized for another screen, which clears them.
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       const f = frame.current;
@@ -164,23 +198,11 @@ function CropDialog({ picture, sizes, onCancel, onDone }: { picture: Picture; si
       for (const c of small.current) if (c) drawSmall(c, f);
     });
     return () => cancelAnimationFrame(id);
-  }, [picture, crop, shape]);
+  }, [picture, crop, shape, dpr]);
 
   const most = maxZoom(w, h);
   const room = canMove(w, h, crop);
   const soft = cropRect(w, h, crop).size < MIN_CROP;
-
-  const use = async () => {
-    setBusy(true);
-    setProblem('');
-    try {
-      const { everywhere } = await setAppIcon(await renderIcons(picture, crop, shape, sizes));
-      onDone(everywhere);
-    } catch (err) {
-      setProblem(err instanceof Error ? err.message : String(err));
-      setBusy(false);
-    }
-  };
 
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
     if (!drag.current) return;
@@ -193,6 +215,7 @@ function CropDialog({ picture, sizes, onCancel, onDone }: { picture: Picture; si
   return (
     <Dialog
       open
+      keepOpen={busy}
       title="Your picture as Logbook’s icon"
       onClose={onCancel}
       actions={
@@ -200,7 +223,7 @@ function CropDialog({ picture, sizes, onCancel, onDone }: { picture: Picture; si
           <button type="button" className="btn" disabled={busy} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void use()}>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onUse(crop, shape)}>
             Use this picture
           </button>
         </>

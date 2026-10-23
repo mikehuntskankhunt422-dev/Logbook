@@ -23,6 +23,7 @@ mod win;
 use crate::{body, folder, header, AppState};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::ipc::Request;
 use tauri::{AppHandle, Manager, State};
 
@@ -55,6 +56,14 @@ fn icons_dir(config_file: &Path) -> PathBuf {
 
 fn png_path(picture: &Path, size: u32) -> PathBuf {
     picture.join(format!("{size}.png"))
+}
+
+/// One change to the icon at a time: choosing a picture, going back to the usual icon, and a
+/// launch putting it back each keep, place and delete pictures.
+static WORK: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    WORK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[derive(serde::Serialize)]
@@ -90,19 +99,17 @@ pub fn app_icon_status(state: State<'_, AppState>) -> Status {
 #[tauri::command]
 pub async fn app_icon_set(request: Request<'_>, app: AppHandle, state: State<'_, AppState>) -> Result<Applied, String> {
     let data = body(&request)?;
-    let pngs = split(&header(&request, "x-parts")?, &data)?;
-    let dir = icons_dir(&state.config_file);
-    let id = store(&dir, &pngs)?;
-    let picture = dir.join(&id);
-    show_in_window(&app, &picture)?;
+    let pngs: Vec<(u32, Vec<u8>)> = split(&header(&request, "x-parts")?, &data)?.into_iter().map(|(s, p)| (s, p.to_vec())).collect();
     let config_file = state.config_file.clone();
     let everywhere = tauri::async_runtime::spawn_blocking(move || {
+        let _one = one_at_a_time();
+        let dir = icons_dir(&config_file);
+        let id = store(&dir, &pngs.iter().map(|(s, p)| (*s, p.as_slice())).collect::<Vec<_>>())?;
+        let picture = dir.join(&id);
+        show_in_window(&app, &picture)?;
         let everywhere = show_outside(&config_file, &picture, true);
-        let mut before = None;
-        folder::update(&config_file, |c| before = c.app_icon.replace(id.clone()))?;
-        // The picture before stays until the next one: a shortcut or menu entry that couldn't be
-        // changed this time still shows it, where a deleted file would show a blank icon.
-        tidy(&dir, &[Some(id.as_str()), before.as_deref()]);
+        folder::update(&config_file, |c| c.app_icon = Some(id.clone()))?;
+        tidy(&dir, &id);
         Ok::<_, String>(everywhere)
     })
     .await
@@ -115,19 +122,23 @@ pub async fn app_icon_set(request: Request<'_>, app: AppHandle, state: State<'_,
 pub async fn app_icon_reset(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let config_file = state.config_file.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        // Outside the window first: if that fails the picture stays chosen, for another try.
-        forget_outside(&config_file)?;
-        folder::update(&config_file, |c| {
-            c.app_icon = None;
-            c.app_icon_on_bundle = false;
-            c.app_icon_entry = None;
-        })?;
-        tidy(&icons_dir(&config_file), &[]);
-        Ok::<_, String>(())
+        let _one = one_at_a_time();
+        forget(&config_file)?;
+        forget_in_window(&app)
     })
     .await
-    .map_err(|e| e.to_string())??;
-    forget_in_window(&app)
+    .map_err(|e| e.to_string())?
+}
+
+/// Outside the window first: if that fails, the picture stays chosen, for another try.
+fn forget(config_file: &Path) -> Result<(), String> {
+    forget_outside(config_file)?;
+    folder::update(config_file, |c| {
+        c.app_icon = None;
+        c.app_icon_on_bundle = false;
+    })?;
+    tidy(&icons_dir(config_file), "");
+    Ok(())
 }
 
 /// At every launch, once the window is up: the picture back on the window or Dock, and, off the
@@ -136,14 +147,22 @@ pub fn at_launch(app: &AppHandle) {
     let config_file = app.state::<AppState>().config_file.clone();
     let Some(id) = folder::load(&config_file).app_icon else { return };
     let picture = icons_dir(&config_file).join(id);
-    if !picture.is_dir() {
-        return;
-    }
-    if let Err(e) = show_in_window(app, &picture) {
-        eprintln!("Logbook couldn't show its icon: {e}");
+    if picture.is_dir() {
+        if let Err(e) = show_in_window(app, &picture) {
+            eprintln!("Logbook couldn't show its icon: {e}");
+        }
     }
     std::thread::spawn(move || {
-        show_outside(&config_file, &picture, false);
+        let _one = one_at_a_time();
+        // Read again: a picture chosen since is the one to put back.
+        let Some(id) = folder::load(&config_file).app_icon else { return };
+        let picture = icons_dir(&config_file).join(id);
+        if picture.is_dir() {
+            show_outside(&config_file, &picture, false);
+        } else if let Err(e) = forget(&config_file) {
+            // Its pictures were deleted by hand: the usual icon, rather than a blank one.
+            eprintln!("Logbook couldn't put its usual icon back: {e}");
+        }
     });
 }
 
@@ -195,14 +214,29 @@ fn store(dir: &Path, pngs: &[(u32, &[u8])]) -> Result<String, String> {
     Ok(id)
 }
 
-/// Deletes every picture folder but those in `keep`.
-fn tidy(dir: &Path, keep: &[Option<&str>]) {
+/// Deletes the pictures but `keep` and any a shortcut or menu entry still shows (one that couldn't
+/// be changed): a deleted file there would show a blank icon.
+fn tidy(dir: &Path, keep: &str) {
+    let shown = in_use(dir);
     let Ok(entries) = fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
-        if !keep.iter().flatten().any(|k| entry.file_name() == *k) {
+        let name = entry.file_name();
+        if name != keep && !shown.iter().any(|s| name == s.as_str()) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
+}
+
+/// The picture folders the system's shortcuts or menu entries name.
+fn in_use(dir: &Path) -> Vec<String> {
+    #[cfg(windows)]
+    let shown = win::icons_in_use();
+    #[cfg(target_os = "linux")]
+    let shown = linux::icons_in_use(&linux::Dirs::from_env());
+    // Logbook.app holds a copy of the picture, not its path.
+    #[cfg(target_os = "macos")]
+    let shown: Vec<PathBuf> = Vec::new();
+    shown.iter().filter_map(|p| Some(p.strip_prefix(dir).ok()?.components().next()?.as_os_str().to_str()?.to_string())).collect()
 }
 
 /// An `.ico` with every size: plain bitmaps below 256 px, which every part of Windows reads, and
@@ -262,13 +296,8 @@ fn show_outside(config_file: &Path, picture: &Path, chosen: bool) -> bool {
     }
     #[cfg(target_os = "linux")]
     {
-        let _ = chosen;
-        let earlier = folder::load(config_file).app_icon_entry;
-        let (on, edited) = linux::show_in_menu(&linux::Dirs::from_env(), &png_path(picture, 512), earlier.clone());
-        if edited != earlier {
-            let _ = folder::update(config_file, |c| c.app_icon_entry = edited.clone());
-        }
-        on
+        let _ = (config_file, chosen);
+        linux::show_in_menu(&linux::Dirs::from_env(), &png_path(picture, 512))
     }
 }
 
@@ -286,7 +315,8 @@ fn forget_outside(config_file: &Path) -> Result<(), String> {
     }
     #[cfg(target_os = "linux")]
     {
-        linux::forget_in_menu(&linux::Dirs::from_env(), folder::load(config_file).app_icon_entry)
+        let _ = config_file;
+        linux::forget_in_menu(&linux::Dirs::from_env())
     }
 }
 
@@ -348,15 +378,11 @@ mod tests {
         };
         store_pngs("aaaa0001");
         store_pngs("aaaa0002");
-        store_pngs("aaaa0003");
-        tidy(dir.path(), &[Some("aaaa0003"), Some("aaaa0002")]);
-        let mut left: Vec<_> = fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
-        left.sort();
-        assert_eq!(left, ["aaaa0002", "aaaa0003"]);
-        assert!(png_path(&dir.path().join("aaaa0003"), PREVIEW).is_file());
-        tidy(dir.path(), &[Some("aaaa0003"), None]);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
-        tidy(dir.path(), &[]);
+        tidy(dir.path(), "aaaa0002");
+        let left: Vec<_> = fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["aaaa0002"]);
+        assert!(png_path(&dir.path().join("aaaa0002"), PREVIEW).is_file());
+        tidy(dir.path(), "");
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 

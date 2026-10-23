@@ -14,7 +14,7 @@ use windows::core::{Interface, Result, GUID, HSTRING};
 use windows::Win32::Foundation::{HWND, LPARAM, RPC_E_CHANGED_MODE, WPARAM};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
-    COINIT_DISABLE_OLE1DDE, STGM_READWRITE,
+    COINIT_DISABLE_OLE1DDE, STGM_READ, STGM_READWRITE,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::Shell::{
@@ -53,7 +53,7 @@ pub fn forget_in_window(app: &AppHandle) -> std::result::Result<(), String> {
 /// Points Logbook's shortcuts at the `.ico`. True when it found some and changed them all.
 pub fn show_on_shortcuts(ico: &Path) -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
-    match set_shortcut_icons(&exe, ico, &candidate_shortcuts("Logbook")) {
+    match set_shortcut_icons(&exe, ico, &candidate_shortcuts()) {
         Ok(Done { found, failed }) => found > 0 && failed == 0,
         Err(e) => {
             eprintln!("Logbook couldn't change its shortcuts: {e}");
@@ -65,10 +65,41 @@ pub fn show_on_shortcuts(ico: &Path) -> bool {
 /// Logbook's shortcuts back to the app's own icon.
 pub fn forget_on_shortcuts() -> std::result::Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    match set_shortcut_icons(&exe, &exe, &candidate_shortcuts("Logbook")) {
+    match set_shortcut_icons(&exe, &exe, &candidate_shortcuts()) {
         Ok(Done { failed: 0, .. }) => Ok(()),
         Ok(_) => Err("Some of Logbook's shortcuts couldn't be changed back. Try again in a moment.".into()),
         Err(e) => Err(format!("Logbook's shortcuts couldn't be changed back: {e}")),
+    }
+}
+
+/// The icons Logbook's shortcuts show, so they aren't deleted while they do.
+pub fn icons_in_use() -> Vec<PathBuf> {
+    let (Ok(exe), Ok(_com)) = (std::env::current_exe(), Com::init()) else { return Vec::new() };
+    candidate_shortcuts()
+        .iter()
+        .filter_map(|lnk| read_link(lnk).ok().filter(|l| same_file(&l.target, &exe)).map(|l| l.icon).filter(|i| !i.as_os_str().is_empty()))
+        .collect()
+}
+
+/// What a shortcut opens and the icon it names (empty for the target's own).
+struct LinkInfo {
+    target: PathBuf,
+    icon: PathBuf,
+    index: i32,
+}
+
+/// Read only: a shortcut of another app's that won't open this way is none of Logbook's business.
+fn read_link(lnk: &Path) -> Result<LinkInfo> {
+    unsafe {
+        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
+        let file: IPersistFile = link.cast()?;
+        file.Load(&HSTRING::from(lnk), STGM_READ)?;
+        let mut target = vec![0u16; 32768];
+        link.GetPath(&mut target, std::ptr::null_mut(), 0)?;
+        let mut icon = vec![0u16; 32768];
+        let mut index = 0i32;
+        link.GetIconLocation(&mut icon, &mut index)?;
+        Ok(LinkInfo { target: wide_path(&target), icon: wide_path(&icon), index })
     }
 }
 
@@ -118,24 +149,21 @@ fn collect_links(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Where Logbook's shortcuts can be: the installer's (the Start menu, or a folder in it, and the
-/// desktop) and the taskbar's pinned copies, whatever they're called. Only those that open
-/// Logbook's own exe are changed.
-fn candidate_shortcuts(product_name: &str) -> Vec<PathBuf> {
-    let name = format!("{product_name}.lnk");
+/// Where Logbook's shortcuts can be, whatever they're called (the installer's, copies the person
+/// made, ones they moved): the Start menu and folders in it, the desktop, and the taskbar's pinned
+/// copies. Only those that open Logbook's own exe are changed.
+fn candidate_shortcuts() -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(programs) = known_folder(&FOLDERID_Programs) {
-        out.push(programs.join(&name));
-        out.push(programs.join(product_name).join(&name));
+        collect_links(&programs, 2, &mut out);
     }
     if let Some(desktop) = known_folder(&FOLDERID_Desktop) {
-        out.push(desktop.join(&name));
+        collect_links(&desktop, 0, &mut out);
     }
     if let Some(pinned) = known_folder(&FOLDERID_UserPinned) {
         collect_links(&pinned.join("TaskBar"), 0, &mut out);
         collect_links(&pinned.join("ImplicitAppShortcuts"), 2, &mut out);
     }
-    out.retain(|p| p.is_file());
     out
 }
 
@@ -161,29 +189,24 @@ enum Link {
 
 /// Sets one shortcut's icon to the first in `icon` when it opens `exe`.
 fn set_link_icon(lnk: &Path, exe: &Path, icon: &Path) -> Result<Link> {
+    let Ok(info) = read_link(lnk) else { return Ok(Link::Other) };
+    if !same_file(&info.target, exe) {
+        return Ok(Link::Other);
+    }
+    // No icon of its own is the exe's icon, which is where going back leaves it.
+    let shows = if info.icon.as_os_str().is_empty() { icon == exe } else { info.index == 0 && same_file(&info.icon, icon) };
+    if shows {
+        return Ok(Link::Unchanged);
+    }
     unsafe {
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
         let file: IPersistFile = link.cast()?;
         let lnk_w = HSTRING::from(lnk);
         file.Load(&lnk_w, STGM_READWRITE)?;
-        let mut target = vec![0u16; 32768];
-        link.GetPath(&mut target, std::ptr::null_mut(), 0)?;
-        if !same_file(&wide_path(&target), exe) {
-            return Ok(Link::Other);
-        }
-        let mut current = vec![0u16; 32768];
-        let mut index = 0i32;
-        link.GetIconLocation(&mut current, &mut index)?;
-        let current = wide_path(&current);
-        // No icon of its own is the exe's icon, which is where going back leaves it.
-        let shows = if current.as_os_str().is_empty() { icon == exe } else { index == 0 && same_file(&current, icon) };
-        if shows {
-            return Ok(Link::Unchanged);
-        }
         link.SetIconLocation(&HSTRING::from(icon), 0)?;
         file.Save(&lnk_w, true)?;
-        Ok(Link::Changed)
     }
+    Ok(Link::Changed)
 }
 
 struct Done {

@@ -41,6 +41,8 @@ function context(c: HTMLCanvasElement): CanvasRenderingContext2D {
 
 /** Part of `src` drawn at outW × outH, halving at most each time so no pixels are skipped. */
 function shrink(src: CanvasImageSource, x: number, y: number, w: number, h: number, outW: number, outH: number): HTMLCanvasElement {
+  // At least a pixel each way, or a sliver of a picture would never get there.
+  [outW, outH] = [Math.max(1, Math.round(outW)), Math.max(1, Math.round(outH))];
   let from = src;
   for (;;) {
     const nextW = w > 2 * outW ? Math.ceil(w / 2) : outW;
@@ -88,7 +90,8 @@ export async function loadPicture(file: Blob): Promise<Picture> {
     throw new PictureError('Logbook can’t open this kind of picture on this computer. Try a JPEG or PNG.');
   }
   if (Math.max(width, height) <= WORK_EDGE) return { source: full, width, height, release: done };
-  const size = fitWithin(width, height, WORK_EDGE);
+  const fit = fitWithin(width, height, WORK_EDGE);
+  const size = { width: Math.max(1, fit.width), height: Math.max(1, fit.height) };
   const work = shrink(full, 0, 0, width, height, size.width, size.height);
   done();
   return {

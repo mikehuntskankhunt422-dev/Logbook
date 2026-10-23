@@ -19,15 +19,6 @@ pub struct Config {
     /// macOS: whether the picture went onto Logbook in Applications last time it was tried.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub app_icon_on_bundle: bool,
-    /// Linux: a menu entry of someone else's whose icon Logbook changed, and what it was before.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub app_icon_entry: Option<EntryIcon>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EntryIcon {
-    pub path: PathBuf,
-    pub icon: String,
 }
 
 /// One change to the config file at a time: commands run side by side.
@@ -127,6 +118,6 @@ mod tests {
         let config = load(&file);
         assert_eq!((config.journal_folder, config.app_icon.as_deref()), (Some(dir.path().join("Logbook")), Some("1a2b3c4d")));
         let text = fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"appIcon\"") && !text.contains("appIconEntry") && !text.contains("appIconOnBundle"));
+        assert!(text.contains("\"appIcon\"") && !text.contains("appIconOnBundle"));
     }
 }
