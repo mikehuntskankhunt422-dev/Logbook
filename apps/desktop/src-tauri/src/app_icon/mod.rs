@@ -75,12 +75,22 @@ pub struct Status {
     picture: Option<String>,
 }
 
+/// How far the picture got beyond the window or Dock: Logbook's shortcuts (Windows), Logbook in
+/// Applications (macOS), its app menu entry (Linux).
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Outside {
+    Done,
+    /// There are none to change: no shortcuts of Logbook's, not run from Logbook.app, not in the
+    /// app menu.
+    Missing,
+    /// Some couldn't be changed.
+    Failed,
+}
+
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Applied {
-    /// Whether the picture reached the shortcuts (Windows), Logbook in Applications (macOS) or
-    /// the app menu (Linux) as well as the window or Dock.
-    everywhere: bool,
+    outside: Outside,
 }
 
 /// What Settings shows: which sizes to make here, and the picture in use.
@@ -101,20 +111,20 @@ pub async fn app_icon_set(request: Request<'_>, app: AppHandle, state: State<'_,
     let data = body(&request)?;
     let pngs: Vec<(u32, Vec<u8>)> = split(&header(&request, "x-parts")?, &data)?.into_iter().map(|(s, p)| (s, p.to_vec())).collect();
     let config_file = state.config_file.clone();
-    let everywhere = tauri::async_runtime::spawn_blocking(move || {
+    let outside = tauri::async_runtime::spawn_blocking(move || {
         let _one = one_at_a_time();
         let dir = icons_dir(&config_file);
         let id = store(&dir, &pngs.iter().map(|(s, p)| (*s, p.as_slice())).collect::<Vec<_>>())?;
         let picture = dir.join(&id);
         show_in_window(&app, &picture)?;
-        let everywhere = show_outside(&config_file, &picture, true);
+        let outside = show_outside(&config_file, &picture, true);
         folder::update(&config_file, |c| c.app_icon = Some(id.clone()))?;
         tidy(&dir, &id);
-        Ok::<_, String>(everywhere)
+        Ok::<_, String>(outside)
     })
     .await
     .map_err(|e| e.to_string())??;
-    Ok(Applied { everywhere })
+    Ok(Applied { outside })
 }
 
 /// Back to the usual icon everywhere, and the pictures deleted.
@@ -275,8 +285,8 @@ fn forget_in_window(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Shortcuts, Logbook in Applications, or the app menu; blocking. `chosen` when the person has
-/// just picked the picture, as opposed to a launch putting it back. Answers whether it got there.
-fn show_outside(config_file: &Path, picture: &Path, chosen: bool) -> bool {
+/// just picked the picture, as opposed to a launch putting it back.
+fn show_outside(config_file: &Path, picture: &Path, chosen: bool) -> Outside {
     #[cfg(windows)]
     {
         let _ = (config_file, chosen);
@@ -288,11 +298,11 @@ fn show_outside(config_file: &Path, picture: &Path, chosen: bool) -> bool {
         // Logbook this account can't change), only choosing a picture asks again.
         let tried = folder::load(config_file).app_icon_on_bundle;
         if !chosen && (!tried || mac::bundle_has_icon()) {
-            return tried;
+            return if tried { Outside::Done } else { Outside::Failed };
         }
-        let on = fs::read(png_path(picture, 1024)).is_ok_and(|png| mac::show_on_bundle(Some(&png)));
-        let _ = folder::update(config_file, |c| c.app_icon_on_bundle = on);
-        on
+        let outside = fs::read(png_path(picture, 1024)).map_or(Outside::Failed, |png| mac::show_on_bundle(Some(&png)));
+        let _ = folder::update(config_file, |c| c.app_icon_on_bundle = outside == Outside::Done);
+        outside
     }
     #[cfg(target_os = "linux")]
     {

@@ -120,15 +120,18 @@ export function appIconStatus(): Promise<AppIconStatus> {
 }
 
 /**
- * The person's picture as the app's icon: a PNG for each size, sent back to back with their sizes
- * and lengths. `everywhere` when it reached the shortcuts, Logbook in Applications or the app menu
- * as well as the window or Dock.
+ * How far the icon got beyond the window or Dock: Logbook's shortcuts (Windows), Logbook in
+ * Applications (macOS) or its app menu entry (Linux) show it, there are none to change, or some
+ * couldn't be changed.
  */
-export async function setAppIcon(pngs: ReadonlyMap<number, Blob>): Promise<{ everywhere: boolean }> {
+export type IconOutside = 'done' | 'missing' | 'failed';
+
+/** The person's picture as the app's icon: a PNG for each size, sent back to back with their sizes and lengths. */
+export async function setAppIcon(pngs: ReadonlyMap<number, Blob>): Promise<{ outside: IconOutside }> {
   const sizes = [...pngs.keys()];
   const parts = sizes.map((s) => `${s}:${pngs.get(s)!.size}`).join(',');
   const body = new Uint8Array(await new Blob(sizes.map((s) => pngs.get(s)!)).arrayBuffer());
-  return invoke<{ everywhere: boolean }>('app_icon_set', body, { headers: { 'x-parts': parts } }).catch((err: unknown) => {
+  return invoke<{ outside: IconOutside }>('app_icon_set', body, { headers: { 'x-parts': parts } }).catch((err: unknown) => {
     throw new Error(String(err));
   });
 }

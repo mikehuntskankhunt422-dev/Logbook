@@ -13,6 +13,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
+use super::Outside;
+
 /// tauri-bundler names the entry after the product, for the .deb, the .rpm and the AppImage.
 const DESKTOP_ID: &str = "Logbook.desktop";
 /// In Logbook's own copy: a fingerprint of the rest of it, as Logbook wrote it.
@@ -111,7 +113,7 @@ fn read_entry(path: &Path) -> Entry {
 
 /// The picture on Logbook's menu entry; `png` is in the app's `app-icon/` folder. Answers whether
 /// the menu shows it.
-pub fn show_in_menu(dirs: &Dirs, png: &Path) -> bool {
+pub fn show_in_menu(dirs: &Dirs, png: &Path) -> Outside {
     let icon = escape(&png.to_string_lossy());
     let pictures = png.parent().and_then(Path::parent).map(|p| escape(&p.to_string_lossy())).unwrap_or_default();
     let result = if dirs.appimage.is_some() {
@@ -119,23 +121,23 @@ pub fn show_in_menu(dirs: &Dirs, png: &Path) -> bool {
         match dirs.appimage_entry() {
             Some(path) => match read_entry(&path) {
                 Entry::Text(text) => edit_theirs(&path, &text, &icon, &pictures, None),
-                _ => Ok(false),
+                _ => Ok(Outside::Failed),
             },
-            None => Ok(false),
+            None => Ok(Outside::Missing),
         }
     } else {
-        let Some(ours) = dirs.ours() else { return false };
+        let Some(ours) = dirs.ours() else { return Outside::Missing };
         let template = dirs.system().and_then(|p| match read_entry(&p) {
             Entry::Text(t) => Some(t),
             _ => None,
         });
         match read_entry(&ours) {
-            Entry::Unreadable => Ok(false),
+            Entry::Unreadable => Ok(Outside::Failed),
             Entry::Text(text) if !untouched(&text) => {
                 // The person's: one they made, or Logbook's copy they've changed since. One that
                 // hides Logbook from the menu stays as it is.
                 if group_keys(&text).any(|(k, v)| (k == "Hidden" || k == "NoDisplay") && v == "true") {
-                    Ok(false)
+                    Ok(Outside::Missing)
                 } else {
                     let usual = template.as_deref().and_then(|t| group_keys(t).find(|(k, _)| *k == "Icon").map(|(_, v)| v.to_string()));
                     edit_theirs(&ours, &text, &icon, &pictures, usual.as_deref())
@@ -145,9 +147,9 @@ pub fn show_in_menu(dirs: &Dirs, png: &Path) -> bool {
                 Some((template, program)) => {
                     let entry = build_entry(template, &icon, &program);
                     if matches!(&current, Entry::Text(t) if *t == entry) {
-                        Ok(true)
+                        Ok(Outside::Done)
                     } else {
-                        write(&ours, &entry).map(|()| true)
+                        write(&ours, &entry).map(|()| Outside::Done)
                     }
                 }
                 // Not installed from a package (a build run from its folder): no menu entry.
@@ -155,21 +157,21 @@ pub fn show_in_menu(dirs: &Dirs, png: &Path) -> bool {
                     if matches!(current, Entry::Text(_)) {
                         let _ = fs::remove_file(&ours);
                     }
-                    Ok(false)
+                    Ok(Outside::Missing)
                 }
             },
         }
     };
     result.unwrap_or_else(|e| {
         eprintln!("Logbook couldn't change its menu entry: {e}");
-        false
+        Outside::Failed
     })
 }
 
 /// Changes the icon of an entry of someone else's, noting in it the icon it had before Logbook
 /// first changed it (never one of Logbook's own pictures, which go when they're replaced: then
 /// `usual`, or none).
-fn edit_theirs(path: &Path, text: &str, icon: &str, pictures: &str, usual: Option<&str>) -> std::io::Result<bool> {
+fn edit_theirs(path: &Path, text: &str, icon: &str, pictures: &str, usual: Option<&str>) -> std::io::Result<Outside> {
     let current = main_value(text, "Icon");
     let mut entry = set_key(text, "Icon", icon);
     if main_value(text, ORIGINAL).is_none() {
@@ -182,7 +184,7 @@ fn edit_theirs(path: &Path, text: &str, icon: &str, pictures: &str, usual: Optio
     if entry != text {
         write(path, &entry)?;
     }
-    Ok(true)
+    Ok(Outside::Done)
 }
 
 /// Back to the usual icon: Logbook's own entry deleted, as it wrote it, and every entry of
@@ -289,8 +291,8 @@ fn escape(s: &str) -> String {
 
 /// The package's entry with the picture as its icon. Everything else stays (Name, Exec,
 /// StartupWMClass, which matches the window to it, translations, actions). TryExec makes KDE drop
-/// the entry once Logbook is uninstalled, and GNOME does that anyway. Last, the fingerprint of
-/// the rest.
+/// the entry once Logbook is uninstalled, and GNOME does that anyway. The package's own icon is
+/// noted for going back, should the person change the copy. Last, the fingerprint of the rest.
 fn build_entry(template: &str, icon: &str, program: &str) -> String {
     let mut out = String::new();
     let mut main = false;
@@ -301,7 +303,8 @@ fn build_entry(template: &str, icon: &str, program: &str) -> String {
             out.push_str(line);
             out.push('\n');
             if main {
-                out.push_str(&format!("Icon={icon}\nTryExec={}\n", escape(program)));
+                let usual = main_value(template, "Icon").unwrap_or_default();
+                out.push_str(&format!("Icon={icon}\nTryExec={}\n{ORIGINAL}={usual}\n", escape(program)));
             }
             continue;
         }
@@ -425,17 +428,20 @@ mod tests {
     fn writes_its_own_entry_over_the_packages_and_takes_it_away_again() {
         let h = home(true, None);
         let ours = h.dirs.ours().unwrap();
-        assert!(show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Done);
         let entry = read(&ours);
         assert!(entry.starts_with(&format!("[Desktop Entry]\n{MARKER}=")), "{entry}");
-        assert!(entry.contains("\nIcon=/home/me/.config/app/app-icon/1a/512.png\nTryExec=logbook\n"), "{entry}");
+        assert!(
+            entry.contains(&format!("\nIcon=/home/me/.config/app/app-icon/1a/512.png\nTryExec=logbook\n{ORIGINAL}=logbook\n")),
+            "{entry}"
+        );
         assert!(entry.contains("StartupWMClass=logbook\n") && entry.contains("Exec=logbook\n") && entry.contains("Name=Logbook\n"));
-        assert!(!entry.contains("Icon=logbook") && untouched(&entry));
+        assert!(!entry.lines().any(|l| l == "Icon=logbook") && untouched(&entry));
         assert_eq!(icons_in_use(&h.dirs), [picture("1a")]);
         // Again (a launch): the same; a new picture replaces the path.
-        assert!(show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Done);
         assert_eq!(read(&ours), entry);
-        assert!(show_in_menu(&h.dirs, &picture("2b")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("2b")), Outside::Done);
         assert_eq!(read(&ours).lines().filter(|l| l.starts_with("Icon=")).count(), 1);
         assert!(read(&ours).contains(&format!("Icon={}\n", picture("2b").display())));
         forget_in_menu(&h.dirs).unwrap();
@@ -448,12 +454,15 @@ mod tests {
         let h = home(true, None);
         let ours = h.dirs.ours().unwrap();
         show_in_menu(&h.dirs, &picture("1a"));
-        // A menu editor renames it, and keeps the keys it doesn't know.
+        // A menu editor renames it, and keeps the keys it doesn't know; going back straight away
+        // keeps the name and gives the package's icon.
         fs::write(&ours, read(&ours).replace("Name=Logbook", "Name=My diary")).unwrap();
-        assert!(show_in_menu(&h.dirs, &picture("2b")));
+        forget_in_menu(&h.dirs).unwrap();
+        assert!(read(&ours).contains("Name=My diary\n") && read(&ours).contains("\nIcon=logbook\n") && !read(&ours).contains(ORIGINAL));
+        assert!(!icons_in_use(&h.dirs).iter().any(|p| p.starts_with(PICTURES)));
+        assert_eq!(show_in_menu(&h.dirs, &picture("2b")), Outside::Done);
         let entry = read(&ours);
         assert!(entry.contains("Name=My diary\n") && entry.contains(&format!("Icon={}\n", picture("2b").display())));
-        // Its icon before was one of Logbook's pictures, so going back gives the package's.
         assert!(entry.contains(&format!("{ORIGINAL}=logbook\n")), "{entry}");
         forget_in_menu(&h.dirs).unwrap();
         let entry = read(&ours);
@@ -461,7 +470,7 @@ mod tests {
         // Hidden from the menu by the person: left as it is.
         fs::write(&ours, format!("{entry}NoDisplay=true\n")).unwrap();
         let hidden = read(&ours);
-        assert!(!show_in_menu(&h.dirs, &picture("3c")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("3c")), Outside::Missing);
         assert_eq!(read(&ours), hidden);
     }
 
@@ -471,7 +480,7 @@ mod tests {
         let ours = h.dirs.ours().unwrap();
         let theirs = "[Desktop Entry]\nName=My journal\nExec=logbook --profile work\nIcon=accessories-text-editor\n";
         fs::write(&ours, theirs).unwrap();
-        assert!(show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Done);
         assert_eq!(
             read(&ours),
             format!(
@@ -487,21 +496,21 @@ mod tests {
         assert_eq!(read(&ours), theirs);
         // One that isn't text Logbook can read is left alone.
         fs::write(&ours, b"[Desktop Entry]\nComment=Caf\xe9\nExec=logbook\n").unwrap();
-        assert!(!show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Failed);
         assert_eq!(fs::read(&ours).unwrap(), b"[Desktop Entry]\nComment=Caf\xe9\nExec=logbook\n");
     }
 
     #[test]
     fn has_no_menu_entry_to_change_outside_a_package() {
         let h = home(false, None);
-        assert!(!show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Missing);
         assert!(!h.dirs.ours().unwrap().exists());
     }
 
     #[test]
     fn changes_an_appimages_entry_only_when_a_menu_tool_made_one() {
         let h = home(false, Some("/home/me/Apps/Logbook 0.9.AppImage"));
-        assert!(!show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Missing);
         let apps = h.dirs.applications().unwrap();
         // Another AppImage's entry, and Logbook's (AppImageLauncher's way).
         let other = "[Desktop Entry]\nName=Other\nExec=/home/me/Apps/Other.AppImage\nIcon=appimagekit_0123_other\n";
@@ -509,7 +518,7 @@ mod tests {
         let path = apps.join("appimagekit_4567-Logbook.desktop");
         let entry = "[Desktop Entry]\nName=Logbook\nExec=\"/home/me/Apps/Logbook 0.9.AppImage\" %U\nTryExec=/home/me/Apps/Logbook 0.9.AppImage\nIcon=appimagekit_4567_logbook\n\n[Desktop Action New]\nIcon=new\n";
         fs::write(&path, entry).unwrap();
-        assert!(show_in_menu(&h.dirs, &picture("1a")));
+        assert_eq!(show_in_menu(&h.dirs, &picture("1a")), Outside::Done);
         let changed = read(&path);
         assert!(
             changed.contains(&format!("Icon={}\n", picture("1a").display()))

@@ -10,12 +10,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
+
+use super::Outside;
 use windows::core::{Interface, Result, GUID, HSTRING};
 use windows::Win32::Foundation::{HWND, LPARAM, RPC_E_CHANGED_MODE, WPARAM};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
     COINIT_DISABLE_OLE1DDE, STGM_READ, STGM_READWRITE,
 };
+use windows::Win32::System::Environment::ExpandEnvironmentStringsW;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, FOLDERID_UserPinned, IShellLinkW, SHChangeNotify, SHGetKnownFolderPath, ShellLink,
@@ -50,14 +53,16 @@ pub fn forget_in_window(app: &AppHandle) -> std::result::Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Points Logbook's shortcuts at the `.ico`. True when it found some and changed them all.
-pub fn show_on_shortcuts(ico: &Path) -> bool {
-    let Ok(exe) = std::env::current_exe() else { return false };
+/// Points Logbook's shortcuts at the `.ico`.
+pub fn show_on_shortcuts(ico: &Path) -> Outside {
+    let Ok(exe) = std::env::current_exe() else { return Outside::Failed };
     match set_shortcut_icons(&exe, ico, &candidate_shortcuts()) {
-        Ok(Done { found, failed }) => found > 0 && failed == 0,
+        Ok(Done { found: 0, .. }) => Outside::Missing,
+        Ok(Done { failed: 0, .. }) => Outside::Done,
+        Ok(_) => Outside::Failed,
         Err(e) => {
             eprintln!("Logbook couldn't change its shortcuts: {e}");
-            false
+            Outside::Failed
         }
     }
 }
@@ -99,7 +104,7 @@ fn read_link(lnk: &Path) -> Result<LinkInfo> {
         let mut icon = vec![0u16; 32768];
         let mut index = 0i32;
         link.GetIconLocation(&mut icon, &mut index)?;
-        Ok(LinkInfo { target: wide_path(&target), icon: wide_path(&icon), index })
+        Ok(LinkInfo { target: wide_path(&target), icon: expanded(wide_path(&icon)), index })
     }
 }
 
@@ -167,7 +172,25 @@ fn candidate_shortcuts() -> Vec<PathBuf> {
     out
 }
 
+/// An icon path the shell may hand back with %APPDATA% and the like still in it.
+fn expanded(path: PathBuf) -> PathBuf {
+    if !path.to_string_lossy().contains('%') {
+        return path;
+    }
+    let mut out = vec![0u16; 32768];
+    let len = unsafe { ExpandEnvironmentStringsW(&HSTRING::from(path.as_path()), Some(&mut out)) } as usize;
+    if len == 0 || len > out.len() {
+        return path;
+    }
+    wide_path(&out)
+}
+
 fn same_file(a: &Path, b: &Path) -> bool {
+    // Names first: finding out what a shortcut to an unplugged network drive is can take a minute.
+    let name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_lowercase());
+    if name(a) != name(b) {
+        return false;
+    }
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
         (Ok(a), Ok(b)) => a == b,
         _ => a.as_os_str().to_string_lossy().eq_ignore_ascii_case(&b.as_os_str().to_string_lossy()),

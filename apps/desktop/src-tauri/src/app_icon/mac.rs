@@ -12,6 +12,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::AppHandle;
 
+use super::Outside;
+
 fn image(png: &[u8]) -> Option<Retained<NSImage>> {
     NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(png))
 }
@@ -49,10 +51,10 @@ pub fn bundle_has_icon() -> bool {
 /// NSWorkspace's setIcon: any thread, but one at a time.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
-/// The picture on Logbook.app, or None to take it off. False when macOS doesn't allow it (a copy
+/// The picture on Logbook.app, or None to take it off. Failed when macOS doesn't allow it (a copy
 /// another account installed, or one run straight from the disk image).
-pub fn show_on_bundle(png: Option<&[u8]>) -> bool {
-    let Some(bundle) = bundle() else { return false };
+pub fn show_on_bundle(png: Option<&[u8]>) -> Outside {
+    let Some(bundle) = bundle() else { return Outside::Missing };
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let path = NSString::from_str(&bundle.to_string_lossy());
     let workspace = NSWorkspace::sharedWorkspace();
@@ -62,8 +64,9 @@ pub fn show_on_bundle(png: Option<&[u8]>) -> bool {
         }
         None => workspace.setIcon_forFile_options(None, &path, NSWorkspaceIconCreationOptions(0)),
     };
-    if done {
-        workspace.noteFileSystemChanged_(&path);
+    if !done {
+        return Outside::Failed;
     }
-    done
+    workspace.noteFileSystemChanged_(&path);
+    Outside::Done
 }

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import { Dialog } from '../components/common.tsx';
 import { canMove, CENTRED, cropRect, maxZoom, MIN_CROP, panBy, placeText, zoomTo, type IconCrop } from '../lib/icon-crop.ts';
-import { appIconStatus, resetAppIcon, setAppIcon, type AppIconStatus } from './bridge.ts';
+import { appIconStatus, resetAppIcon, setAppIcon, type AppIconStatus, type IconOutside } from './bridge.ts';
 import { drawCrop, drawSmall, loadPicture, PictureError, renderIcons, type IconShape, type Picture } from './icon-images.ts';
 
 /** Where the icon shows, on each system (app_icon.rs). */
@@ -11,20 +11,23 @@ const WHERE: Record<AppIconStatus['os'], string> = {
   linux: 'It shows on Logbook’s window, in the dock and in the app menu.',
 };
 
-/** What changed, when it reached everywhere and when only the window or Dock. */
-const DONE: Record<AppIconStatus['os'], [string, string]> = {
-  windows: [
-    'Logbook’s icon is now your picture. If the taskbar still shows the old one, it changes when you next sign in to Windows.',
-    'Logbook’s window shows your picture, but its shortcuts on the Start menu, the desktop or the taskbar couldn’t all be changed, so they may keep the usual icon.',
-  ],
-  macos: [
-    'Logbook’s icon is now your picture. The Dock and Finder can take a moment to catch up.',
-    'The Dock shows your picture while Logbook is open. macOS didn’t let Logbook change its icon in Applications, so it keeps the usual icon there.',
-  ],
-  linux: [
-    'Logbook’s icon is now your picture. The dock and app menu catch up within a few seconds; the dock may show the old one for this window until you restart Logbook.',
-    'Logbook’s window shows your picture, but its entry in the app menu couldn’t be changed, so the dock and app menu keep the usual icon.',
-  ],
+/** What changed: everywhere, or only the window or Dock, as there was nothing more to change or it couldn't be. */
+const DONE: Record<AppIconStatus['os'], Record<IconOutside, string>> = {
+  windows: {
+    done: 'Logbook’s icon is now your picture. If the taskbar still shows the old one, it changes when you next sign in to Windows.',
+    missing: 'Logbook’s window and taskbar button show your picture. This copy of Logbook has no shortcuts on the Start menu or desktop to change.',
+    failed: 'Logbook’s window shows your picture, but some of its shortcuts couldn’t be changed, so they keep the usual icon.',
+  },
+  macos: {
+    done: 'Logbook’s icon is now your picture. The Dock and Finder can take a moment to catch up.',
+    missing: 'The Dock shows your picture while Logbook is open. This copy isn’t running from Logbook in Applications, so there’s no app icon to change.',
+    failed: 'The Dock shows your picture while Logbook is open. macOS didn’t let Logbook change its icon in Applications, so it keeps the usual icon there.',
+  },
+  linux: {
+    done: 'Logbook’s icon is now your picture. The dock and app menu catch up within a few seconds; the dock may show the old one for this window until you restart Logbook.',
+    missing: 'Logbook’s window shows your picture. Logbook isn’t in your app menu, so there’s no menu icon to change.',
+    failed: 'Logbook’s window shows your picture, but its entry in the app menu couldn’t be changed, so the dock and app menu keep the usual icon.',
+  },
 };
 
 const SHAPES: readonly [IconShape, string][] = [
@@ -42,6 +45,7 @@ export function AppIconPanel() {
   /** In the crop: why the icon couldn't be made, to try again. */
   const [cropProblem, setCropProblem] = useState('');
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const chooseButton = useRef<HTMLButtonElement>(null);
   /** The crop was closed (by a second Escape) while the icon was being made. */
@@ -52,7 +56,7 @@ export function AppIconPanel() {
   }, []);
   if (!status) return null;
 
-  /** Back to the button that started it: the crop and the buttons it disabled are gone. */
+  /** Back to the button that started it, once it's no longer disabled: the crop is gone. */
   const refocus = () => requestAnimationFrame(() => chooseButton.current?.focus());
 
   const choose = async (file: File | undefined) => {
@@ -61,6 +65,7 @@ export function AppIconPanel() {
     setNote('');
     setCropProblem('');
     setBusy(true);
+    setOpening(true);
     try {
       dismissed.current = false;
       setPicture(await loadPicture(file));
@@ -69,13 +74,13 @@ export function AppIconPanel() {
       refocus();
     } finally {
       setBusy(false);
+      setOpening(false);
     }
   };
 
   const closeCrop = () => {
     picture?.release();
     setPicture(null);
-    refocus();
   };
 
   /** Made and sent here, not in the crop, so closing the crop can't leave it half done. */
@@ -83,19 +88,23 @@ export function AppIconPanel() {
     if (!picture || busy) return;
     setBusy(true);
     setCropProblem('');
+    let closed = false;
     try {
-      const { everywhere } = await setAppIcon(await renderIcons(picture, crop, shape, status.sizes));
-      setNote(DONE[status.os][everywhere ? 0 : 1]);
+      const { outside } = await setAppIcon(await renderIcons(picture, crop, shape, status.sizes));
+      setNote(DONE[status.os][outside]);
       closeCrop();
+      closed = true;
       setStatus(await appIconStatus());
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (dismissed.current) {
+      if (dismissed.current || closed) {
         setProblem(message);
-        closeCrop();
+        if (!closed) closeCrop();
+        closed = true;
       } else setCropProblem(message);
     } finally {
       setBusy(false);
+      if (closed) refocus();
     }
   };
 
@@ -151,7 +160,7 @@ export function AppIconPanel() {
         </p>
       )}
       <p className="hint" role="status">
-        {busy && !picture ? 'Opening the picture…' : note}
+        {opening ? 'Opening the picture…' : note || (busy && !picture ? 'Working on it…' : '')}
       </p>
       <p className="hint">Your picture is kept on this computer, outside your journal: your passcode doesn’t lock it, and backups don’t include it.</p>
       {picture && (
@@ -162,7 +171,10 @@ export function AppIconPanel() {
           onCancel={() => {
             // Escape twice can close it while the icon is being made: that finishes, and says so here.
             if (busy) dismissed.current = true;
-            else closeCrop();
+            else {
+              closeCrop();
+              refocus();
+            }
           }}
           onUse={(crop, shape) => void use(crop, shape)}
         />
