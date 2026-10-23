@@ -6,13 +6,32 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub journal_folder: Option<PathBuf>,
+    /// The person's picture as the app's icon: its folder in `app-icon/` (app_icon.rs, D101).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_icon: Option<String>,
+    /// macOS: whether the picture went onto Logbook in Applications last time it was tried.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub app_icon_on_bundle: bool,
+    /// Linux: a menu entry of someone else's whose icon Logbook changed, and what it was before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_icon_entry: Option<EntryIcon>,
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EntryIcon {
+    pub path: PathBuf,
+    pub icon: String,
+}
+
+/// One change to the config file at a time: commands run side by side.
+static CONFIG: Mutex<()> = Mutex::new(());
 
 pub fn load(config_file: &Path) -> Config {
     fs::read(config_file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
@@ -21,6 +40,14 @@ pub fn load(config_file: &Path) -> Config {
 pub fn save(config_file: &Path, config: &Config) -> Result<(), String> {
     let data = serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?;
     crate::journal_fs::write_atomic(config_file, &data).map_err(|e| format!("Couldn't save the app's settings: {e}"))
+}
+
+/// Reads the config, changes it and saves it, with no other change in between.
+pub fn update(config_file: &Path, change: impl FnOnce(&mut Config)) -> Result<(), String> {
+    let _one_at_a_time = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+    let mut config = load(config_file);
+    change(&mut config);
+    save(config_file, &config)
 }
 
 /// The folder a journal goes in when someone picks `chosen`: the folder itself when it already
@@ -93,7 +120,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("config/config.json");
         assert!(load(&file).journal_folder.is_none());
-        save(&file, &Config { journal_folder: Some(dir.path().join("Logbook")) }).unwrap();
+        save(&file, &Config { journal_folder: Some(dir.path().join("Logbook")), ..Config::default() }).unwrap();
         assert_eq!(load(&file).journal_folder, Some(dir.path().join("Logbook")));
+        // A change keeps what it doesn't touch; an empty field isn't written.
+        update(&file, |c| c.app_icon = Some("1a2b3c4d".into())).unwrap();
+        let config = load(&file);
+        assert_eq!((config.journal_folder, config.app_icon.as_deref()), (Some(dir.path().join("Logbook")), Some("1a2b3c4d")));
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(text.contains("\"appIcon\"") && !text.contains("appIconEntry") && !text.contains("appIconOnBundle"));
     }
 }

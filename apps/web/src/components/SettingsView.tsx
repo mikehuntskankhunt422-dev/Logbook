@@ -22,6 +22,8 @@ const JournalFolderPanel =
     : import.meta.env.VITE_PLATFORM === 'android'
       ? lazy(() => import('../android/PhoneStoragePanel.tsx').then((m) => ({ default: m.PhoneStoragePanel })))
       : null;
+/** The desktop app's icon from the person's own picture (D101). */
+const AppIconPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/AppIconPanel.tsx').then((m) => ({ default: m.AppIconPanel }))) : null;
 /** The desktop app's automatic updates (D88), or the Android app's update check (D90). */
 const UpdatesPanel =
   import.meta.env.VITE_PLATFORM === 'desktop'
@@ -35,6 +37,11 @@ export function SettingsView() {
     <>
       <h1>Settings</h1>
       <AppearancePanel />
+      {AppIconPanel && (
+        <Suspense fallback={null}>
+          <AppIconPanel />
+        </Suspense>
+      )}
       <BackupPanel />
       <ExportPanel />
       <PasscodePanel />

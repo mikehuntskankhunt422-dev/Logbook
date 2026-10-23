@@ -4,6 +4,8 @@
 
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(desktop)]
+mod app_icon;
 mod clock;
 mod folder;
 mod journal_fs;
@@ -114,9 +116,7 @@ async fn pick_folder(app: AppHandle) -> Option<String> {
 async fn use_journal_folder(path: String, state: State<'_, AppState>) -> Result<String, String> {
     let folder = folder::journal_folder_for(&PathBuf::from(path))?;
     folder::prepare(&folder)?;
-    let mut config = folder::load(&state.config_file);
-    config.journal_folder = Some(folder.clone());
-    folder::save(&state.config_file, &config)?;
+    folder::update(&state.config_file, |c| c.journal_folder = Some(folder.clone()))?;
     *state.root.lock().map_err(|_| "busy".to_string())? = Some(folder.clone());
     Ok(folder.display().to_string())
 }
@@ -556,6 +556,9 @@ pub fn run() {
         updates::update_apply,
         clock::clock_schedule,
         clock::clock_permission,
+        app_icon::app_icon_status,
+        app_icon::app_icon_set,
+        app_icon::app_icon_reset,
     ];
     #[cfg(mobile)]
     let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
@@ -645,8 +648,16 @@ pub fn run() {
             }
         })
         .invoke_handler(handler)
-        .run(tauri::generate_context!())
-        .expect("Logbook couldn't start");
+        .build(tauri::generate_context!())
+        .expect("Logbook couldn't start")
+        .run(|_app, _event| {
+            // Once the window is up (after Tauri's own icon in development, on macOS): the
+            // person's picture as the app's icon, if they chose one (D101).
+            #[cfg(desktop)]
+            if let tauri::RunEvent::Ready = _event {
+                app_icon::at_launch(_app);
+            }
+        });
 }
 
 #[cfg(test)]
