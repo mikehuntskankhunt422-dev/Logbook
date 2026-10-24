@@ -63,11 +63,12 @@ pub fn journal_folder_for(chosen: &Path) -> Result<PathBuf, String> {
 }
 
 /// Files the system or a sync tool leaves in folders (as FolderStore's IGNORED list).
-fn is_clutter(name: &str) -> bool {
+pub(crate) fn is_clutter(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     matches!(lower.as_str(), ".ds_store" | "desktop.ini" | "thumbs.db" | "icon\r" | ".localized" | ".logbook-write-test")
         || lower.starts_with(".dropbox")
         || lower.starts_with("._")
+        || lower.starts_with("~$")
 }
 
 /// Creates the folder and checks Logbook can write in it.

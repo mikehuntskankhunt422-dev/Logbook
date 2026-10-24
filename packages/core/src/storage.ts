@@ -53,6 +53,24 @@ export interface RecordStore {
   whenIdle?(): Promise<void>;
   /** Files that exist but couldn't be read when last tried (a sync still in progress, damage). */
   unreadableFiles?(): string[];
+  /**
+   * Copies kept beside records for a person to sort out (D102): a sync tool's conflict copies, and
+   * versions Logbook kept when two computers saved the same entry. The desktop folder only.
+   */
+  conflicts?(): CopyFile[];
+  /** A copy's record as stored (sealed with a passcode); undefined when it's gone or unreadable. */
+  readCopy?(path: string): Promise<unknown>;
+  /** Deletes a copy once it's been sorted out. */
+  removeCopy?(path: string): Promise<void>;
+  /** Keeps an entry's record as a copy beside it; answers the copy's path. */
+  keepCopy?(record: StoreRecords['entries']): Promise<string>;
+}
+
+export interface CopyFile {
+  path: string;
+  /** The record the copy probably belongs to, if its name still holds a known ID. */
+  id: string | null;
+  kind: 'entry' | 'media';
 }
 
 export function isSealed(r: unknown): r is SealedRecord {

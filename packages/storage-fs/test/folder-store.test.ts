@@ -502,3 +502,126 @@ describe('assertRelativePath', () => {
     expect(() => assertRelativePath('entries/2026/2026-10-07--a--b.json')).not.toThrow();
   });
 });
+
+describe('copies to sort out (D102)', () => {
+  /** A journal with one entry, and a sync tool's copy of it with another title and text. */
+  async function withCopy() {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Desk' }));
+    const path = `entries/2026/2026-10-07--desk--${e.id} (conflicted copy 2026-10-10).json`;
+    await writeFile(join(root, path), JSON.stringify({ ...e, title: 'Laptop', tags: ['laptop'] }));
+    const j2 = await Journal.open(await open(root));
+    return { root, j: j2, e, path };
+  }
+
+  it('shows a copy beside the entry it belongs to', async () => {
+    const { j, e, path } = await withCopy();
+    const [c] = await j.entryCopies();
+    expect(c).toMatchObject({ path, copy: { id: e.id, title: 'Laptop' }, current: { id: e.id, title: 'Desk' } });
+  });
+
+  it('keeps the journal’s version: the copy goes to Recently deleted, as an entry of its own', async () => {
+    const { root, j, e, path } = await withCopy();
+    await j.settleCopy(path, 'ours');
+    expect((await j.listEntries()).map((x) => x.title)).toEqual(['Desk']);
+    const trash = await j.listTrash();
+    expect(trash.map((x) => [x.title, x.id === e.id])).toEqual([['Laptop', false]]);
+    expect(await files(root)).not.toContain(path);
+    expect(await j.entryCopies()).toEqual([]);
+  });
+
+  it('uses the copy: the journal’s version goes to Recently deleted', async () => {
+    const { root, j, e, path } = await withCopy();
+    await j.settleCopy(path, 'theirs');
+    const [live] = await j.listEntries();
+    expect([live!.id, live!.title, live!.tags]).toEqual([e.id, 'Laptop', ['laptop']]);
+    expect((await j.listTrash()).map((x) => x.title)).toEqual(['Desk']);
+    expect((await files(root)).filter((f) => f.includes(e.id))).toEqual([`entries/2026/2026-10-07--laptop--${e.id}.json`]);
+  });
+
+  it('keeps both, the copy as an entry of its own', async () => {
+    const { j, path } = await withCopy();
+    await j.settleCopy(path, 'both');
+    expect((await j.listEntries()).map((x) => x.title).sort()).toEqual(['Desk', 'Laptop']);
+    expect(await j.listTrash()).toEqual([]);
+  });
+
+  it('sorts out a copy kept beside its entry under its own name (two computers saved the same version)', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Base' }));
+    await writeFile(join(root, `entries/2026/2026-10-07--laptop-edit--${e.id}.json`), JSON.stringify({ ...e, title: 'Laptop edit' }));
+    const j2 = await Journal.open(await open(root));
+    await j2.listEntries();
+    const [c] = await j2.entryCopies();
+    expect(c!.copy!.title).not.toBe(c!.current!.title);
+    // Saving the copy's version lands on its file name, which moves it aside first: still found.
+    await j2.settleCopy(c!.path, 'theirs');
+    expect(await j2.entryCopies()).toEqual([]);
+    expect((await j2.listEntries()).map((x) => x.title)).toEqual([c!.copy!.title]);
+    expect((await files(root)).filter((f) => f.includes('(conflict '))).toEqual([]);
+  });
+
+  it('keeps the version someone was writing when another computer saved the same entry first', async () => {
+    const root = await folder();
+    const desktop = await Journal.open(await open(root));
+    const e = await desktop.saveEntry(desktop.newEntry({ date: '2026-10-07', title: 'Trip' }));
+    const laptop = await Journal.open(await open(root));
+    await laptop.saveEntry({ ...(await laptop.getEntry(e.id))!, title: 'Trip to Rome' });
+    const typed = { ...e, tags: ['typed-on-desktop'] };
+    await expect(desktop.saveEntry(typed, { expectedRev: e.rev })).rejects.toThrow(ConflictError);
+    const kept = await desktop.keepVersion(typed);
+    expect(kept).toEqual({ copy: expect.stringContaining('(conflict ') });
+    const [c] = await desktop.entryCopies();
+    expect([c!.copy!.tags, c!.current!.title]).toEqual([['typed-on-desktop'], 'Trip to Rome']);
+    // Another computer sees it too.
+    expect((await (await Journal.open(await open(root))).entryCopies()).map((x) => x.copy!.tags)).toEqual([['typed-on-desktop']]);
+  });
+
+  it('keeps a version sealed with the passcode, and opens it to compare', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.enableEncryption('correct horse', FAST_KDF);
+    const e = await j.saveEntry(j.newEntry({ title: 'Secret' }));
+    const { copy } = (await j.keepVersion({ ...e, title: 'Secret, rewritten' })) as { copy: string };
+    expect(copy).toMatch(new RegExp(`^entries/${e.id} \\(conflict [0-9a-z]+\\)\\.json\\.enc$`));
+    expect(await readFile(join(root, copy), 'utf8')).not.toContain('rewritten');
+    expect((await j.entryCopies()).map((c) => c.copy?.title)).toEqual(['Secret, rewritten']);
+  });
+
+  it('keeps a version as an entry of its own where the store keeps no copies (the browser)', async () => {
+    const j = await Journal.open(new MemoryStore());
+    const e = await j.saveEntry(j.newEntry({ title: 'Plan' }));
+    const kept = await j.keepVersion({ ...e, tags: ['mine'] });
+    expect('entry' in kept && [kept.entry.title, kept.entry.tags, kept.entry.id !== e.id]).toEqual(['Plan (your other version)', ['mine'], true]);
+  });
+
+  it('can’t sort out a copy it can’t read, but can delete it', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Desk' }));
+    const path = `entries/2026/2026-10-07--desk--${e.id}-LAPTOP.json`;
+    await writeFile(join(root, path), '{"id":');
+    const j2 = await Journal.open(await open(root));
+    expect(await j2.entryCopies()).toMatchObject([{ path, copy: null, current: { id: e.id } }]);
+    await expect(j2.settleCopy(path, 'both')).rejects.toThrow(/can't read/);
+    await j2.deleteCopy(path);
+    expect(await files(root)).not.toContain(path);
+  });
+
+  it('reads the folder again when another computer changed it, settings too', async () => {
+    const root = await folder();
+    const desktop = await Journal.open(await open(root));
+    const laptop = await Journal.open(await open(root));
+    const seen: string[] = [];
+    desktop.subscribe((ev) => seen.push(ev));
+    await laptop.saveEntry(laptop.newEntry({ title: 'From the laptop' }));
+    await laptop.updateSettings({ theme: 'dark' });
+    expect(await desktop.listEntries()).toEqual([]);
+    await desktop.refresh();
+    expect((await desktop.listEntries()).map((x) => x.title)).toEqual(['From the laptop']);
+    expect(desktop.getSettings().theme).toBe('dark');
+    expect(seen).toEqual(['settings', 'entries', 'media']);
+  });
+});

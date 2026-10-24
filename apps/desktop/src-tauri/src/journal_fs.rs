@@ -24,6 +24,24 @@ const ICLOUD_WAIT: Duration = Duration::from_secs(30);
 const ICLOUD_QUIET: Duration = Duration::from_secs(120);
 static ICLOUD_TIMEOUTS: std::sync::Mutex<Vec<(PathBuf, Instant)>> = std::sync::Mutex::new(Vec::new());
 
+/// Files Logbook itself just wrote, renamed or deleted, by relative path: the folder watcher
+/// (watch.rs) leaves them out, so a save isn't taken for another computer's change.
+static OWN_CHANGES: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
+/// Long enough for the system to report the change.
+const OWN_CHANGE_FOR: Duration = Duration::from_secs(5);
+
+fn note_own_change(rel: &str) {
+    let mut own = OWN_CHANGES.lock().unwrap_or_else(|e| e.into_inner());
+    own.retain(|(_, at)| at.elapsed() < OWN_CHANGE_FOR);
+    own.push((rel.to_string(), Instant::now()));
+}
+
+/// Whether Logbook changed this file in the last few seconds.
+#[cfg_attr(mobile, allow(dead_code))]
+pub fn changed_by_us(rel: &str) -> bool {
+    OWN_CHANGES.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(path, at)| path == rel && at.elapsed() < OWN_CHANGE_FOR)
+}
+
 /// Joins a checked relative path (`/`-separated) onto the journal folder.
 pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let ok = !rel.is_empty()
@@ -133,6 +151,7 @@ fn icloud_download(path: &Path) -> bool {
 /// target, so a crash or a sync tool never sees half a file.
 pub fn write(root: &Path, rel: &str, data: &[u8]) -> Result<(), String> {
     let target = resolve(root, rel)?;
+    note_own_change(rel);
     write_atomic(&target, data).map_err(|e| describe(rel, e))
 }
 
@@ -205,6 +224,7 @@ impl Pieces {
         let target = resolve(root, rel)?;
         let mut writes = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if part == Part::First {
+            note_own_change(rel);
             if let Some(old) = writes.remove(id) {
                 old.discard();
             }
@@ -223,6 +243,7 @@ impl Pieces {
             return Err(describe(rel, e));
         }
         if part == Part::Last {
+            note_own_change(rel);
             let piece = writes.remove(id).expect("found above");
             drop(piece.file);
             if let Err(e) = fs::rename(&piece.tmp, &piece.target) {
@@ -261,6 +282,8 @@ pub fn remove_unfinished_writes(root: &Path) -> usize {
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
     let (a, b) = (resolve(root, from)?, resolve(root, to)?);
     materialize(&a, &icloud_download, icloud_wait()).map_err(|e| describe(from, e))?;
+    note_own_change(from);
+    note_own_change(to);
     if let Some(dir) = b.parent() {
         fs::create_dir_all(dir).map_err(|e| describe(to, e))?;
     }
@@ -270,6 +293,7 @@ pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
 /// Deletes a file, or its iCloud placeholder; a missing file is fine.
 pub fn remove(root: &Path, rel: &str) -> Result<(), String> {
     let path = resolve(root, rel)?;
+    note_own_change(rel);
     let target = match icloud_placeholder(&path) {
         Some(placeholder) if !path.exists() && placeholder.exists() => placeholder,
         _ => path,

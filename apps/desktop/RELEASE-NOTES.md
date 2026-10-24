@@ -1,3 +1,11 @@
+**Changes from your other computers.** If your journal folder is in Dropbox, OneDrive, iCloud Drive or another sync service, what you write on another computer now shows up as soon as it arrives, without restarting Logbook, even in an entry you have open (as long as you haven't started changing it).
+
+**Copies to sort out.** When two computers change the same entry before the sync service has caught up, it keeps both, the second as a copy. Logbook now shows a banner, and **Sort them out** puts the two versions side by side, with their dates, length and words: keep the one in your journal, use the copy, or keep both as separate entries. Whatever you don't keep goes to **Recently deleted** for 30 days. Files Logbook can't read are listed there too.
+
+**Your writing is kept if another computer saves first.** If you were typing in an entry while another computer saved a change to it, Logbook used to show the other version and lose what you'd typed. Now it keeps yours as a copy to compare and tells you where it is.
+
+What came in 0.8.1:
+
 **Your own app icon.** On a computer, **Settings → App icon** turns a picture of your own into Logbook's icon. Move and zoom the square to choose what goes in, pick rounded, square or round corners, and Logbook uses it on its window, the taskbar and its shortcuts on Windows, in the Dock and Applications on a Mac, and in the dock and app menu on Linux. **Use the usual icon** puts Logbook's own back. Your picture stays on that computer, outside your journal.
 
 What came in 0.8.0:

@@ -56,6 +56,10 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   latest.current = entry;
   /** The save in progress, so closing the app can wait for it. */
   const saving = useRef<Promise<void>>(Promise.resolve());
+  /** A save under way: its own revision isn't news from elsewhere. */
+  const inFlight = useRef(false);
+  /** Bumped when another version replaces what's shown, so the editor starts again from it. */
+  const [version, setVersion] = useState(0);
 
   // Load an existing entry, or start a new in-memory draft that is saved on first change.
   useEffect(() => {
@@ -82,6 +86,24 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     };
   }, [journal, entryId, newDate, toast]);
 
+  // Changed on another computer (D102) while open and not being typed in: show that version.
+  useEffect(() => {
+    if (!entryId) return;
+    return journal.subscribe((event) => {
+      if (event !== 'entries' || dirty.current || inFlight.current || savedRev.current === null) return;
+      void journal
+        .getEntry(entryId)
+        .then((e) => {
+          if (!e || dirty.current || inFlight.current || savedRev.current === null || e.rev <= savedRev.current) return;
+          savedRev.current = e.rev;
+          setEntry(e);
+          setVersion((v) => v + 1);
+          toast('This entry was changed on another computer, so it now shows that version.');
+        })
+        .catch(() => {});
+    });
+  }, [journal, entryId, toast]);
+
   const save = useCallback(() => {
     const current = latest.current;
     if (!current || !dirty.current) return saving.current;
@@ -96,6 +118,7 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     setSaveState('saving');
     const isFirstSave = savedRev.current === null;
     const datesBefore = entries.map((e) => e.date);
+    inFlight.current = true;
     try {
       const saved = await journal.saveEntry(current, savedRev.current === null ? {} : { expectedRev: savedRev.current });
       savedRev.current = saved.rev;
@@ -110,15 +133,36 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
       }
     } catch (err) {
       if (err instanceof ConflictError) {
-        toast('This entry changed in another window, so I loaded the latest version.');
+        // Saved first somewhere else: show that version, and keep what was typed here to compare
+        // rather than dropping it (D102).
+        const mine = latest.current ?? current;
+        const before = savedRev.current;
         savedRev.current = err.current.rev;
+        dirty.current = false;
         setEntry(err.current);
+        setVersion((v) => v + 1);
         setSaveState('idle');
+        try {
+          const kept = await journal.keepVersion(mine);
+          if ('copy' in kept) toast('This entry was changed on another computer, so it now shows that version. Yours is kept to compare.', { label: 'Compare', run: () => navigate({ name: 'copies' }) }, 12_000);
+          else toast('This entry was changed in another window, so it now shows that version. Yours is kept as an entry of its own.', { label: 'Open it', run: () => navigate({ name: 'entry', id: kept.entry.id }) }, 12_000);
+        } catch (keepErr) {
+          // Couldn't keep it either: put it back on screen, unsaved, rather than lose it; the next
+          // save meets the other version again and tries again.
+          savedRev.current = before;
+          dirty.current = true;
+          setEntry(mine);
+          setVersion((v) => v + 1);
+          setSaveState('error');
+          toast(`Couldn't save: ${(keepErr as Error).message}`);
+        }
       } else {
         dirty.current = true;
         setSaveState('error');
         toast(`Couldn't save: ${(err as Error).message}`);
       }
+    } finally {
+      inFlight.current = false;
     }
   }
 
@@ -171,7 +215,7 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   }, [save]);
 
   if (!entry) return <p className="muted">Loading…</p>;
-  return <EditorBody entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} />;
+  return <EditorBody key={version} entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────

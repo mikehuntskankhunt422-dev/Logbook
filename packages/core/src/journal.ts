@@ -46,6 +46,21 @@ export interface LoadIssue {
   problem: string;
 }
 
+/** A copy of an entry to sort out (D102), beside the version in the journal. */
+export interface EntryCopy {
+  path: string;
+  /** The copy; null when Logbook can't read it (not finished syncing, sealed with another key). */
+  copy: Entry | null;
+  /** The entry it's a copy of, when that's still in the journal (the trash included). */
+  current: Entry | undefined;
+}
+
+/**
+ * What to do with a copy: keep the journal's version, use the copy instead, or keep both. Nothing
+ * is lost: the version not kept goes to Recently deleted, as an entry of its own.
+ */
+export type CopyChoice = 'ours' | 'theirs' | 'both';
+
 /**
  * The one place that reads and writes journal data. UI code talks to this, never to a RecordStore.
  * Handles schema validation, revisions, soft delete, media garbage collection and passcode encryption.
@@ -587,6 +602,95 @@ export class Journal {
   notifyImported(): void {
     this.emit('entries');
     this.emit('media');
+  }
+
+  // ── a folder other computers change (D102) ─────────────────────────────────────────────────────
+
+  /** Reads the store again (another computer or a sync tool changed the folder) and tells every view. */
+  async refresh(): Promise<void> {
+    await this.store.refresh?.();
+    try {
+      const parsed = settingsSchema.safeParse((await this.store.getKey('settings')) ?? {});
+      if (parsed.success && JSON.stringify(parsed.data) !== JSON.stringify(this.settings)) {
+        this.settings = parsed.data;
+        this.emit('settings');
+      }
+    } catch {
+      // logbook.json mid-sync: the next change brings it.
+    }
+    this.emit('entries');
+    this.emit('media');
+  }
+
+  /** Copies of entries to sort out, each beside its entry in the journal. */
+  async entryCopies(): Promise<EntryCopy[]> {
+    this.assertUnlocked();
+    const out: EntryCopy[] = [];
+    for (const file of this.store.conflicts?.() ?? []) {
+      if (file.kind !== 'entry') continue;
+      const copy = await this.readCopy(file.path);
+      const id = copy?.id ?? file.id;
+      out.push({ path: file.path, copy, current: id ? await this.getEntry(id).catch(() => undefined) : undefined });
+    }
+    return out;
+  }
+
+  private async readCopy(path: string): Promise<Entry | null> {
+    const raw = await this.store.readCopy?.(path);
+    if (raw === undefined) return null;
+    try {
+      const parsed = entrySchema.safeParse(isSealed(raw) ? await this.cipher!.openJson<unknown>('entry', raw) : raw);
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null; // sealed with a key this journal doesn't have
+    }
+  }
+
+  /** Sorts out a copy (see CopyChoice), then deletes it. */
+  async settleCopy(path: string, choice: CopyChoice): Promise<void> {
+    this.assertUnlocked();
+    const copy = await this.readCopy(path);
+    if (!copy) throw new Error("Logbook can't read this copy.");
+    const current = await this.getEntry(copy.id).catch(() => undefined);
+    const now = new Date().toISOString();
+    const separately = (e: Entry, deleted: boolean) => ({ ...e, id: newId(), rev: 0, deletedAt: deleted ? now : null });
+    if (choice === 'both' || (choice === 'ours' && current)) {
+      await this.saveEntry(separately(copy, choice === 'ours'));
+    } else if (choice === 'theirs' && current) {
+      // The journal's version first, so a failure part-way loses nothing.
+      await this.saveEntry(separately(current, true));
+      await this.saveEntry({ ...copy, rev: current.rev }, { expectedRev: current.rev });
+    } else {
+      // Its entry is gone: the copy comes back as it was, or goes to Recently deleted.
+      await this.saveEntry({ ...copy, rev: 0, deletedAt: choice === 'ours' ? now : copy.deletedAt });
+    }
+    await this.store.removeCopy?.(path);
+    this.emit('entries');
+  }
+
+  /** Deletes a copy for good: one Logbook can't read, or a copy of a photo's details. */
+  async deleteCopy(path: string): Promise<void> {
+    await this.store.removeCopy?.(path);
+    this.emit('entries');
+    this.emit('media');
+  }
+
+  /**
+   * Keeps the version someone was writing when another computer (or window) saved the same entry
+   * first, so it can be compared (D102): beside the entry as a copy to sort out where the store
+   * keeps copies (the desktop folder), otherwise as an entry of its own. Answers which.
+   */
+  async keepVersion(entry: Entry): Promise<{ copy: string } | { entry: Entry }> {
+    this.assertUnlocked();
+    if (this.store.keepCopy) {
+      const cipher = await this.writeCipher();
+      const parsed = entrySchema.parse(entry);
+      const path = await this.store.keepCopy(cipher ? await cipher.sealJson('entry', parsed.id, parsed) : parsed);
+      this.emit('entries');
+      return { copy: path };
+    }
+    const title = entry.title ? `${entry.title} (your other version)` : 'Your other version';
+    return { entry: await this.saveEntry({ ...entry, id: newId(), rev: 0, title: title.slice(0, 200) }) };
   }
 
   getVault(): Vault | undefined {

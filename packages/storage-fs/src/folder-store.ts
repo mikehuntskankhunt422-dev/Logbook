@@ -1,4 +1,4 @@
-import { entrySchema, extensionFor, isSealed, mimeForExtension, paths, type Entry, type MediaMeta, type RecordStore, type StoreKeys, type StoreName, type StoreRecords } from '@logbook/core';
+import { entrySchema, extensionFor, isSealed, mimeForExtension, paths, type CopyFile, type Entry, type MediaMeta, type RecordStore, type StoreKeys, type StoreName, type StoreRecords } from '@logbook/core';
 import { assertRelativePath, type FsBackend } from './backend.ts';
 
 /**
@@ -53,12 +53,7 @@ const MEDIA_DATA = new RegExp(`^media/[^/]+/(${ID})\\.(?!meta\\.)([a-z0-9]{1,8})
 /** Files the operating system or sync tools leave around, and our own temporary files. */
 const IGNORED = /(^|\/)(\.DS_Store|desktop\.ini|Thumbs\.db|\.localized|Icon\r|\.dropbox[^/]*|~\$[^/]*|\._[^/]*)$|\.logbook-tmp-[^/]*$/i;
 
-export interface ConflictFile {
-  path: string;
-  /** The record the file probably belongs to, if its name still contains a known ID. */
-  id: string | null;
-  kind: 'entry' | 'media';
-}
+export type ConflictFile = CopyFile;
 
 /** A journal file that exists but can't be read: Logbook refuses to change it rather than guess. */
 export class DamagedFileError extends Error {
@@ -94,6 +89,8 @@ export class FolderStore implements RecordStore {
   private unreadable = new Set<string>();
   /** The losing copies of same-`rev` duplicates with different content: kept, and reported as conflicts. */
   private held = new Set<string>();
+  /** Where kept copies were moved aside to (keepAside), so a copy being sorted out is still found. */
+  private movedAside = new Map<string, string>();
   /** Every change runs in order, so two saves of one entry can't interleave their renames. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -181,6 +178,52 @@ export class FolderStore implements RecordStore {
   /** Files that couldn't be read as JSON the last time they were read (a sync still in progress, or damage). */
   unreadableFiles(): string[] {
     return [...this.unreadable];
+  }
+
+  private isCopy(path: string): boolean {
+    return this.strays.includes(path) || this.held.has(path);
+  }
+
+  /** A copy's path now: a kept copy is moved aside when its record is saved over its name. */
+  private copyPath(path: string): string {
+    const moved = this.movedAside.get(path);
+    const now = !this.isCopy(path) && moved ? moved : path;
+    if (!this.isCopy(now)) throw new Error(`${path} isn't a copy to sort out.`);
+    return now;
+  }
+
+  /** A copy's record (one of `conflicts()`): undefined when it's gone or isn't JSON. */
+  async readCopy(path: string): Promise<unknown> {
+    return this.readJson(this.copyPath(path));
+  }
+
+  /** Deletes a copy once a person has sorted it out. */
+  removeCopy(given: string): Promise<void> {
+    return this.serial(async () => {
+      const path = this.copyPath(given);
+      await this.fs.remove(path);
+      this.movedAside.delete(given);
+      this.strays = this.strays.filter((p) => p !== path);
+      this.held.delete(path);
+      // A kept same-revision copy has its record's own name: it's one of that record's files.
+      for (const table of [this.entries, this.media]) {
+        for (const [id, list] of table) if (list.includes(path)) table.set(id, list.filter((p) => p !== path));
+      }
+    });
+  }
+
+  /**
+   * Keeps an entry's record as a copy beside it, named outside the naming scheme (D102): the
+   * version a person was writing when another computer saved the same entry first.
+   */
+  keepCopy(record: StoreRecords['entries']): Promise<string> {
+    return this.serial(async () => {
+      const path = conflictName(entryPath(record));
+      assertRelativePath(path);
+      await this.fs.write(path, jsonBytes(record));
+      this.strays.push(path);
+      return path;
+    });
   }
 
   async all<S extends StoreName>(store: S): Promise<StoreRecords[S][]> {
@@ -353,6 +396,7 @@ export class FolderStore implements RecordStore {
     const kept = conflictName(path);
     await this.fs.rename(path, kept);
     this.strays.push(kept);
+    this.movedAside.set(path, kept);
   }
 
   /** A media file is named after its details (extension, sealed or not): keep it in step with them. */
