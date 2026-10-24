@@ -64,6 +64,8 @@ export interface RecordStore {
   removeCopy?(path: string): Promise<void>;
   /** Keeps an entry's record as a copy beside it; answers the copy's path. */
   keepCopy?(record: StoreRecords['entries']): Promise<string>;
+  /** Whether the store holds a file for this record, readable or not (one mid-sync, or sealed with another key). */
+  has?(store: StoreName, id: string): boolean;
 }
 
 export interface CopyFile {
@@ -71,6 +73,8 @@ export interface CopyFile {
   /** The record the copy probably belongs to, if its name still holds a known ID. */
   id: string | null;
   kind: 'entry' | 'media';
+  /** Logbook's own (keepCopy): what someone was writing when another computer saved first. */
+  kept?: boolean;
 }
 
 export function isSealed(r: unknown): r is SealedRecord {

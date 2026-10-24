@@ -156,8 +156,8 @@ describe('FolderStore files', () => {
 
     const store = await open(root);
     expect(store.conflicts()).toEqual([
-      { path: `${base} (conflicted copy 2026-10-10).json`, id: e.id, kind: 'entry' },
-      { path: `${base}-LAPTOP.json`, id: e.id, kind: 'entry' },
+      { path: `${base} (conflicted copy 2026-10-10).json`, id: e.id, kind: 'entry', kept: false },
+      { path: `${base}-LAPTOP.json`, id: e.id, kind: 'entry', kept: false },
     ]);
     const j2 = await Journal.open(store);
     expect((await j2.listEntries()).map((x) => x.title)).toEqual(['Shared']);
@@ -572,9 +572,9 @@ describe('copies to sort out (D102)', () => {
     const typed = { ...e, tags: ['typed-on-desktop'] };
     await expect(desktop.saveEntry(typed, { expectedRev: e.rev })).rejects.toThrow(ConflictError);
     const kept = await desktop.keepVersion(typed);
-    expect(kept).toEqual({ copy: expect.stringContaining('(conflict ') });
+    expect(kept).toEqual({ copy: expect.stringContaining('(your version ') });
     const [c] = await desktop.entryCopies();
-    expect([c!.copy!.tags, c!.current!.title]).toEqual([['typed-on-desktop'], 'Trip to Rome']);
+    expect([c!.copy!.tags, c!.current!.title, c!.kept]).toEqual([['typed-on-desktop'], 'Trip to Rome', true]);
     // Another computer sees it too.
     expect((await (await Journal.open(await open(root))).entryCopies()).map((x) => x.copy!.tags)).toEqual([['typed-on-desktop']]);
   });
@@ -585,7 +585,7 @@ describe('copies to sort out (D102)', () => {
     await j.enableEncryption('correct horse', FAST_KDF);
     const e = await j.saveEntry(j.newEntry({ title: 'Secret' }));
     const { copy } = (await j.keepVersion({ ...e, title: 'Secret, rewritten' })) as { copy: string };
-    expect(copy).toMatch(new RegExp(`^entries/${e.id} \\(conflict [0-9a-z]+\\)\\.json\\.enc$`));
+    expect(copy).toMatch(new RegExp(`^entries/${e.id} \\(your version [0-9a-z]+\\)\\.json\\.enc$`));
     expect(await readFile(join(root, copy), 'utf8')).not.toContain('rewritten');
     expect((await j.entryCopies()).map((c) => c.copy?.title)).toEqual(['Secret, rewritten']);
   });
@@ -605,9 +605,106 @@ describe('copies to sort out (D102)', () => {
     await writeFile(join(root, path), '{"id":');
     const j2 = await Journal.open(await open(root));
     expect(await j2.entryCopies()).toMatchObject([{ path, copy: null, current: { id: e.id } }]);
+    // Listed once, as a copy, not also as a file that can't be read.
+    expect([j2.store.conflicts!().length, j2.store.unreadableFiles!()]).toEqual([1, []]);
     await expect(j2.settleCopy(path, 'both')).rejects.toThrow(/can't read/);
     await j2.deleteCopy(path);
     expect(await files(root)).not.toContain(path);
+    expect([j2.store.conflicts!(), j2.store.unreadableFiles!()]).toEqual([[], []]);
+  });
+
+  it('won’t replace or delete an entry whose own file it can’t read yet, but can keep both', async () => {
+    const { root, e, path } = await withCopy();
+    const own = (await files(root)).find((f) => f.includes(e.id) && !f.includes('conflicted'))!;
+    await writeFile(join(root, own), '{"id":"' + e.id); // still syncing
+    const j2 = await Journal.open(await open(root));
+    expect(await j2.entryCopies()).toMatchObject([{ path, current: undefined, currentUnreadable: true }]);
+    await expect(j2.settleCopy(path, 'ours')).rejects.toThrow(/can't read this entry's own version/);
+    await expect(j2.settleCopy(path, 'theirs')).rejects.toThrow(/can't read this entry's own version/);
+    expect(await files(root)).toContain(own);
+    await j2.settleCopy(path, 'both');
+    expect((await files(root)).filter((f) => f.includes(e.id))).toEqual([own]);
+    expect((await j2.listEntries()).map((x) => x.title)).toEqual(['Laptop']);
+  });
+
+  it('puts back a copy of an entry that has gone, in the journal and not about to expire; or bins it under a new id', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Gone' }));
+    const old = { ...e, deletedAt: '2026-09-01T00:00:00.000Z', expiresAt: '2026-09-02T00:00:00.000Z' };
+    await j.purgeEntry(e.id);
+    const back = `trash/2026/2026-10-07--gone--${e.id} (conflicted copy).json`;
+    const bin = `trash/2026/2026-10-07--gone--${e.id} (conflicted copy 2).json`;
+    await mkdir(join(root, 'trash/2026'), { recursive: true });
+    await writeFile(join(root, back), JSON.stringify(old));
+    await writeFile(join(root, bin), JSON.stringify(old));
+    const j2 = await Journal.open(await open(root));
+    expect((await j2.entryCopies()).map((c) => [c.current, c.currentUnreadable])).toEqual([[undefined, false], [undefined, false]]);
+    await j2.settleCopy(bin, 'ours');
+    expect((await j2.listTrash()).map((x) => x.id === e.id)).toEqual([false]);
+    await j2.settleCopy(back, 'theirs');
+    const [live] = await j2.listEntries();
+    expect([live!.id, live!.deletedAt, live!.expiresAt]).toEqual([e.id, null, null]);
+  });
+
+  it('moves a kept copy aside, not deletes it, when the folder is read again between a read and a save', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Base' }));
+    await writeFile(join(root, `entries/2026/2026-10-07--laptop-edit--${e.id}.json`), JSON.stringify({ ...e, title: 'Laptop edit' }));
+    const j2 = await Journal.open(await open(root));
+    const shown = (await j2.getEntry(e.id))!;
+    await j2.store.refresh!();
+    await j2.saveEntry({ ...shown, tags: ['later'] });
+    expect((await files(root)).filter((f) => f.includes('(conflict '))).toHaveLength(1);
+    // And a refresh asked for during a save waits for it.
+    const again = (await j2.getEntry(e.id))!;
+    await Promise.all([j2.saveEntry({ ...again, tags: ['last'] }, { expectedRev: again.rev }), j2.refresh()]);
+    expect((await files(root)).filter((f) => f.includes('(conflict '))).toHaveLength(1);
+  });
+
+  it('won’t save over a version another computer saved with the same revision', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ title: 'Mine' }));
+    const theirs = { ...e, title: 'Theirs', updatedAt: '2030-01-01T00:00:00.000Z' };
+    await expect(j.saveEntry({ ...theirs, rev: e.rev - 1 }, { expectedRev: e.rev - 1 })).rejects.toThrow(ConflictError);
+    const stored = (await j.getEntry(e.id))!;
+    await expect(j.saveEntry({ ...stored, title: 'Edited' }, { expectedRev: stored.rev, expectedUpdatedAt: '2030-01-01T00:00:00.000Z' })).rejects.toThrow(ConflictError);
+    await expect(j.saveEntry({ ...stored, title: 'Edited' }, { expectedRev: stored.rev, expectedUpdatedAt: stored.updatedAt })).resolves.toMatchObject({ title: 'Edited' });
+  });
+
+  it('doesn’t read an older settings file over a change made meanwhile', async () => {
+    const root = await folder();
+    const store = await open(root);
+    const j = await Journal.open(store);
+    // The theme is changed here just after the refresh has read the (older) file.
+    const read = store.getKey.bind(store);
+    let changed = false;
+    store.getKey = (async (key: 'settings') => {
+      const value = await read(key);
+      if (key === 'settings' && !changed) {
+        changed = true;
+        await j.updateSettings({ theme: 'dark' });
+      }
+      return value;
+    }) as typeof store.getKey;
+    await j.refresh();
+    expect(j.getSettings().theme).toBe('dark');
+  });
+
+  it('asks for the passcode when another computer turned it on, but not after turning it on here', async () => {
+    const root = await folder();
+    const desktop = await Journal.open(await open(root));
+    const laptop = await Journal.open(await open(root));
+    await laptop.enableEncryption('correct horse', FAST_KDF);
+    await laptop.refresh();
+    expect(laptop.isLocked).toBe(false);
+    expect(desktop.isLocked).toBe(false);
+    await desktop.refresh();
+    expect(desktop.isLocked).toBe(true);
+    await desktop.unlock('correct horse');
+    expect(desktop.isLocked).toBe(false);
   });
 
   it('reads the folder again when another computer changed it, settings too', async () => {
@@ -622,6 +719,6 @@ describe('copies to sort out (D102)', () => {
     await desktop.refresh();
     expect((await desktop.listEntries()).map((x) => x.title)).toEqual(['From the laptop']);
     expect(desktop.getSettings().theme).toBe('dark');
-    expect(seen).toEqual(['settings', 'entries', 'media']);
+    expect(seen).toEqual(['settings', 'entries', 'media', 'external']);
   });
 });

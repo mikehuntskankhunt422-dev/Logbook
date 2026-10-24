@@ -1,8 +1,8 @@
-**Changes from your other computers.** If your journal folder is in Dropbox, OneDrive, iCloud Drive or another sync service, what you write on another computer now shows up as soon as it arrives, without restarting Logbook, even in an entry you have open (as long as you haven't started changing it).
+**Changes from your other computers.** On a computer, if your journal folder is in Dropbox, OneDrive, iCloud Drive or another sync service, what you write on another computer now shows up as soon as it arrives, without restarting Logbook, even in an entry you have open (as long as you haven't started changing it).
 
-**Copies to sort out.** When two computers change the same entry before the sync service has caught up, it keeps both, the second as a copy. Logbook now shows a banner, and **Sort them out** puts the two versions side by side, with their dates, length and words: keep the one in your journal, use the copy, or keep both as separate entries. Whatever you don't keep goes to **Recently deleted** for 30 days. Files Logbook can't read are listed there too.
+**Copies to sort out.** When two computers change the same entry before the sync service has caught up, it keeps both, the second as a copy. Logbook on a computer now shows a banner, and **Sort it out** puts the two versions side by side, with their dates, length and words: keep the one in your journal, use the copy, or keep both as separate entries. Whatever you don't keep goes to **Recently deleted** for 30 days. Files Logbook can't read are listed there too.
 
-**Your writing is kept if another computer saves first.** If you were typing in an entry while another computer saved a change to it, Logbook used to show the other version and lose what you'd typed. Now it keeps yours as a copy to compare and tells you where it is.
+**Your writing is kept if another computer saves first.** If you were typing in an entry while another computer saved a change to it, Logbook used to show the other version and lose what you'd typed. Now it keeps yours, as a copy to compare on a computer and as an entry of its own on your phone, and tells you where it is. Deleting an entry right after typing in it also keeps those last words with it in **Recently deleted**.
 
 What came in 0.8.1:
 

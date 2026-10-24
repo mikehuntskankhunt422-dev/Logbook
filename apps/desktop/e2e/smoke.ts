@@ -253,7 +253,7 @@ try {
   await run(s, "location.hash = '#/'");
   const copyFile = laptopFile.replace('.json', ' (conflicted copy).json');
   await writeFile(copyFile, JSON.stringify({ ...desk, id: laptopId, title: 'From the laptop, other version', rev: 1 }, null, 2));
-  const sortOut = await until('the banner', () => find(s, 'xpath', "//a[normalize-space(.)='Sort them out']")).catch(() => null);
+  const sortOut = await until('the banner', () => find(s, 'xpath', "//a[normalize-space(.)='Sort it out']")).catch(() => null);
   check(Boolean(sortOut) && (await bodyText(s)).includes('needs a look'), 'a sync service’s copy brings a banner');
   if (sortOut) {
     await click(s, sortOut);
@@ -267,6 +267,15 @@ try {
     const after = await filesUnder(join(folder, 'entries'));
     check(!after.includes(copyFile) && after.filter((f) => f.includes('--from-the-laptop')).length === 2, `keeping both makes the copy an entry of its own (${after.map((f) => f.slice(folder.length + 1)).join(', ')})`);
   }
+  // Deleting the open entry is this computer's own change, not news from another.
+  const fromElsewhere = async () => (await bodyText(s)).split('another computer').length - 1;
+  await run(s, `location.hash = '#/entry/${laptopId}'`);
+  await until('the laptop entry in the editor', async () => (await titleNow()) === 'From the laptop');
+  const toldBefore = await fromElsewhere();
+  await click(s, await find(s, 'xpath', "//button[contains(., 'Delete')]"));
+  await until('the deletion', async () => (await bodyText(s)).includes('Moved to trash.'));
+  await sleep(1500);
+  check((await fromElsewhere()) === toldBefore, 'deleting an open entry doesn’t say another computer changed it');
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");

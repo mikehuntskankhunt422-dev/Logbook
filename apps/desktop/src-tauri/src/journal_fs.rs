@@ -30,10 +30,17 @@ static OWN_CHANGES: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
 /// Long enough for the system to report the change.
 const OWN_CHANGE_FOR: Duration = Duration::from_secs(5);
 
+/// Notes a file Logbook is changing, and the folders it's in (a write can make them).
 fn note_own_change(rel: &str) {
     let mut own = OWN_CHANGES.lock().unwrap_or_else(|e| e.into_inner());
     own.retain(|(_, at)| at.elapsed() < OWN_CHANGE_FOR);
-    own.push((rel.to_string(), Instant::now()));
+    let now = Instant::now();
+    own.push((rel.to_string(), now));
+    let mut dir = rel;
+    while let Some((parent, _)) = dir.rsplit_once('/') {
+        own.push((parent.to_string(), now));
+        dir = parent;
+    }
 }
 
 /// Whether Logbook changed this file in the last few seconds.
@@ -152,7 +159,10 @@ fn icloud_download(path: &Path) -> bool {
 pub fn write(root: &Path, rel: &str, data: &[u8]) -> Result<(), String> {
     let target = resolve(root, rel)?;
     note_own_change(rel);
-    write_atomic(&target, data).map_err(|e| describe(rel, e))
+    write_atomic(&target, data).map_err(|e| describe(rel, e))?;
+    // Again once written: a big file can take longer than the note lasts.
+    note_own_change(rel);
+    Ok(())
 }
 
 pub fn write_atomic(target: &Path, data: &[u8]) -> io::Result<()> {
@@ -295,7 +305,13 @@ pub fn remove(root: &Path, rel: &str) -> Result<(), String> {
     let path = resolve(root, rel)?;
     note_own_change(rel);
     let target = match icloud_placeholder(&path) {
-        Some(placeholder) if !path.exists() && placeholder.exists() => placeholder,
+        Some(placeholder) if !path.exists() && placeholder.exists() => {
+            note_own_change(&match rel.rsplit_once('/') {
+                Some((dir, name)) => format!("{dir}/.{name}.icloud"),
+                None => format!(".{rel}.icloud"),
+            });
+            placeholder
+        }
         _ => path,
     };
     match fs::remove_file(target) {

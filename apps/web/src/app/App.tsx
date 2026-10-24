@@ -34,7 +34,9 @@ const NAV: { route: Route; label: string; icon: string }[] = [
 
 export function App() {
   const { journal, locked, settings } = useJournal();
-  const route = useRoute();
+  const asked = useRoute();
+  // Only the desktop app has copies to sort out: elsewhere that address is the journal.
+  const route: Route = asked.name === 'copies' && !CopiesView ? { name: 'home' } : asked;
   const reduced = useReducedMotion();
   useTheme(settings.theme);
   useReadability(settings);
@@ -127,7 +129,7 @@ export function App() {
         {/* Keyed by page, so each page comes in with its animation; a new entry and the same entry
             once saved are one page (the URL changes on the first save, the editor stays). */}
         <div className="page" key={route.name === 'new' ? 'entry' : route.name}>
-          {(route.name === 'home' || (route.name === 'copies' && !CopiesView)) && <Timeline />}
+          {route.name === 'home' && <Timeline />}
           {route.name === 'copies' && CopiesView && (
             <Suspense fallback={null}>
               <CopiesView />

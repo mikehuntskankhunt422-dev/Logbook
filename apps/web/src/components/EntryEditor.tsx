@@ -27,6 +27,7 @@ import { useToast } from '../app/toasts.tsx';
 import { canCompressVideo, compressVideo, importFile } from '../lib/media-import.ts';
 import { onFlush, trackWork } from '../lib/pending-saves.ts';
 import { celebrate, useReducedMotion } from '../lib/motion.ts';
+import { isDesktop } from '../lib/platform.ts';
 import { AudioBlock, BLOCK_LABELS, EmbedBlock, FileBlock, GalleryBlock, LinkBlock, PhotoBlock, RichTextBlock, VideoBlock } from './blocks.tsx';
 import { Dialog, formatLongDate, useCoverStyle } from './common.tsx';
 import { ExpiryPanel, MusicBar, PromptCard } from './EntryExtras.tsx';
@@ -50,6 +51,12 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   const [entry, setEntry] = useState<Entry | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const savedRev = useRef<number | null>(null); // null = never saved (new draft)
+  /** When that revision was saved: two computers can save the same revision (D102). */
+  const savedAt = useRef<string | null>(null);
+  const adopt = (e: Entry) => {
+    savedRev.current = e.rev;
+    savedAt.current = e.updatedAt;
+  };
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef<Entry | null>(null);
@@ -58,8 +65,28 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   const saving = useRef<Promise<void>>(Promise.resolve());
   /** A save under way: its own revision isn't news from elsewhere. */
   const inFlight = useRef(false);
+  /** Conflicts met: a save asked for before one is dropped, as what it had is kept to compare. */
+  const conflicts = useRef(0);
   /** Bumped when another version replaces what's shown, so the editor starts again from it. */
   const [version, setVersion] = useState(0);
+  /** Where keyboard focus was when that happened, to put it back in the new editor. */
+  const refocus = useRef<'title' | 'text' | null>(null);
+  const replaceShown = (e: Entry) => {
+    refocus.current = editorFocus();
+    setEntry(e);
+    setVersion((v) => v + 1);
+  };
+  useEffect(() => {
+    const where = refocus.current;
+    refocus.current = null;
+    if (!where) return;
+    // The text editors are made once mounted: a frame later they're there.
+    const frame = requestAnimationFrame(() => {
+      const text = where === 'text' ? document.querySelector<HTMLElement>('main article .ProseMirror') : null;
+      (text ?? document.getElementById('entry-title'))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [version]);
 
   // Load an existing entry, or start a new in-memory draft that is saved on first change.
   useEffect(() => {
@@ -74,11 +101,12 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
           navigate({ name: 'home' }, { replace: true });
           return;
         }
-        savedRev.current = e.rev;
+        adopt(e);
         setEntry(e);
       });
     } else {
       savedRev.current = null;
+      savedAt.current = null;
       setEntry(journal.newEntry({ date: newDate ?? today() }));
     }
     return () => {
@@ -86,42 +114,58 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     };
   }, [journal, entryId, newDate, toast]);
 
-  // Changed on another computer (D102) while open and not being typed in: show that version.
+  // Changed on another computer (D102) while open and not being typed in: show that version. Only
+  // the desktop app hears of other computers' changes (`external`), never of this one's own.
   useEffect(() => {
-    if (!entryId) return;
-    return journal.subscribe((event) => {
-      if (event !== 'entries' || dirty.current || inFlight.current || savedRev.current === null) return;
+    if (!entryId || !isDesktop) return;
+    let alive = true;
+    const off = journal.subscribe((event) => {
+      if (event !== 'external' || dirty.current || inFlight.current || savedRev.current === null) return;
       void journal
         .getEntry(entryId)
         .then((e) => {
-          if (!e || dirty.current || inFlight.current || savedRev.current === null || e.rev <= savedRev.current) return;
-          savedRev.current = e.rev;
-          setEntry(e);
-          setVersion((v) => v + 1);
+          if (!alive || !e || dirty.current || inFlight.current || savedRev.current === null) return;
+          if (e.rev < savedRev.current || (e.rev === savedRev.current && e.updatedAt === savedAt.current)) return;
+          if (e.deletedAt) {
+            toast('This entry was moved to Recently deleted on another computer.');
+            navigate({ name: 'home' }, { replace: true });
+            return;
+          }
+          adopt(e);
+          replaceShown(e);
           toast('This entry was changed on another computer, so it now shows that version.');
         })
         .catch(() => {});
     });
+    return () => {
+      alive = false;
+      off();
+    };
   }, [journal, entryId, toast]);
 
   const save = useCallback(() => {
-    const current = latest.current;
-    if (!current || !dirty.current) return saving.current;
+    if (!latest.current || !dirty.current) return saving.current;
     dirty.current = false;
-    saving.current = saveNow(current);
+    // After the save before it, if one is under way: each starts from the revision the last one saved.
+    const met = conflicts.current;
+    saving.current = saving.current.then(() => (conflicts.current === met ? saveNow() : undefined));
     return saving.current;
     // saveNow is redefined each render with the same dependencies as save.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journal, entries, toast]);
 
-  async function saveNow(current: Entry) {
+  async function saveNow() {
+    const shown = latest.current;
+    if (!shown) return;
     setSaveState('saving');
     const isFirstSave = savedRev.current === null;
+    // What's shown, as a change to the version last saved here (the page may not show its revision yet).
+    const current = isFirstSave ? shown : { ...shown, rev: savedRev.current!, updatedAt: savedAt.current ?? shown.updatedAt };
     const datesBefore = entries.map((e) => e.date);
     inFlight.current = true;
     try {
-      const saved = await journal.saveEntry(current, savedRev.current === null ? {} : { expectedRev: savedRev.current });
-      savedRev.current = saved.rev;
+      const saved = await journal.saveEntry(current, isFirstSave ? {} : { expectedRev: current.rev, expectedUpdatedAt: current.updatedAt });
+      adopt(saved);
       // Keep whatever the user typed since this save started; only adopt the new revision.
       setEntry((e) => (e ? { ...e, rev: saved.rev, updatedAt: saved.updatedAt, tags: saved.tags } : e));
       setSaveState('saved');
@@ -135,24 +179,25 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
       if (err instanceof ConflictError) {
         // Saved first somewhere else: show that version, and keep what was typed here to compare
         // rather than dropping it (D102).
+        conflicts.current++;
         const mine = latest.current ?? current;
-        const before = savedRev.current;
-        savedRev.current = err.current.rev;
+        const before = { rev: savedRev.current, at: savedAt.current };
+        adopt(err.current);
         dirty.current = false;
-        setEntry(err.current);
-        setVersion((v) => v + 1);
+        replaceShown(err.current);
         setSaveState('idle');
         try {
-          const kept = await journal.keepVersion(mine);
+          // A copy to compare where there's a page for it (the desktop app's), else an entry.
+          const kept = await journal.keepVersion(mine, { asCopy: isDesktop });
           if ('copy' in kept) toast('This entry was changed on another computer, so it now shows that version. Yours is kept to compare.', { label: 'Compare', run: () => navigate({ name: 'copies' }) }, 12_000);
-          else toast('This entry was changed in another window, so it now shows that version. Yours is kept as an entry of its own.', { label: 'Open it', run: () => navigate({ name: 'entry', id: kept.entry.id }) }, 12_000);
+          else toast('This entry was saved somewhere else first, so it now shows that version. Yours is kept as an entry of its own.', { label: 'Open it', run: () => navigate({ name: 'entry', id: kept.entry.id }) }, 12_000);
         } catch (keepErr) {
           // Couldn't keep it either: put it back on screen, unsaved, rather than lose it; the next
           // save meets the other version again and tries again.
-          savedRev.current = before;
+          savedRev.current = before.rev;
+          savedAt.current = before.at;
           dirty.current = true;
-          setEntry(mine);
-          setVersion((v) => v + 1);
+          replaceShown(mine);
           setSaveState('error');
           toast(`Couldn't save: ${(keepErr as Error).message}`);
         }
@@ -214,13 +259,49 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     };
   }, [save]);
 
+  /**
+   * Deleting: what was just typed is saved first and goes to Recently deleted with the entry, rather
+   * than meeting the deleted version as a conflict once the editor closes. A draft never saved is
+   * dropped. Null if the last words couldn't be saved (the save says why).
+   */
+  const discard = async (): Promise<'dropped' | 'binned' | null> => {
+    clearTimeout(timer.current);
+    if (savedRev.current === null && !inFlight.current) {
+      dirty.current = false;
+      return 'dropped';
+    }
+    await save();
+    if (dirty.current || !latest.current) return null;
+    await journal.trashEntry(latest.current.id);
+    return 'binned';
+  };
+
   if (!entry) return <p className="muted">Loading…</p>;
-  return <EditorBody key={version} entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} />;
+  return <EditorBody key={version} entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} discard={discard} />;
+}
+
+/** Where keyboard focus is in the open entry: its title, somewhere else in it, or outside it. */
+function editorFocus(): 'title' | 'text' | null {
+  const at = document.activeElement;
+  if (at?.id === 'entry-title') return 'title';
+  return at?.closest('main article') ? 'text' : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update: (fn: (e: Entry) => Entry) => void; saveState: SaveState; isNew: boolean }) {
+function EditorBody({
+  entry,
+  update,
+  saveState,
+  isNew,
+  discard,
+}: {
+  entry: Entry;
+  update: (fn: (e: Entry) => Entry) => void;
+  saveState: SaveState;
+  isNew: boolean;
+  discard: () => Promise<'dropped' | 'binned' | null>;
+}) {
   const { journal, settings } = useJournal();
   const toast = useToast();
   const reduced = useReducedMotion();
@@ -375,13 +456,10 @@ function EditorBody({ entry, update, saveState, isNew }: { entry: Entry; update:
   };
 
   const trash = async () => {
-    if (isNew) {
-      navigate({ name: 'home' });
-      return;
-    }
-    await journal.trashEntry(entry.id);
+    const done = await discard();
+    if (!done) return;
     navigate({ name: 'home' });
-    toast('Moved to trash.', { label: 'Undo', run: () => void journal.restoreEntry(entry.id) }, 8000);
+    if (done === 'binned') toast('Moved to trash.', { label: 'Undo', run: () => void journal.restoreEntry(entry.id) }, 8000);
   };
 
   const setCoverPhoto = (file: File | undefined) => trackWork(setCoverPhotoNow(file));

@@ -20,7 +20,7 @@ export async function watchJournal(journal: Journal): Promise<void> {
     running = true;
     void journal
       .refresh()
-      .catch(() => {})
+      .catch((err: unknown) => console.warn("Couldn't read the journal folder again:", err))
       .finally(() => {
         running = false;
         if (again) {
@@ -31,7 +31,16 @@ export async function watchJournal(journal: Journal): Promise<void> {
   };
   await listen<{ paths: string[] }>('logbook://journal-changed', refresh);
   await invoke('journal_watch');
+  // Some folders never say what changed (network drives), and a system can drop news when too much
+  // changes at once: read the folder again when Logbook comes back after a while away.
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt >= AWAY_MS) refresh();
+  });
 }
+
+const AWAY_MS = 60_000;
 
 /**
  * How many files in the journal folder need a person: copies to sort out, files that can't be read.
