@@ -32,6 +32,11 @@ export async function bootApp(root: Root, render: (journal: Journal) => void): P
     const journal = await Journal.open(await FolderStore.open(new TauriFsBackend({ textOnly: import.meta.env.VITE_PLATFORM === 'android' })));
     setOpenJournal(journal);
     render(journal);
+    // Another computer's changes, through a sync service (D102). The phone's journal is its own.
+    if (import.meta.env.VITE_PLATFORM === 'desktop')
+      void import('./sync.ts')
+        .then((m) => m.watchJournal(journal))
+        .catch((err: unknown) => console.warn('Not watching the journal folder:', err));
   };
   let attempt = 0;
   // A fresh screen each time (key), so a failed attempt doesn't leave its buttons disabled.

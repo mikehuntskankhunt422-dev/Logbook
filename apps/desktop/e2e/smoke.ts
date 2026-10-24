@@ -1,7 +1,8 @@
 // Drives the built desktop app through WebDriver (tauri-driver + WebKitWebDriver, Linux only):
 // first run in an empty home folder, the default journal folder, an entry with a photo, the files
-// that appear on disk, the journal after a restart, the person's picture as the app's icon, and an
-// entry typed just before the window closes.
+// that appear on disk, the journal after a restart, the person's picture as the app's icon, another
+// computer's changes arriving in the folder and a sync copy sorted out, and an entry typed just
+// before the window closes.
 //
 //   npx tauri build --debug --no-bundle            (in apps/desktop)
 //   xvfb-run npm run test:e2e [-- path to the app]  (needs tauri-driver and WebKitWebDriver on PATH, and python3-xlib)
@@ -230,6 +231,51 @@ try {
   check(!(await readFile(menuEntry, 'utf8').then(() => true, () => false)), "the app menu's own entry is back");
   check((await filesUnder(join(configDir, 'app-icon'))).length === 0 && !JSON.parse(await readFile(join(configDir, 'config.json'), 'utf8')).appIcon, 'the picture is deleted');
   check(JSON.stringify(windowIcon()?.sizes) === JSON.stringify(usual?.sizes), 'the window has its usual icon again');
+
+  // ── another computer's changes, through a sync service (D102) ──
+  await run(s, "location.hash = '#/'");
+  const deskFile = (await filesUnder(join(folder, 'entries'))).find((f) => f.includes('--desktop-day--'))!;
+  const desk = JSON.parse(await readFile(deskFile, 'utf8'));
+  const year = desk.date.slice(0, 4);
+  const laptopId = 'laptop0000a1';
+  const laptopFile = join(folder, `entries/${year}/${desk.date}--from-the-laptop--${laptopId}.json`);
+  await writeFile(laptopFile, JSON.stringify({ ...desk, id: laptopId, title: 'From the laptop', rev: 1 }, null, 2));
+  check(Boolean(await until('the laptop entry', async () => (await bodyText(s)).includes('From the laptop')).catch(() => false)), 'an entry another computer added shows up without a restart');
+  // Open in the editor, untouched, while the laptop renames it: the editor shows the laptop's version.
+  await run(s, `location.hash = '#/entry/${desk.id}'`);
+  const titleNow = () => run(s, "return document.querySelector('#entry-title')?.value ?? ''");
+  await until('the entry in the editor', async () => (await titleNow()) === 'Desktop day');
+  const renamed = join(folder, `entries/${year}/${desk.date}--desktop-day-on-the-laptop--${desk.id}.json`);
+  await writeFile(renamed, JSON.stringify({ ...desk, title: 'Desktop day, on the laptop', rev: desk.rev + 1 }, null, 2));
+  await rm(deskFile);
+  check(Boolean(await until('the laptop’s version in the editor', async () => (await titleNow()) === 'Desktop day, on the laptop').catch(() => false)), 'an entry open in the editor shows the version another computer saved');
+  // A sync service's copy: a banner, then the page to sort it out.
+  await run(s, "location.hash = '#/'");
+  const copyFile = laptopFile.replace('.json', ' (conflicted copy).json');
+  await writeFile(copyFile, JSON.stringify({ ...desk, id: laptopId, title: 'From the laptop, other version', rev: 1 }, null, 2));
+  const sortOut = await until('the banner', () => find(s, 'xpath', "//a[normalize-space(.)='Sort it out']")).catch(() => null);
+  check(Boolean(sortOut) && (await bodyText(s)).includes('needs a look'), 'a sync service’s copy brings a banner');
+  if (sortOut) {
+    await click(s, sortOut);
+    await until('the copy', async () => (await bodyText(s)).includes('From the laptop, other version'));
+    check((await bodyText(s)).includes('In your journal') && (await bodyText(s)).includes('The copy'), 'the copy is shown beside the entry it belongs to');
+    await sleep(500);
+    const copyProblems = await axeProblems(s, 'main');
+    check(copyProblems.length === 0, `the copies page has no serious accessibility problems${copyProblems.length ? `: ${copyProblems.join('; ')}` : ''}`);
+    await click(s, await find(s, 'xpath', "//button[normalize-space(.)='Keep both']"));
+    await until('the choice', async () => (await bodyText(s)).includes('Nothing to sort out'));
+    const after = await filesUnder(join(folder, 'entries'));
+    check(!after.includes(copyFile) && after.filter((f) => f.includes('--from-the-laptop')).length === 2, `keeping both makes the copy an entry of its own (${after.map((f) => f.slice(folder.length + 1)).join(', ')})`);
+  }
+  // Deleting the open entry is this computer's own change, not news from another.
+  const fromElsewhere = async () => (await bodyText(s)).split('another computer').length - 1;
+  await run(s, `location.hash = '#/entry/${laptopId}'`);
+  await until('the laptop entry in the editor', async () => (await titleNow()) === 'From the laptop');
+  const toldBefore = await fromElsewhere();
+  await click(s, await find(s, 'xpath', "//button[contains(., 'Delete')]"));
+  await until('the deletion', async () => (await bodyText(s)).includes('Moved to trash.'));
+  await sleep(1500);
+  check((await fromElsewhere()) === toldBefore, 'deleting an open entry doesn’t say another computer changed it');
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");

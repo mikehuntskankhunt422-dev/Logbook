@@ -11,6 +11,7 @@ describe('hash router', () => {
     ['#/search?tag=beach-day', { name: 'search', tag: 'beach-day' }],
     ['#/memories', { name: 'memories' }],
     ['#/settings', { name: 'settings' }],
+    ['#/copies', { name: 'copies' }],
     ['#/garden', { name: 'garden' }],
     ['#/garden/herbarium', { name: 'garden', view: 'herbarium' }],
     ['#/garden/almanac', { name: 'garden', view: 'almanac' }],

@@ -12,7 +12,9 @@ export type Route =
   | { name: 'search'; tag?: string }
   | { name: 'clock' }
   | { name: 'garden'; view?: GardenTab }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  /** Copies a sync service left in the desktop app's journal folder, to sort out (D102). */
+  | { name: 'copies' };
 
 export function parseHash(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
@@ -35,6 +37,8 @@ export function parseHash(hash: string): Route {
       return seg[1] === 'herbarium' || seg[1] === 'almanac' ? { name: 'garden', view: seg[1] } : { name: 'garden' };
     case 'settings':
       return { name: 'settings' };
+    case 'copies':
+      return { name: 'copies' };
     default:
       return { name: 'home' };
   }
@@ -60,6 +64,8 @@ export function href(route: Route): string {
       return route.view ? `#/garden/${route.view}` : '#/garden';
     case 'settings':
       return '#/settings';
+    case 'copies':
+      return '#/copies';
   }
 }
 

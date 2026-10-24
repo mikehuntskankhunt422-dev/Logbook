@@ -1496,6 +1496,52 @@ dialog h2 {
   margin-top: 18px;
 }
 
+/* Copies to sort out (D102, desktop): two versions side by side, or one above the other. */
+.copy-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.copy-version h3 {
+  margin: 0 0 4px;
+}
+.copy-version > p {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.copy-text {
+  max-height: 16rem;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-sunk);
+  font-family: var(--font-body);
+  overflow-wrap: anywhere;
+}
+.copy-text p {
+  margin: 0 0 0.6em;
+}
+.copy-file {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.copy-files {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 8px;
+}
+.copy-files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 /* The app's icon from the person's own picture (D101, desktop Settings). */
 .app-icon-now {
   display: flex;
