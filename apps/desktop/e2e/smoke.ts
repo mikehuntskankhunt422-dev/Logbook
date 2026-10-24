@@ -1,6 +1,7 @@
 // Drives the built desktop app through WebDriver (tauri-driver + WebKitWebDriver, Linux only):
 // first run in an empty home folder, the default journal folder, an entry with a photo, the files
-// that appear on disk, the journal after a restart, and an entry typed just before the window closes.
+// that appear on disk, the journal after a restart, the person's picture as the app's icon, and an
+// entry typed just before the window closes.
 //
 //   npx tauri build --debug --no-bundle            (in apps/desktop)
 //   xvfb-run npm run test:e2e [-- path to the app]  (needs tauri-driver and WebKitWebDriver on PATH, and python3-xlib)
@@ -9,6 +10,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -18,7 +20,19 @@ const DRIVER = 'http://127.0.0.1:4444';
 
 const home = await mkdtemp(join(tmpdir(), 'logbook-desktop-e2e-'));
 // The app's config, documents and webview data all live under this home, so the run starts fresh.
-const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_DATA_HOME: join(home, '.local/share'), XDG_CACHE_HOME: join(home, '.cache') };
+// A system folder with Logbook's desktop entry as its package installs it (tauri-bundler), so the
+// app icon's menu entry can be checked (D101).
+const system = join(home, 'system');
+await mkdir(join(system, 'applications'), { recursive: true });
+await writeFile(join(system, 'applications/Logbook.desktop'), '[Desktop Entry]\nCategories=Education;\nExec=logbook\nStartupWMClass=logbook\nIcon=logbook\nName=Logbook\nTerminal=false\nType=Application\n');
+const env = {
+  ...process.env,
+  HOME: home,
+  XDG_CONFIG_HOME: join(home, '.config'),
+  XDG_DATA_HOME: join(home, '.local/share'),
+  XDG_CACHE_HOME: join(home, '.cache'),
+  XDG_DATA_DIRS: [system, process.env.XDG_DATA_DIRS || '/usr/local/share:/usr/share'].join(':'),
+};
 const driver = spawn('tauri-driver', ['--port', '4444'], { env, stdio: ['ignore', 'inherit', 'inherit'] });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -54,6 +68,27 @@ const click = (s: string, el: string) => wd('POST', `/session/${s}/element/${el}
 const type = (s: string, el: string, text: string) => wd('POST', `/session/${s}/element/${el}/value`, { text });
 const run = (s: string, script: string, args: unknown[] = []) => wd('POST', `/session/${s}/execute/sync`, { script, args });
 const bodyText = (s: string): Promise<string> => run(s, 'return document.body.innerText');
+/** Keys for WebDriver's element/value: End. */
+const END = '';
+
+/** Logbook's window icon as X11 has it: its sizes, and the largest one's colour at (fx, fy). */
+function windowIcon(fx = 0.5, fy = 0.5): { sizes: number[][]; pixel: number[] } | null {
+  const r = spawnSync('python3', [new URL('window-icon.py', import.meta.url).pathname, String(fx), String(fy)], { env, encoding: 'utf8' });
+  return r.status === 0 ? JSON.parse(r.stdout) : null;
+}
+
+/** Serious and critical accessibility problems axe finds in what `selector` matches. */
+async function axeProblems(s: string, selector: string): Promise<string[]> {
+  const source = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
+  return wd('POST', `/session/${s}/execute/async`, {
+    script: `const done = arguments[arguments.length - 1];
+      (0, eval)(arguments[0]);
+      axe.run(document.querySelector(arguments[1]), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })
+        .then((r) => done(r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id + ': ' + v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', '))))
+        .catch((e) => done(['axe failed: ' + e]));`,
+    args: [source, selector],
+  });
+}
 
 async function startApp(): Promise<string> {
   await until('tauri-driver', () => fetch(`${DRIVER}/status`).then((r) => r.ok), 10_000);
@@ -136,6 +171,66 @@ try {
   await until('settings', async () => (await bodyText(s)).includes('Journal folder'));
   check((await bodyText(s)).includes(folder), 'Settings shows the journal folder');
 
+  // ── the person's picture as the app's icon (D101) ──
+  const usual = windowIcon();
+  check(Boolean(usual), `the window has its usual icon (${JSON.stringify(usual?.sizes)})`);
+  await until('the app icon panel', async () => (await bodyText(s)).includes('App icon'));
+  // Blue on the left third, orange beyond: where the square sits shows in the icon's colours.
+  const picture = png(900, 600, (x) => (x < 300 ? [20, 60, 230] : [250, 120, 60]));
+  await run(
+    s,
+    `const bytes = Uint8Array.from(atob(arguments[0]), (c) => c.charCodeAt(0));
+     const dt = new DataTransfer();
+     dt.items.add(new File([bytes], 'me.png', { type: 'image/png' }));
+     const input = document.querySelector('[data-testid="app-icon-input"]');
+     input.files = dt.files;
+     input.dispatchEvent(new Event('change', { bubbles: true }));`,
+    [picture.toString('base64')],
+  );
+  await until('the crop', () => find(s, 'xpath', "//dialog[@open]//h2[contains(., 'Logbook’s icon')]"));
+  const across = await find(s, 'xpath', "//dialog[@open]//label[contains(., 'Left and right')]/input");
+  const placed = () => run(s, 'return arguments[0].getAttribute("aria-valuetext")', [{ [ELEMENT]: across }]);
+  check((await placed()) === 'Centred', 'the square starts centred');
+  await type(s, across, END);
+  check((await placed()) === 'At the right', 'the keyboard moves the square to the right');
+  // Once the dialog has faded in (0.3 s): partway, its colours are paler than they end up.
+  await sleep(500);
+  await until('the dialog to settle', () => run(s, "return document.getAnimations().every((a) => a.playState !== 'running') && getComputedStyle(document.querySelector('dialog[open]')).opacity === '1'"));
+  const problems = await axeProblems(s, 'dialog[open]');
+  check(problems.length === 0, `the crop has no serious accessibility problems${problems.length ? `: ${problems.join('; ')}` : ''}`);
+  await click(s, await find(s, 'xpath', "//dialog[@open]//button[normalize-space(.)='Use this picture']"));
+  await until('the icon', async () => (await bodyText(s)).includes('Logbook’s icon is now your picture'));
+  const configDir = join(home, '.config/app.logbookjournal.desktop');
+  const config = JSON.parse(await readFile(join(configDir, 'config.json'), 'utf8'));
+  const kept = (await filesUnder(join(configDir, 'app-icon'))).map((f) => f.slice(configDir.length + 1)).sort();
+  check(
+    typeof config.appIcon === 'string' && ['128', '256', '512'].every((n) => kept.includes(`app-icon/${config.appIcon}/${n}.png`)),
+    `the picture is kept in the app's config folder (${kept.join(', ')})`,
+  );
+  const menuEntry = join(home, '.local/share/applications/Logbook.desktop');
+  const lines = (await readFile(menuEntry, 'utf8').catch(() => '')).split('\n');
+  check(
+    lines.includes(`Icon=${join(configDir, 'app-icon', config.appIcon, '512.png')}`) && lines.includes('TryExec=logbook') && lines.includes('StartupWMClass=logbook'),
+    "the app menu's entry shows the picture",
+  );
+  // At the right, an eighth of the way in is orange (centred, it would be blue).
+  const mine = windowIcon(0.125, 0.5);
+  check(Boolean(mine?.sizes.some(([w]) => w === 256)) && mine!.pixel[0] > 200 && mine!.pixel[2] < 120, `the window's icon is the picture, cut where it was put (${JSON.stringify(mine)})`);
+  await wd('DELETE', `/session/${s}`);
+  s = await startApp();
+  await until('the journal after a restart', async () => (await bodyText(s)).includes('New entry'));
+  const again = await until('the icon after a restart', async () => {
+    const icon = windowIcon(0.125, 0.5);
+    return icon?.sizes.some(([w]) => w === 256) ? icon : null;
+  }).catch(() => null);
+  check(again !== null && again.pixel[0] > 200, 'the picture is the icon again after a restart');
+  await run(s, "location.hash = '#/settings'");
+  await click(s, await until('the usual icon button', () => find(s, 'xpath', "//button[normalize-space(.)='Use the usual icon']")));
+  await until('the usual icon', async () => (await bodyText(s)).includes('Logbook has its usual icon again.'));
+  check(!(await readFile(menuEntry, 'utf8').then(() => true, () => false)), "the app menu's own entry is back");
+  check((await filesUnder(join(configDir, 'app-icon'))).length === 0 && !JSON.parse(await readFile(join(configDir, 'config.json'), 'utf8')).appIcon, 'the picture is deleted');
+  check(JSON.stringify(windowIcon()?.sizes) === JSON.stringify(usual?.sizes), 'the window has its usual icon again');
+
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");
   const quick = await until('the title field', () => find(s, 'css selector', '#entry-title'));
@@ -186,11 +281,9 @@ try {
 process.exit(failed ? 1 : 0);
 
 /** A 64×48 orange PNG. */
-function png(): Buffer {
-  const w = 64;
-  const h = 48;
+function png(w = 64, h = 48, colour: (x: number, y: number) => number[] = () => [250, 120, 60]): Buffer {
   const raw = Buffer.alloc((w * 3 + 1) * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set([250, 120, 60], y * (w * 3 + 1) + 1 + x * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set(colour(x, y), y * (w * 3 + 1) + 1 + x * 3);
   const crc = (buf: Buffer) => {
     let c = ~0;
     for (const b of buf) {

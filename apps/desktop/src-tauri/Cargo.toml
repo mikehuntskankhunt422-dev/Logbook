@@ -30,6 +30,27 @@ tokio = { version = "1", features = ["time"] }
 tauri-plugin-single-instance = "=2.5.0"
 # Phones update from the store or a new APK (D90).
 tauri-plugin-updater = "=2.13.1"
+# The person's own picture as the app's icon (D101): an .ico for Windows, and PNGs read for Linux
+# windows. The versions Tauri's build already locks.
+ico = "=0.5.0"
+
+# The same windows crate as Tauri's, with the shell's shortcut and icon calls (app_icon/win.rs).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Environment",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+# AppKit for the Dock icon and Logbook's icon in Applications (app_icon/mac.rs), as Tauri uses it.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSData", "NSString"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSImage", "NSWorkspace"] }
 
 [dev-dependencies]
 tempfile = "3"

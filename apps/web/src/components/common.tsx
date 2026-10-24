@@ -96,8 +96,11 @@ export function StreakBadge() {
   );
 }
 
-/** Native <dialog> with focus management and Escape handling from the browser. */
-export function Dialog({ open, onClose, title, children, actions }: { open: boolean; onClose: () => void; title: string; children: ReactNode; actions: ReactNode }) {
+/**
+ * Native <dialog> with focus management and Escape handling from the browser. `keepOpen` holds off
+ * Escape while something the dialog started is still under way.
+ */
+export function Dialog({ open, onClose, title, children, actions, keepOpen = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; actions: ReactNode; keepOpen?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -107,7 +110,7 @@ export function Dialog({ open, onClose, title, children, actions }: { open: bool
     if (!open && d.open) d.close();
   }, [open]);
   return (
-    <dialog ref={ref} onClose={onClose} aria-labelledby={titleId}>
+    <dialog ref={ref} onClose={onClose} onCancel={keepOpen ? (e) => e.preventDefault() : undefined} aria-labelledby={titleId}>
       <h2 id={titleId}>{title}</h2>
       {children}
       <div className="dialog-actions">{actions}</div>

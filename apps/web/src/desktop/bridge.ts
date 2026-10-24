@@ -106,3 +106,39 @@ export function routeLinks(): void {
     }
   });
 }
+
+/** Which sizes of the app's icon this computer takes, and the person's picture in use (base64 PNG). */
+export interface AppIconStatus {
+  os: 'windows' | 'macos' | 'linux';
+  sizes: number[];
+  picture: string | null;
+}
+
+/** The app's icon (D101): the sizes to make here, and the picture now in use. Desktop only. */
+export function appIconStatus(): Promise<AppIconStatus> {
+  return invoke<AppIconStatus>('app_icon_status');
+}
+
+/**
+ * How far the icon got beyond the window or Dock: Logbook's shortcuts (Windows), Logbook in
+ * Applications (macOS) or its app menu entry (Linux) show it, there are none to change, or some
+ * couldn't be changed.
+ */
+export type IconOutside = 'done' | 'missing' | 'failed';
+
+/** The person's picture as the app's icon: a PNG for each size, sent back to back with their sizes and lengths. */
+export async function setAppIcon(pngs: ReadonlyMap<number, Blob>): Promise<{ outside: IconOutside }> {
+  const sizes = [...pngs.keys()];
+  const parts = sizes.map((s) => `${s}:${pngs.get(s)!.size}`).join(',');
+  const body = new Uint8Array(await new Blob(sizes.map((s) => pngs.get(s)!)).arrayBuffer());
+  return invoke<{ outside: IconOutside }>('app_icon_set', body, { headers: { 'x-parts': parts } }).catch((err: unknown) => {
+    throw new Error(String(err));
+  });
+}
+
+/** Back to the usual icon everywhere. */
+export function resetAppIcon(): Promise<void> {
+  return invoke<void>('app_icon_reset').catch((err: unknown) => {
+    throw new Error(String(err));
+  });
+}

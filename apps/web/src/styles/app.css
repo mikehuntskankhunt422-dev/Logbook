@@ -1496,6 +1496,78 @@ dialog h2 {
   margin-top: 18px;
 }
 
+/* The app's icon from the person's own picture (D101, desktop Settings). */
+.app-icon-now {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.app-icon-now img {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.app-icon-now p {
+  margin: 0;
+}
+.icon-crop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-start;
+}
+/* A checkerboard where the corners leave the icon clear. */
+.icon-crop-frame {
+  width: 240px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  touch-action: none;
+  cursor: grab;
+  border-radius: 8px;
+  outline: 1px solid var(--line);
+  background: repeating-conic-gradient(var(--bg-sunk) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+}
+.icon-crop-frame:active {
+  cursor: grabbing;
+}
+.icon-crop-controls {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.icon-crop-controls .settings-label {
+  margin: 0;
+}
+.icon-crop-range {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 600;
+}
+.icon-crop-range input {
+  width: 100%;
+  min-height: 24px;
+  margin: 0;
+}
+.icon-crop-small {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  width: fit-content;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-sunk);
+}
+@media (forced-colors: active) {
+  .icon-crop-frame {
+    outline-color: CanvasText;
+  }
+}
+
 .toasts {
   position: fixed;
   left: 50%;

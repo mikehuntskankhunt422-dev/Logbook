@@ -1,3 +1,7 @@
+**Your own app icon.** On a computer, **Settings → App icon** turns a picture of your own into Logbook's icon. Move and zoom the square to choose what goes in, pick rounded, square or round corners, and Logbook uses it on its window, the taskbar and its shortcuts on Windows, in the Dock and Applications on a Mac, and in the dock and app menu on Linux. **Use the usual icon** puts Logbook's own back. Your picture stays on that computer, outside your journal.
+
+What came in 0.8.0:
+
 **Companions.** From **Crystal**, the **Garden shed** gives your garden a pet: a cat, fox, hedgehog or tortoise that naps beside your newest plant, with a name if you like. Tap it to see it stretch. From **Eternal** there's room for a second pet, and from **Primordial** a baby dragon and a little dinosaur join them.
 
 **Star map.** From **Celestial**, each year's twelve longest entries become a constellation in the night sky above its months, named after the year's most-used tag ("The Lisbon Cluster"). Tap a star to open its entry.
