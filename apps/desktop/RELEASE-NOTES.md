@@ -94,6 +94,4 @@ Already on 0.2.0? Logbook updates itself: **Update and restart** when it asks, o
 - macOS 15 or later: drag Logbook to Applications and open it. When macOS says it can't check it, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. On earlier versions, Control-click Logbook in Applications and choose **Open**.
 - Linux AppImage: `chmod +x Logbook_*.AppImage`, then run it.
 
-**Not in this preview yet:** a screen for sorting out conflicting copies made by a sync service.
-
 This is a preview: keep a backup of anything you'd hate to lose (**Settings → Backups**). Checksums are in `SHA256SUMS.txt`.
