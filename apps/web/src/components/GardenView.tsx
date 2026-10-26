@@ -1,7 +1,7 @@
 import { Fragment, memo, useMemo, useRef, useState } from 'react';
 import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
-import { cardFeatures, CATALOGUE, FEATURES, fitText, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
+import { BIOMES, cardFeatures, CATALOGUE, FEATURES, fitText, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
 import { Pet, PET_TIER, SECOND_PET_TIER, STAR_TIER, StarSky } from './garden/Companions.tsx';
 import { formatLongDate } from './common.tsx';
 import { Almanac, HISTORY_TIER } from './garden/Almanac.tsx';
@@ -9,6 +9,7 @@ import { Herbarium } from './garden/Herbarium.tsx';
 import { Plant, TIER_COLOURS } from './garden/Plant.tsx';
 import { POSTCARD_TIER, PostcardDialog } from './garden/Postcard.tsx';
 import { SEASONS_TIER, SOUNDS_TIER, SoundControls, useGardenNow, WeatherLayer } from './garden/Weather.tsx';
+import { BIOME_TIER, GOLD_LANDMARK_TIER, Landmarks, TREE_TIER, WorldTree } from './garden/Wonders.tsx';
 import { useForcedColors, useReducedMotion } from '../lib/motion.ts';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
@@ -82,6 +83,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
     { kind: allowed(prefs.pet2, SECOND_PET_TIER), name: prefs.pet2Name },
   ].flatMap((p): { kind: PetKind; name: string }[] => (p.kind ? [{ kind: p.kind, name: p.name }] : []));
   const stars = has(STAR_TIER) && prefs.starMap;
+  // Wonders (D103).
+  const biome = has(BIOME_TIER) ? BIOMES.find((b) => b.value === prefs.biome) : undefined;
   const progress = Math.min(1, (rank.growth - rank.from) / (rank.next - rank.from));
   const nextName = top ? `${TIERS[rank.tier]!.name} ★${rank.ring + 1}` : TIERS[rank.tier + 1]!.name;
   // Features a garden update added to tiers this device had already reached: said once.
@@ -172,12 +175,14 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
             data-border={(has(7) && prefs.border) || undefined}
             data-gold={on(12, 'goldSigns') || undefined}
             data-ancient={on(13, 'ancient') || undefined}
+            data-biome={biome?.value}
           >
             {rainbow && <div className="garden-rainbow" aria-hidden="true" />}
             {!reduced && !forced && <WeatherLayer weather={weather} night={night} scene={scene} />}
             <div className="garden-gate" aria-hidden="true">
               <span>🚪</span>
               {has(8) && prefs.ornament && <span>{ORNAMENTS[prefs.ornament]}</span>}
+              {biome && <span>{biome.scenery}</span>}
             </div>
             {on(2, 'visitors') && (
               <div className="garden-visitors" aria-hidden="true">
@@ -188,6 +193,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                 ))}
               </div>
             )}
+            {on(TREE_TIER, 'worldTree') && garden.plants.length > 0 && <WorldTree garden={garden} />}
+            {prefs.landmarks && <Landmarks garden={garden} today={now.day} gold={on(GOLD_LANDMARK_TIER, 'goldLandmarks')} />}
             {beds.length === 0 ? (
               <p className="garden-empty">Write your first entry to plant your first seed. 🌱</p>
             ) : (

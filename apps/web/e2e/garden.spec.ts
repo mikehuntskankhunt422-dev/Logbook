@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
 import { writeEntry } from './helpers.ts';
 
 // The garden (D97): a plant for every entry, the garden's rank, and its perks.
@@ -68,7 +69,7 @@ test('garden history and postcards (D98): the update card, the Almanac, the Time
   await expect(page.getByRole('heading', { level: 2, name: new RegExp(`^${earlier} · 1 plant$`) })).toBeVisible();
 
   const card = page.getByRole('region', { name: '🎁 Garden update' });
-  await expect(card).toContainText('Your Radiant garden now has Garden sounds, Garden history and Postcards.');
+  await expect(card).toContainText('Your Radiant garden now has Landmarks, Garden sounds, Garden history and Postcards.');
   await card.getByRole('link', { name: 'Try it' }).click();
   await expect(page).toHaveURL(/#\/garden\/almanac$/);
   await expect(card).toHaveCount(0);
@@ -132,20 +133,24 @@ test('a garden update tells in a card only of tiers reached before it; later tie
   await page.goto('/#/garden/almanac');
   await page.reload();
   const card = page.getByRole('region', { name: '🎁 Garden update' });
-  await expect(card).toContainText('now has Garden sounds and Garden history.');
+  await expect(card).toContainText('now has Landmarks, Garden sounds and Garden history.');
   await expect(card).not.toContainText('Postcards');
   // Already on the Almanac: no Try it, which would only take focus away.
   await expect(card.getByRole('link', { name: 'Try it' })).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 3: 5 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').noted)).toEqual({ 4: 5 });
   await card.getByRole('button', { name: 'Close' }).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Garden pages' }).getByRole('link', { name: 'Almanac' })).toBeFocused();
 
-  // Updated at Epic: nothing to tell yet, so no card, now or once Legendary comes.
+  // Updated at Epic: only the free Landmarks to tell; Garden sounds waits for Legendary's rank-up.
   await page.evaluate(() => localStorage.setItem('logbook.garden', JSON.stringify({ seen: 3000, catalogue: 0 })));
   await page.reload();
+  await expect(card).toContainText('Your Epic garden now has Landmarks.');
+  await expect(card).not.toContainText('Garden sounds');
+  await card.getByRole('button', { name: 'Close' }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(4);
+  await page.reload();
   await expect(page.getByRole('region', { name: 'Your garden' })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}').catalogue)).toBe(3);
   await expect(card).toHaveCount(0);
 });
 
@@ -156,7 +161,7 @@ test('seasons, weather and garden sounds (D99): chosen in the shed, never on by 
   await page.goto('/#/garden');
   await page.reload();
   const card = page.getByRole('region', { name: '🎁 Garden update' });
-  await expect(card).toContainText('now has Garden sounds and Seasons and weather.');
+  await expect(card).toContainText('now has Landmarks, Garden sounds and Seasons and weather.');
   await card.getByRole('button', { name: 'Close' }).click();
 
   // Nothing changes until chosen: no seasons, no weather, no sound.
@@ -301,3 +306,62 @@ test('on a narrow phone, stars stay a tap apart and pets stay beside the newest 
   // No sideways scroll for the page itself.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
+
+test('wonders (D103): landmarks from the start, biomes at Cosmic, golden landmarks at Eternal and the World Tree at Worldbloom', async ({ page }) => {
+  await writeEntry(page, 'First seed', 'A short note to begin.');
+  await writeEntry(page, 'Long walk', 'We walked along the river to the old mill, then up the hill past the orchard, and home again before dark.');
+  await page.goto('/#/garden');
+  const landmarks = page.getByRole('list', { name: 'Landmarks' });
+  await expect(landmarks.getByRole('link', { name: /^A stone for your first entry: First seed, / })).toBeVisible();
+  await expect(landmarks.getByRole('link', { name: /^A statue for your longest entry, \d+ plant words: Long walk, / })).toBeVisible();
+  // A landmark opens its entry.
+  await landmarks.getByRole('link', { name: /^A stone for your first entry/ }).click();
+  await expect(page.getByLabel('Title')).toHaveValue('First seed');
+  await page.goto('/#/garden');
+  const shed = page.getByRole('region', { name: 'Garden shed' });
+  await shed.getByRole('checkbox', { name: 'Landmarks' }).uncheck();
+  await expect(landmarks).toHaveCount(0);
+  await shed.getByRole('checkbox', { name: 'Landmarks' }).check();
+  await expect(shed.getByRole('group', { name: 'Biome' })).toHaveCount(0);
+
+  // Cosmic: the biomes, each with its scenery by the gate.
+  const reach = async (tier: number) => {
+    await page.evaluate((t) => {
+      const prefs = JSON.parse(localStorage.getItem('logbook.garden') ?? '{}');
+      localStorage.setItem('logbook.garden', JSON.stringify({ ...prefs, seen: t * 1000, catalogue: 4, noted: { 4: t } }));
+    }, tier);
+    await page.goto('/#/garden');
+    await page.reload();
+  };
+  await reach(11);
+  const biomes = shed.getByRole('group', { name: 'Biome' });
+  await expect(biomes.getByRole('button', { name: 'Meadow' })).toHaveAttribute('aria-pressed', 'true');
+  await biomes.getByRole('button', { name: 'Lily pond' }).click();
+  await expect(page.locator('.garden-scene')).toHaveAttribute('data-biome', 'pond');
+  await expect(page.locator('.garden-gate')).toContainText('🪷');
+  await expect(shed.getByRole('checkbox', { name: 'Golden landmarks' })).toHaveCount(0);
+  await expect(shed.getByRole('checkbox', { name: 'World Tree' })).toHaveCount(0);
+
+  // Eternal: golden landmarks, their dates engraved.
+  await reach(12);
+  await shed.getByRole('checkbox', { name: 'Golden landmarks' }).check();
+  await expect(landmarks).toHaveAttribute('data-gold', 'true');
+  await expect(landmarks.locator('.garden-landmark-date').first()).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+
+  // Worldbloom: the World Tree, a blossom for this month.
+  await reach(14);
+  await expect(page.locator('.garden-tree')).toHaveCount(0);
+  await shed.getByRole('checkbox', { name: 'World Tree' }).check();
+  await expect(page.getByRole('img', { name: 'The World Tree: 1 blossom, for the month you’ve written in' })).toBeVisible();
+  for (const biome of ['Zen sand', 'Desert oasis', 'Alpine', 'Floating isles']) {
+    await biomes.getByRole('button', { name: biome }).click();
+    await expectNoSeriousViolations(page, `the ${biome} garden`);
+  }
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.garden') ?? '{}'))).toMatchObject({ biome: 'isles', landmarks: true, goldLandmarks: true, worldTree: true });
+});
+
+async function expectNoSeriousViolations(page: Page, label: string) {
+  const results = await new AxeBuilder({ page }).include('.garden-page').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+  expect(serious.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', ')})`), `${label} has accessibility violations`).toEqual([]);
+}

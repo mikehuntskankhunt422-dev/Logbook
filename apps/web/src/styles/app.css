@@ -2747,10 +2747,11 @@ dialog[open]::backdrop {
 .garden-rank-text { flex: 1; min-width: 0; }
 .garden-rank-name { margin: 0 0 8px; font-size: 1.15rem; }
 .garden-scene {
-  --sky-top: #bfe0fb;
-  --sky-bottom: #e9f6ff;
-  --ground: #9ccc7a;
-  --ground-deep: #7fb25e;
+  /* A biome (D103) brings its own day sky and ground; the time of day, dark mode and Ancient ground still win. */
+  --sky-top: var(--biome-sky-top, #bfe0fb);
+  --sky-bottom: var(--biome-sky-bottom, #e9f6ff);
+  --ground: var(--biome-ground, #9ccc7a);
+  --ground-deep: var(--biome-ground-deep, #7fb25e);
   position: relative;
   margin: 16px 0;
   padding: 56px 16px 16px;
@@ -2798,6 +2799,28 @@ dialog[open]::backdrop {
 .garden-scene[data-border='picket'] .garden-ground { border-bottom: 6px dashed #fffaf0; }
 .garden-scene[data-border='hedge'] .garden-ground { border-bottom: 8px solid #3f7a32; }
 .garden-scene[data-border='tulips'] .garden-ground { border-bottom: 6px dotted #ff7aa8; }
+/* Biomes (D103, Cosmic): skies kept as light as the meadow's, so every plant's outline keeps its contrast. */
+.garden-scene[data-biome='zen'] {
+  --biome-sky-top: #dce8ec; --biome-sky-bottom: #f5f6f1; --biome-ground: #e8dcc0; --biome-ground-deep: #d3c29b;
+  --biome-decor: repeating-linear-gradient(transparent 0 3px, rgb(150 125 80 / 0.45) 3px 4px) 0 100% / 100% 20px no-repeat;
+}
+.garden-scene[data-biome='oasis'] {
+  --biome-sky-top: #ffe1b8; --biome-sky-bottom: #fff6e6; --biome-ground: #e9c47f; --biome-ground-deep: #d4a65a;
+  --biome-decor: radial-gradient(ellipse 5px 3px, #6f9a3a 0 80%, transparent) 6px calc(100% - 10px) / 47px 10px repeat-x;
+}
+.garden-scene[data-biome='pond'] {
+  --biome-sky-top: #d2edf1; --biome-sky-bottom: #f0fbf9; --biome-ground: #8ccbe0; --biome-ground-deep: #5fb0c9;
+  --biome-decor: radial-gradient(circle, #ffb3cf 0 1.5px, transparent 2px) 13px calc(100% - 12px) / 41px 10px repeat-x, radial-gradient(ellipse 7px 3px, #4f9a47 0 85%, transparent) 10px calc(100% - 10px) / 41px 10px repeat-x;
+}
+.garden-scene[data-biome='alpine'] {
+  --biome-sky-top: #cde1f6; --biome-sky-bottom: #f2f8ff; --biome-ground: #b5d39a; --biome-ground-deep: #93b678;
+  --biome-decor: radial-gradient(ellipse 4px 2.5px, #eef0f2 0 85%, transparent) 4px calc(100% - 8px) / 31px 9px repeat-x, radial-gradient(circle, #f6e05e 0 1.5px, transparent 2px) 19px calc(100% - 14px) / 37px 9px repeat-x;
+}
+.garden-scene[data-biome='isles'] { --biome-sky-top: #dbe2ff; --biome-sky-bottom: #f5f2ff; --biome-ground: #a3d17f; --biome-ground-deep: #86b862; }
+.garden-scene[data-biome] .garden-ground { background: var(--biome-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
+/* Each bed an island, with its rock beneath and a wisp of cloud. */
+.garden-scene[data-biome='isles'] .garden-ground { border-radius: 0 0 50% 50% / 0 0 26px 26px; box-shadow: 0 7px 0 -2px #9b7a55, 0 13px 10px -6px rgb(255 255 255 / 0.9); margin-bottom: 14px; }
+.garden-scene[data-biome='isles'][data-weather] .garden-ground::after { left: 6%; right: 6%; }
 .garden-scene[data-path] .garden-bed + .garden-bed { padding-top: 18px; }
 .garden-scene[data-path] .garden-bed + .garden-bed::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 12px; border-radius: 6px; }
 .garden-scene[data-path='gravel'] .garden-bed + .garden-bed::before { background: repeating-radial-gradient(circle at 3px 3px, #c9bfae 0 2px, #a89c88 2px 5px); }
@@ -2876,6 +2899,9 @@ dialog[open]::backdrop {
 .garden-bed[data-season='spring'] { --ground: #a6d77f; --ground-deep: #8bc263; --ground-decor: radial-gradient(circle, #ffc6dd 0 2px, transparent 2.5px) 0 calc(100% - 7px) / 23px 12px repeat-x, radial-gradient(circle, #ffffff 0 1.5px, transparent 2px) 11px calc(100% - 13px) / 29px 10px repeat-x; }
 .garden-bed[data-season='summer'] { --ground: #74b957; --ground-deep: #5c9f43; --ground-decor: radial-gradient(circle, #ffe066 0 1.5px, transparent 2px) 5px calc(100% - 9px) / 37px 10px repeat-x; }
 .garden-bed[data-season='autumn'] { --ground: #d39a4a; --ground-deep: #b7813a; --ground-decor: radial-gradient(ellipse 4px 2px, #b5541f 0 90%, transparent) 0 calc(100% - 8px) / 19px 10px repeat-x, radial-gradient(ellipse 3px 2px, #7a4a1e 0 90%, transparent) 9px calc(100% - 14px) / 27px 9px repeat-x; }
+/* A biome keeps its ground through the seasons (they still bring frost, blossom and leaves); in dark
+   mode the seasons' own night grounds, next, win, as their frost is drawn for them. */
+.garden-scene[data-biome] .garden-bed[data-season] { --ground: var(--biome-ground); --ground-deep: var(--biome-ground-deep); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .garden-bed[data-season='winter'] { --ground: #2b333b; --ground-deep: #222930; --ground-decor: linear-gradient(#9fb2c4, #9fb2c4) 0 calc(100% - 20px) / 100% 2px no-repeat, radial-gradient(circle, #c9d6e2 0 1.5px, transparent 2px) 0 calc(100% - 9px) / 17px 9px repeat-x; }
   :root:not([data-theme='light']) .garden-bed[data-season='spring'] { --ground: #2f4a2a; --ground-deep: #263d22; }
@@ -2887,8 +2913,31 @@ dialog[open]::backdrop {
 :root[data-theme='dark'] .garden-bed[data-season='summer'] { --ground: #24401f; --ground-deep: #1c3318; }
 :root[data-theme='dark'] .garden-bed[data-season='autumn'] { --ground: #4a3520; --ground-deep: #3b2a19; }
 .garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
+.garden-scene[data-biome] .garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), var(--biome-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
 /* Ancient ground keeps its amber soil through the seasons; the season's frost, blossom or leaves lie on it. */
 .garden-scene[data-ancient] .garden-bed[data-season] { --ground: #b98c4e; --ground-deep: #8a6234; }
+/* Ancient ground keeps its soil with a biome too. */
+.garden-scene[data-ancient][data-biome] .garden-bed[data-season] { --ground: #b98c4e; --ground-deep: #8a6234; }
+
+/* Landmarks (D103): small stones by the gate, gold from Eternal. */
+.garden-landmarks { position: relative; list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.garden-landmark {
+  display: flex; flex-direction: column; align-items: center; min-width: 52px; padding: 4px 6px; border-radius: 8px;
+  background: rgb(255 255 255 / 0.78); color: #1d1a17; font-size: 0.75rem; line-height: 1.25; text-align: center; text-decoration: none;
+}
+.garden-landmark svg { width: 28px; height: 28px; }
+/* The ones that open an entry look like links. */
+a.garden-landmark .garden-landmark-caption { text-decoration: underline; text-underline-offset: 2px; }
+a.garden-landmark:hover { background: #fff; }
+a.garden-landmark:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.garden-scene[data-sky='night'] a.garden-landmark:focus-visible { outline-color: #8ab4ff; }
+.garden-scene[data-sky='dawn'] a.garden-landmark:focus-visible, .garden-scene[data-sky='golden'] a.garden-landmark:focus-visible { outline-color: #1f5fe0; }
+.garden-landmarks[data-gold] .garden-landmark { background: linear-gradient(#ffe08a, #e8b43a); color: #3a2a00; }
+.garden-landmarks[data-gold] a.garden-landmark:hover { background: linear-gradient(#fff0b8, #f0c45a); }
+.garden-landmark-date { font-variant-numeric: tabular-nums; letter-spacing: 0.04em; font-size: 0.7rem; }
+/* The World Tree (D103, Worldbloom), above the newest bed. */
+.garden-tree { position: relative; max-width: 280px; margin: 0 auto 8px; }
+.garden-tree svg { display: block; width: 100%; height: auto; }
 /* The weather on the ground: snow lying, puddles, fallen petals. With reduced motion, all there is. */
 .garden-scene[data-weather] .garden-ground { position: relative; }
 /* Behind the plants, so it never hides their stems or tier dots. */
