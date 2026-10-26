@@ -294,10 +294,10 @@ try {
   await sleep(1000);
   const sessionBlocked = await blocked(s);
   check(Boolean(player) && Array.isArray(sessionBlocked) && sessionBlocked.length === 0, `nothing the app needs is blocked: a photo, the app icon's crop, sync, the copies page, a video player (${JSON.stringify(sessionBlocked)})`);
-  // The passcode's key derivation runs WebAssembly (hash-wasm, D6): allowed. (WebKitGTK doesn't
-  // hold WebAssembly to the policy today; the Android test, in Chromium, is the one that would fail.)
-  const wasm = await run(s, "return WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then(() => 'compiled', (e) => String(e))");
-  check(wasm === 'compiled', `WebAssembly runs, for the passcode (${wasm})`);
+  // The passcode's key derivation runs WebAssembly (hash-wasm, D6): allowed. WebKit lets a module
+  // compile anyway; making an instance of it is what the policy decides.
+  const wasm = await run(s, "return WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then((m) => WebAssembly.instantiate(m, {})).then(() => 'runs', (e) => String(e))");
+  check(wasm === 'runs', `WebAssembly runs, for the passcode (${wasm})`);
   // What it's for: script slipped into the page (a crafted entry from a synced folder) doesn't run,
   // and can't send anything anywhere.
   await run(

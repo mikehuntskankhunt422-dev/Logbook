@@ -207,10 +207,19 @@ try {
   // The window's security policy (D104) blocks nothing the app needs on the phone either.
   const blocked = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? null);
   check(Array.isArray(blocked) && blocked.length === 0, `the window's security policy blocked nothing: an entry, a backup, a PDF export, the timer (${JSON.stringify(blocked)})`);
-  // The passcode's key derivation runs WebAssembly (hash-wasm, D6). Android's web view (Chromium)
-  // holds WebAssembly to the policy, as Windows' does; Linux's WebKit doesn't, so it's checked here.
-  const wasm = await page.evaluate(() => WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then(() => 'compiled', (e: unknown) => String(e)));
-  check(wasm === 'compiled', `WebAssembly runs, for the passcode (${wasm})`);
+  // The passcode's key derivation runs WebAssembly (hash-wasm, D6).
+  const wasm = await page.evaluate(() =>
+    WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]))
+      .then((m) => WebAssembly.instantiate(m, {}))
+      .then(() => 'runs', (e: unknown) => String(e)),
+  );
+  check(wasm === 'runs', `WebAssembly runs, for the passcode (${wasm})`);
+  // The update check asks GitHub (android/updates.ts): a preview build like this one doesn't, so
+  // the request is made here. Offline, it fails at the network, not at the policy.
+  const before = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked?.length ?? -1);
+  await page.evaluate(() => fetch('https://api.github.com/repos/mikehuntskankhunt422-dev/Logbook/releases/latest').catch(() => undefined));
+  const afterCheck = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? []);
+  check(afterCheck.length === before, `the update check may reach GitHub (${JSON.stringify(afterCheck.slice(before))})`);
 } catch (err) {
   check(false, String(err instanceof Error ? (err.stack ?? err.message) : err));
   await screenshot('failure');
