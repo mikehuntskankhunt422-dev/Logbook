@@ -203,6 +203,14 @@ try {
     const log = (await shell('logcat -d')).split('\n').filter((l) => /Tauri|Notification|Clock|AlarmManager|logbook/i.test(l)).slice(-60);
     console.log(`  logcat:\n${log.join('\n')}`);
   }
+
+  // The window's security policy (D104) blocks nothing the app needs on the phone either.
+  const blocked = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? null);
+  check(Array.isArray(blocked) && blocked.length === 0, `the window's security policy blocked nothing: an entry, a backup, a PDF export, the timer (${JSON.stringify(blocked)})`);
+  // The passcode's key derivation runs WebAssembly (hash-wasm, D6). Android's web view (Chromium)
+  // holds WebAssembly to the policy, as Windows' does; Linux's WebKit doesn't, so it's checked here.
+  const wasm = await page.evaluate(() => WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then(() => 'compiled', (e: unknown) => String(e)));
+  check(wasm === 'compiled', `WebAssembly runs, for the passcode (${wasm})`);
 } catch (err) {
   check(false, String(err instanceof Error ? (err.stack ?? err.message) : err));
   await screenshot('failure');

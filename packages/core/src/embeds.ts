@@ -36,7 +36,7 @@ function yt(id: string | null | undefined): ParsedEmbed | null {
   return { provider: 'youtube', videoId: id, url: `https://www.youtube.com/watch?v=${id}` };
 }
 
-/** Privacy-friendlier player URLs: youtube-nocookie and Vimeo's do-not-track flag. */
+/** Privacy-friendlier player URLs: youtube-nocookie and Vimeo's do-not-track flag. (Allowed by the desktop window's frame-src, D104.) */
 export function embedPlayerUrl(e: { provider: 'youtube' | 'vimeo'; videoId: string }): string {
   return e.provider === 'youtube'
     ? `https://www.youtube-nocookie.com/embed/${e.videoId}`

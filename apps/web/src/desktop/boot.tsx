@@ -21,6 +21,7 @@ const CLOSE_ANYWAY_MS = 15_000;
  * first run; on Android it's inside the app, set up by the app before the page loads (D90).
  */
 export async function bootApp(root: Root, render: (journal: Journal) => void): Promise<void> {
+  noteBlocked();
   routeLinks();
   if (import.meta.env.VITE_PLATFORM === 'desktop') {
     saveBeforeClosing();
@@ -88,4 +89,18 @@ export function showError(root: Root, err: unknown): void {
       <UpdateOffer />
     </main>,
   );
+}
+
+/**
+ * What the window's security policy (D104, tauri.conf.json) blocked: said in the console, and kept
+ * for the desktop smoke test, which checks that nothing the app itself needs is blocked.
+ */
+function noteBlocked(): void {
+  const blocked: string[] = [];
+  (window as Window & { logbookBlocked?: string[] }).logbookBlocked = blocked;
+  document.addEventListener('securitypolicyviolation', (e) => {
+    const what = `${e.effectiveDirective} ${e.blockedURI || '(inline)'}`;
+    blocked.push(what);
+    console.warn(`The window's security policy blocked ${what}.`);
+  });
 }

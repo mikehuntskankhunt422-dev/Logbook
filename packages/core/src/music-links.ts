@@ -26,7 +26,10 @@ export function normaliseMusicUrl(raw: string): string | null {
   }
 }
 
-/** What a (normalised) link is, and how to play it. */
+/**
+ * What a (normalised) link is, and how to play it. A new site's player must also be added to the
+ * desktop window's frame-src (apps/desktop/src-tauri/tauri.conf.json, D104), or it won't load there.
+ */
 export function musicSource(href: string): MusicSource {
   const u = new URL(href);
   const host = u.hostname.toLowerCase().replace(/^(www|m)\./, '');

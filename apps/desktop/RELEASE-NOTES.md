@@ -1,3 +1,7 @@
+**A safer window.** On a computer and on your phone, Logbook's window now only runs Logbook's own code and only talks to the places it needs: the video sites you play music from. Anything that slipped into your journal folder pretending to be part of the app (say, a file crafted to look like an entry) can't run or send your writing anywhere. You shouldn't notice any other difference.
+
+What came in 0.9.0:
+
 **Landmarks.** Your garden now marks the way you've come: a stone for your first entry, a lamp post for every 100th, an arch for each year since you started, path stones for your longest streak (from 3 days, a week, two weeks…) and a statue for your longest entry. Tap one with an entry to open it. Every garden has them; turn them off in the **Garden shed** if you like.
 
 **Biomes.** From **Cosmic**, the **Garden shed** can turn the meadow into a zen sand garden, a desert oasis, a lily pond, an alpine meadow or floating isles, each with its own sky, ground and something by the gate. Your plants stay as they are.
