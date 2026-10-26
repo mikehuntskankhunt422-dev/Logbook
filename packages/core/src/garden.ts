@@ -251,6 +251,8 @@ export interface Plant {
 export interface Garden {
   plants: Plant[];
   rank: Rank;
+  /** Every entry that counts, in the order written: trashed ones too (the landmarks, D103). */
+  written: Entry[];
 }
 
 const dayOf = (e: Entry) => (/^\d{4}-\d{2}-\d{2}T/.test(e.createdAt) ? e.createdAt.slice(0, 10) : e.date);
@@ -298,7 +300,7 @@ export function growGarden(entries: Entry[], cache?: GardenCache): Garden {
   }
   // Forget the versions that have been saved over.
   if (cache && used && cache.size > used.size) for (const k of cache.keys()) if (!used.has(k)) cache.delete(k);
-  return { plants, rank: rankFor(growth) };
+  return { plants, rank: rankFor(growth), written: ordered };
 }
 
 /** "Rare", or "Worldbloom ★3" past the top. */

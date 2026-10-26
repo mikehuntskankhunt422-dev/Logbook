@@ -35,6 +35,11 @@ export interface GardenPrefs {
   pet2: '' | PetKind;
   pet2Name: string;
   starMap: boolean;
+  /** Wonders (D103): the garden's biome ('' is the meadow), its landmarks and whether they're gold, and the World Tree. */
+  biome: '' | Biome;
+  landmarks: boolean;
+  goldLandmarks: boolean;
+  worldTree: boolean;
   /** The highest rank seen on this device (tier × 1000 + ring), for "your garden reached…". */
   seen: number;
   /** The garden update last announced on this device (FEATURES' catalogue numbers). */
@@ -67,6 +72,10 @@ const DEFAULTS: GardenPrefs = {
   pet2: '',
   pet2Name: '',
   starMap: false,
+  biome: '',
+  landmarks: true,
+  goldLandmarks: false,
+  worldTree: false,
   seen: -1,
   catalogue: 0,
   noted: {},
@@ -171,6 +180,16 @@ export const PETS: { value: PetKind; label: string; emoji: string; tier: number 
   { value: 'dragon', label: 'Baby dragon', emoji: '🐉', tier: 13 },
   { value: 'dinosaur', label: 'Little dinosaur', emoji: '🦕', tier: 13 },
 ];
+/** The garden's biomes (D103, Cosmic), besides the meadow, each with the scenery by its gate. */
+export type Biome = 'zen' | 'oasis' | 'pond' | 'alpine' | 'isles';
+export const BIOMES: { value: Biome; label: string; scenery: string }[] = [
+  { value: 'zen', label: 'Zen sand', scenery: '🪨' },
+  { value: 'oasis', label: 'Desert oasis', scenery: '🌴' },
+  { value: 'pond', label: 'Lily pond', scenery: '🪷' },
+  { value: 'alpine', label: 'Alpine', scenery: '🏔️' },
+  { value: 'isles', label: 'Floating isles', scenery: '☁️' },
+];
+
 /** A pet's name: at most this many characters (as people count them: an emoji is one). */
 export const PET_NAME_MAX = 20;
 
@@ -270,6 +289,34 @@ export const FEATURES: Feature[] = [
     ],
   },
   { tier: 13, catalogue: 3, title: 'Ancient companions', text: 'A baby dragon and a little dinosaur join the pets.' },
+  {
+    tier: 0,
+    catalogue: 4,
+    title: 'Landmarks',
+    text: 'A stone for your first entry, a lamp post every 100 entries, an arch for each year since, path stones for your longest streak and a statue for your longest entry. Each one with an entry opens it.',
+    controls: [{ kind: 'toggle', pref: 'landmarks', label: 'Landmarks' }],
+  },
+  {
+    tier: 11,
+    catalogue: 4,
+    title: 'Biomes',
+    text: 'Turn the meadow into a zen sand garden, a desert oasis, a lily pond, an alpine meadow or floating isles. Your plants stay as they are.',
+    controls: [{ kind: 'choice', pref: 'biome', label: 'Biome', none: 'Meadow', choices: BIOMES }],
+  },
+  {
+    tier: 12,
+    catalogue: 4,
+    title: 'Golden landmarks',
+    text: 'Your landmarks turn gold, with their dates engraved.',
+    controls: [{ kind: 'toggle', pref: 'goldLandmarks', label: 'Golden landmarks' }],
+  },
+  {
+    tier: 14,
+    catalogue: 4,
+    title: 'The World Tree',
+    text: 'A great tree at the gate, with a blossom for every month you’ve written in, coloured by that month’s rarest plant, and a ring round its trunk for every ★.',
+    controls: [{ kind: 'toggle', pref: 'worldTree', label: 'World Tree' }],
+  },
 ];
 /** The newest garden update. */
 export const CATALOGUE = Math.max(...FEATURES.map((f) => f.catalogue));

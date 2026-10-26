@@ -1,3 +1,15 @@
+**Landmarks.** Your garden now marks the way you've come: a stone for your first entry, a lamp post for every 100th, an arch for each year since you started, path stones for your longest streak (from 3 days, a week, two weeks…) and a statue for your longest entry. Tap one with an entry to open it. Every garden has them; turn them off in the **Garden shed** if you like.
+
+**Biomes.** From **Cosmic**, the **Garden shed** can turn the meadow into a zen sand garden, a desert oasis, a lily pond, an alpine meadow or floating isles, each with its own sky, ground and something by the gate. Your plants stay as they are.
+
+**Golden landmarks.** From **Eternal**, your landmarks can turn gold, with their dates engraved.
+
+**The World Tree.** At **Worldbloom**, a great tree can grow at the garden gate, with a blossom for every month you've written in, coloured by that month's rarest plant, and a ring round its trunk for every ★.
+
+Nothing changes until you choose it in the shed, apart from the landmarks.
+
+What came in 0.8.2:
+
 **Changes from your other computers.** On a computer, if your journal folder is in Dropbox, OneDrive, iCloud Drive or another sync service, what you write on another computer now shows up as soon as it arrives, without restarting Logbook, even in an entry you have open (as long as you haven't started changing it).
 
 **Copies to sort out.** When two computers change the same entry before the sync service has caught up, it keeps both, the second as a copy. Logbook on a computer now shows a banner, and **Sort it out** puts the two versions side by side, with their dates, length and words: keep the one in your journal, use the copy, or keep both as separate entries. Whatever you don't keep goes to **Recently deleted** for 30 days. Files Logbook can't read are listed there too.
