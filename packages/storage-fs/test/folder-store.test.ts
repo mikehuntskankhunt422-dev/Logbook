@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -691,6 +691,70 @@ describe('copies to sort out (D102)', () => {
     }) as typeof store.getKey;
     await j.refresh();
     expect(j.getSettings().theme).toBe('dark');
+  });
+
+  it('stops calling a kept copy a copy once another computer has saved over it, and never bins it for one', async () => {
+    const root = await folder();
+    const desk = await Journal.open(await open(root));
+    const e = await desk.saveEntry(desk.newEntry({ date: '2026-10-07', title: 'Base' }));
+    // Both computers save revision 2 under their own titles: the laptop's is kept as a copy here.
+    await writeFile(join(root, `entries/2026/2026-10-07--laptop--${e.id}.json`), JSON.stringify({ ...e, title: 'Laptop', rev: 2 }));
+    await desk.saveEntry({ ...e, title: 'Desk' }, { expectedRev: e.rev });
+    await desk.refresh();
+    // As the app does after every refresh.
+    await desk.listEntries();
+    expect((await desk.entryCopies()).map((c) => c.copy?.title)).toEqual(['Laptop']);
+    // The laptop saves again into its file: it's the newest version now, not a copy.
+    await writeFile(join(root, `entries/2026/2026-10-07--laptop--${e.id}.json`), JSON.stringify({ ...e, title: 'Laptop', tags: ['later'], rev: 3 }));
+    await desk.refresh();
+    await desk.listEntries();
+    expect(await desk.entryCopies()).toEqual([]);
+    const shown = (await desk.getEntry(e.id))!;
+    expect([shown.rev, shown.tags]).toEqual([3, ['later']]);
+    // Saving over it makes no copy of it.
+    await desk.saveEntry({ ...shown, title: 'Desk again' }, { expectedRev: 3, expectedUpdatedAt: shown.updatedAt });
+    expect((await files(root)).filter((f) => f.includes(e.id))).toEqual([`entries/2026/2026-10-07--desk-again--${e.id}.json`]);
+  });
+
+  it('turns the passcode off or on whole, with the folder read again meanwhile', async () => {
+    const root = await folder();
+    const store = await open(root);
+    const j = await Journal.open(store);
+    for (const title of ['One', 'Two', 'Three', 'Four']) await j.saveEntry(j.newEntry({ title }));
+    await Promise.all([j.enableEncryption('correct horse', FAST_KDF), j.refresh(), j.refresh()]);
+    expect([j.isEncrypted, j.isLocked]).toEqual([true, false]);
+    expect((await files(root)).filter((f) => f.startsWith('entries/') && !f.endsWith('.json.enc'))).toEqual([]);
+    // The folder changes just as the entries start being written back without the passcode.
+    const put = store.put.bind(store);
+    let raced: Promise<void> | undefined;
+    store.put = (async (name: 'entries', record: Entry) => {
+      if (!raced) {
+        raced = j.refresh();
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return put(name, record);
+    }) as typeof store.put;
+    await j.disableEncryption('correct horse');
+    await raced;
+    expect([j.isEncrypted, j.isLocked]).toEqual([false, false]);
+    expect(JSON.parse(await readFile(join(root, 'logbook.json'), 'utf8')).vault).toBeUndefined();
+    expect((await j.listEntries()).map((x) => x.title).sort()).toEqual(['Four', 'One', 'Three', 'Two']);
+  });
+
+  it('doesn’t take a journal folder that has gone for an empty one, and reads it again once it’s back', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.saveEntry(j.newEntry({ title: 'Still here' }));
+    await j.updateSettings({ theme: 'dark' });
+    const seen: string[] = [];
+    j.subscribe((ev) => seen.push(ev));
+    await rename(root, `${root}-away`);
+    // Nothing is announced, so the page keeps showing the journal; the settings stay as they were.
+    await expect(j.refresh()).rejects.toThrow(/can't be found/);
+    expect([seen, j.getSettings().theme, j.isLocked]).toEqual([[], 'dark', false]);
+    await rename(`${root}-away`, root);
+    await j.refresh();
+    expect((await j.listEntries()).map((x) => x.title)).toEqual(['Still here']);
   });
 
   it('asks for the passcode when another computer turned it on, but not after turning it on here', async () => {

@@ -120,9 +120,19 @@ export class FolderStore implements RecordStore {
     return store;
   }
 
-  /** Re-reads the folder (RecordStore.refresh): another computer may have changed it. Not in the middle of a change. */
+  /**
+   * Re-reads the folder (RecordStore.refresh): another computer may have changed it. Not in the
+   * middle of a change. A folder that has gone (a drive unplugged) isn't taken for an empty
+   * journal: what was read stays until it's back.
+   */
   refresh(): Promise<void> {
-    return this.serial(() => this.rescan());
+    return this.serial(async () => {
+      if (this.entries.size + this.media.size > 0 && !(await this.readLogbook().catch(() => true))) {
+        const files = [...(await this.fs.list('entries')), ...(await this.fs.list('trash')), ...(await this.fs.list('media'))];
+        if (!files.length) throw new Error("The journal folder can't be found, or it's empty. Logbook keeps what it has read until it's back.");
+      }
+      await this.rescan();
+    });
   }
 
   /** Whether any file in the folder is this record's, readable or not (RecordStore.has). */
@@ -275,7 +285,9 @@ export class FolderStore implements RecordStore {
     // Kept as well, rather than deleted by the next save: a copy with the same revision but other
     // content (two computers edited the same version), and a sealed copy beside a plain one (a
     // passcode switched while another computer was writing; a sealed copy's revision can't be read).
+    // Worked out afresh each read: a copy kept earlier may since have become the newest.
     for (const f of found) {
+      this.held.delete(f.path);
       if (!best || f === best) continue;
       const sameRevision = rev(f.record) === rev(best.record) && f.text !== best.text;
       if (sameRevision || isSealed(f.record) !== isSealed(best.record)) this.held.add(f.path);

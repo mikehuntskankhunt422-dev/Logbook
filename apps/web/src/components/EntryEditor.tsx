@@ -69,8 +69,8 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   const conflicts = useRef(0);
   /** Bumped when another version replaces what's shown, so the editor starts again from it. */
   const [version, setVersion] = useState(0);
-  /** Where keyboard focus was when that happened, to put it back in the new editor. */
-  const refocus = useRef<'title' | 'text' | null>(null);
+  /** Where keyboard focus was when that happened (see editorFocus), to put it back in the new editor. */
+  const refocus = useRef<string | null>(null);
   const replaceShown = (e: Entry) => {
     refocus.current = editorFocus();
     setEntry(e);
@@ -80,9 +80,11 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     const where = refocus.current;
     refocus.current = null;
     if (!where) return;
-    // The text editors are made once mounted: a frame later they're there.
+    // The text editors are made once mounted: a frame later they're there. The same block if the
+    // other version has it, else the first text.
     const frame = requestAnimationFrame(() => {
-      const text = where === 'text' ? document.querySelector<HTMLElement>('main article .ProseMirror') : null;
+      const block = where !== 'title' && where ? document.querySelector<HTMLElement>(`main article [data-block="${globalThis.CSS.escape(where)}"] .ProseMirror`) : null;
+      const text = where !== 'title' ? (block ?? document.querySelector<HTMLElement>('main article .ProseMirror')) : null;
       (text ?? document.getElementById('entry-title'))?.focus();
     });
     return () => cancelAnimationFrame(frame);
@@ -270,8 +272,10 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
       dirty.current = false;
       return 'dropped';
     }
+    const met = conflicts.current;
     await save();
-    if (dirty.current || !latest.current) return null;
+    // Not saved, or another computer's version came in instead: that isn't what was asked to go.
+    if (dirty.current || conflicts.current !== met || !latest.current) return null;
     await journal.trashEntry(latest.current.id);
     return 'binned';
   };
@@ -280,11 +284,12 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   return <EditorBody key={version} entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} discard={discard} />;
 }
 
-/** Where keyboard focus is in the open entry: its title, somewhere else in it, or outside it. */
-function editorFocus(): 'title' | 'text' | null {
+/** Where keyboard focus is in the open entry: 'title', a block's id, '' elsewhere in it, or null outside it. */
+function editorFocus(): string | null {
   const at = document.activeElement;
   if (at?.id === 'entry-title') return 'title';
-  return at?.closest('main article') ? 'text' : null;
+  if (!at?.closest('main article')) return null;
+  return at.closest('[data-block]')?.getAttribute('data-block') ?? '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -764,6 +769,7 @@ function SortableBlock({
     <section
       ref={setNodeRef}
       className="block"
+      data-block={block.id}
       data-dragging={isDragging || grabbed}
       aria-label={label}
       style={{ transform: CSS.Transform.toString(transform && { ...transform, scaleX: 1, scaleY: 1 }), transition }}

@@ -153,7 +153,11 @@ export class Journal {
    * journal is "encrypted with some records still plaintext", which reads correctly, rather than
    * "ciphertext with no key", which would lose data.
    */
-  async enableEncryption(passcode: string, kdf?: Omit<KdfParams, 'salt'>): Promise<void> {
+  enableEncryption(passcode: string, kdf?: Omit<KdfParams, 'salt'>): Promise<void> {
+    // In turn with saves and refreshes: a refresh reading the key half-written would lock the journal mid-way.
+    return this.exclusive(() => this.enableEncryptionNow(passcode, kdf));
+  }
+  private async enableEncryptionNow(passcode: string, kdf?: Omit<KdfParams, 'salt'>): Promise<void> {
     this.assertUnlocked();
     if (this.vault) throw new Error('A passcode is already set.');
     // Another computer may have set one meanwhile: a second key would overwrite its key (D85).
@@ -166,7 +170,10 @@ export class Journal {
     this.emit('lock');
   }
 
-  async disableEncryption(passcode: string): Promise<void> {
+  disableEncryption(passcode: string): Promise<void> {
+    return this.exclusive(() => this.disableEncryptionNow(passcode));
+  }
+  private async disableEncryptionNow(passcode: string): Promise<void> {
     if (!this.vault) return;
     const cipher = await openVault(this.vault, passcode); // throws WrongPasscodeError
     // On a shared folder, include what other computers wrote since this one last looked.
@@ -220,7 +227,10 @@ export class Journal {
     this.emit('lock');
   }
 
-  async changePasscode(oldPasscode: string, newPasscode: string): Promise<void> {
+  changePasscode(oldPasscode: string, newPasscode: string): Promise<void> {
+    return this.exclusive(() => this.changePasscodeNow(oldPasscode, newPasscode));
+  }
+  private async changePasscodeNow(oldPasscode: string, newPasscode: string): Promise<void> {
     if (!this.vault) throw new Error('No passcode is set.');
     if (!(await this.vaultIsCurrent())) throw new VaultChangedError();
     const vault = await rewrapVault(this.vault, oldPasscode, newPasscode);
@@ -639,27 +649,32 @@ export class Journal {
   /** Reads the store again (another computer or a sync tool changed the folder) and tells every view. */
   async refresh(): Promise<void> {
     const changes = this.settingsChanges;
-    await this.exclusive(async () => this.store.refresh?.());
-    try {
-      const raw = await this.store.getKey('settings');
-      const parsed = settingsSchema.safeParse(raw ?? {});
-      // Only if nothing was changed here meanwhile: the file would be older than what's shown.
-      const ours = changes !== this.settingsChanges || this.settingsUnwritten > 0;
-      if (!ours && parsed.success && JSON.stringify(parsed.data) !== JSON.stringify(this.settings)) {
-        this.settings = parsed.data;
-        this.emit('settings');
+    // In turn with saves and passcode changes made here: what's read is never half of one.
+    await this.exclusive(async () => {
+      await this.store.refresh?.();
+      try {
+        const raw = await this.store.getKey('settings');
+        // Only if nothing was changed here meanwhile (the file would be older than what's shown), and
+        // not when there are none at all (logbook.json not there yet, or mid-sync): keep what's shown.
+        const ours = changes !== this.settingsChanges || this.settingsUnwritten > 0;
+        const parsed = settingsSchema.safeParse(raw);
+        if (!ours && raw !== undefined && parsed.success && JSON.stringify(parsed.data) !== JSON.stringify(this.settings)) {
+          this.settings = parsed.data;
+          this.emit('settings');
+        }
+        // The passcode turned on, off or changed on another computer: ask for it, as unlock() reads
+        // the key that's there now. Writes check the key anyway (writeCipher). Without logbook.json,
+        // the store gives the copy of the key kept beside it, so a missing file isn't "turned off".
+        const vault = await this.store.getKey('vault');
+        if (JSON.stringify(vault) !== JSON.stringify(this.vault) && !this.isLocked) {
+          if (!this.vault) this.vault = vault;
+          this.cipher = null;
+          this.emit('lock');
+        }
+      } catch {
+        // logbook.json mid-sync: the next change brings it.
       }
-      // The passcode turned on, off or changed on another computer: ask for it, as unlock() reads
-      // the key that's there now. Writes check the key anyway (writeCipher).
-      const vault = await this.store.getKey('vault');
-      if (JSON.stringify(vault) !== JSON.stringify(this.vault) && !this.isLocked) {
-        if (!this.vault) this.vault = vault;
-        this.cipher = null;
-        this.emit('lock');
-      }
-    } catch {
-      // logbook.json mid-sync: the next change brings it.
-    }
+    });
     this.emit('entries');
     this.emit('media');
     this.emit('external');
@@ -674,6 +689,8 @@ export class Journal {
       const copy = await this.readCopy(file.path);
       const id = copy?.id ?? file.id;
       const current = id ? await this.ownVersion(id) : undefined;
+      // Reading the entry can show the "copy" is now its newest version: then it isn't one.
+      if (!(this.store.conflicts?.() ?? []).some((c) => c.path === file.path)) continue;
       out.push({ path: file.path, copy, current: current ?? undefined, currentUnreadable: current === null, kept: Boolean(file.kept) });
     }
     return out;
@@ -720,8 +737,9 @@ export class Journal {
       await this.saveEntry(separately(current, true));
       await this.saveEntry({ ...live(copy), rev: current.rev }, { expectedRev: current.rev, expectedUpdatedAt: current.updatedAt });
     } else {
-      // Its entry is gone: the copy comes back in its place.
-      await this.saveEntry({ ...live(copy), rev: 0 });
+      // Its entry is gone: the copy comes back in its place, unless the entry has turned up since
+      // (no stored revision is -1, so any found is a conflict).
+      await this.saveEntry({ ...live(copy), rev: 0 }, { expectedRev: -1 });
     }
     try {
       await this.store.removeCopy?.(path);

@@ -49,6 +49,16 @@ pub fn changed_by_us(rel: &str) -> bool {
     OWN_CHANGES.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(path, at)| path == rel && at.elapsed() < OWN_CHANGE_FOR)
 }
 
+/// The journal folder is made when it's chosen; a write never makes it again (a drive unplugged,
+/// the folder moved away), or the journal would carry on in an empty folder in its place.
+fn still_there(root: &Path) -> Result<(), String> {
+    if root.is_dir() {
+        Ok(())
+    } else {
+        Err(format!("The journal folder, {}, can't be found. Is its drive connected?", root.display()))
+    }
+}
+
 /// Joins a checked relative path (`/`-separated) onto the journal folder.
 pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let ok = !rel.is_empty()
@@ -158,6 +168,7 @@ fn icloud_download(path: &Path) -> bool {
 /// target, so a crash or a sync tool never sees half a file.
 pub fn write(root: &Path, rel: &str, data: &[u8]) -> Result<(), String> {
     let target = resolve(root, rel)?;
+    still_there(root)?;
     note_own_change(rel);
     write_atomic(&target, data).map_err(|e| describe(rel, e))?;
     // Again once written: a big file can take longer than the note lasts.
@@ -234,6 +245,7 @@ impl Pieces {
         let target = resolve(root, rel)?;
         let mut writes = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if part == Part::First {
+            still_there(root)?;
             note_own_change(rel);
             if let Some(old) = writes.remove(id) {
                 old.discard();
@@ -291,6 +303,7 @@ pub fn remove_unfinished_writes(root: &Path) -> usize {
 
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
     let (a, b) = (resolve(root, from)?, resolve(root, to)?);
+    still_there(root)?;
     materialize(&a, &icloud_download, icloud_wait()).map_err(|e| describe(from, e))?;
     note_own_change(from);
     note_own_change(to);
@@ -423,6 +436,16 @@ mod tests {
         assert_eq!(list(root, "media").unwrap().len(), 3);
         assert_eq!(remove_unfinished_writes(root), 1);
         assert_eq!(list(root, "media").unwrap(), vec!["media/ab/a.mp4", "media/ab/v.mp4"]);
+    }
+
+    #[test]
+    fn never_makes_a_journal_folder_that_has_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("Logbook");
+        assert!(write(&root, "entries/2019/gone--z9y8x7w6v5u4.json", b"{}").unwrap_err().contains("can't be found"));
+        assert!(!root.exists());
+        fs::create_dir(&root).unwrap();
+        write(&root, "entries/2019/gone--z9y8x7w6v5u4.json", b"{}").unwrap();
     }
 
     #[test]

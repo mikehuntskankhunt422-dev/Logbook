@@ -81,16 +81,17 @@ fn news(roots: &[PathBuf], event: &notify::Event, seen: &mut HashMap<String, Sta
             continue;
         };
         let meta = std::fs::metadata(path).ok();
-        // A folder "changed" when a file in it did: the file tells its own news.
-        if matches!(event.kind, EventKind::Modify(_)) && meta.as_ref().is_some_and(|m| m.is_dir()) {
+        // A folder "changed" when a file in it did: the file tells its own news. A folder moved in
+        // (a renamed one) is news: its files say nothing.
+        let changed = matches!(event.kind, EventKind::Modify(ModifyKind::Any | ModifyKind::Data(_) | ModifyKind::Other));
+        if changed && meta.as_ref().is_some_and(|m| m.is_dir()) {
             continue;
         }
         let stamp = meta.filter(|m| m.is_file()).and_then(|m| Some((m.modified().ok()?, m.len())));
-        // A change that leaves the file as it was: on Windows, OneDrive marking a file uploaded is
-        // reported like any other change.
-        let same = matches!(event.kind, EventKind::Modify(ModifyKind::Any | ModifyKind::Data(_) | ModifyKind::Other))
-            && stamp.is_some()
-            && seen.get(&rel) == stamp.as_ref();
+        // A change that leaves the file as it was: Windows reports OneDrive marking a file uploaded
+        // as a change of any kind. Other systems say when the content was written, which is news
+        // even at the same size and second (sync tools set times to the second).
+        let same = matches!(event.kind, EventKind::Modify(ModifyKind::Any)) && stamp.is_some() && seen.get(&rel) == stamp.as_ref();
         match stamp {
             Some(stamp) => seen.insert(rel.clone(), stamp),
             None => seen.remove(&rel),
@@ -144,7 +145,7 @@ fn settle(rx: mpsc::Receiver<Vec<String>>, mut emit: impl FnMut(Vec<String>)) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use notify::event::{AccessKind, CreateKind, DataChange, MetadataKind, RemoveKind};
+    use notify::event::{AccessKind, CreateKind, DataChange, MetadataKind, RemoveKind, RenameMode};
 
     fn event(kind: EventKind, paths: &[&str]) -> notify::Event {
         let mut e = notify::Event::new(kind);
@@ -216,6 +217,11 @@ mod tests {
         // A folder "changed" because a file in it did.
         let folder = event(EventKind::Modify(ModifyKind::Any), &[dir.path().join("entries/2026").to_str().unwrap()]);
         assert!(news(&roots, &folder, &mut seen).is_empty());
+        // A folder moved in is news. (Its name is this test's own: Logbook's own changes are noted for
+        // the whole process, and other tests write in entries/2026.)
+        std::fs::create_dir_all(dir.path().join("entries/2018")).unwrap();
+        let moved = event(EventKind::Modify(ModifyKind::Name(RenameMode::To)), &[dir.path().join("entries/2018").to_str().unwrap()]);
+        assert_eq!(news(&roots, &moved, &mut seen), ["entries/2018"]);
         // A folder Logbook made for its own file isn't news; another computer's is.
         journal_fs::write(dir.path(), "entries/2031/own--k3f9x2m4n5p6.json", b"{}").unwrap();
         let made = |p: &str| event(EventKind::Create(CreateKind::Folder), &[dir.path().join(p).to_str().unwrap()]);

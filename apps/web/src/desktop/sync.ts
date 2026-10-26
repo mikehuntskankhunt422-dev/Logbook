@@ -12,6 +12,7 @@ import { useJournal } from '../app/journal-context.tsx';
 export async function watchJournal(journal: Journal): Promise<void> {
   let running = false;
   let again = false;
+  let retry: ReturnType<typeof setTimeout> | undefined;
   const refresh = () => {
     if (running) {
       again = true;
@@ -20,7 +21,17 @@ export async function watchJournal(journal: Journal): Promise<void> {
     running = true;
     void journal
       .refresh()
-      .catch((err: unknown) => console.warn("Couldn't read the journal folder again:", err))
+      .catch((err: unknown) => {
+        console.warn("Couldn't read the journal folder again:", err);
+        // The folder may have gone (a drive unplugged): its watch went with it. Watch it afresh
+        // and read it again every so often until it's back.
+        retry ??= setTimeout(() => {
+          retry = undefined;
+          void invoke('journal_watch')
+            .catch(() => {})
+            .finally(refresh);
+        }, RETRY_MS);
+      })
       .finally(() => {
         running = false;
         if (again) {
@@ -41,6 +52,7 @@ export async function watchJournal(journal: Journal): Promise<void> {
 }
 
 const AWAY_MS = 60_000;
+const RETRY_MS = 30_000;
 
 /**
  * How many files in the journal folder need a person: copies to sort out, files that can't be read.
