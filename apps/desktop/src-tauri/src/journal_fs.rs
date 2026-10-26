@@ -24,6 +24,41 @@ const ICLOUD_WAIT: Duration = Duration::from_secs(30);
 const ICLOUD_QUIET: Duration = Duration::from_secs(120);
 static ICLOUD_TIMEOUTS: std::sync::Mutex<Vec<(PathBuf, Instant)>> = std::sync::Mutex::new(Vec::new());
 
+/// Files Logbook itself just wrote, renamed or deleted, by relative path: the folder watcher
+/// (watch.rs) leaves them out, so a save isn't taken for another computer's change.
+static OWN_CHANGES: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
+/// Long enough for the system to report the change.
+const OWN_CHANGE_FOR: Duration = Duration::from_secs(5);
+
+/// Notes a file Logbook is changing, and the folders it's in (a write can make them).
+fn note_own_change(rel: &str) {
+    let mut own = OWN_CHANGES.lock().unwrap_or_else(|e| e.into_inner());
+    own.retain(|(_, at)| at.elapsed() < OWN_CHANGE_FOR);
+    let now = Instant::now();
+    own.push((rel.to_string(), now));
+    let mut dir = rel;
+    while let Some((parent, _)) = dir.rsplit_once('/') {
+        own.push((parent.to_string(), now));
+        dir = parent;
+    }
+}
+
+/// Whether Logbook changed this file in the last few seconds.
+#[cfg_attr(mobile, allow(dead_code))]
+pub fn changed_by_us(rel: &str) -> bool {
+    OWN_CHANGES.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(path, at)| path == rel && at.elapsed() < OWN_CHANGE_FOR)
+}
+
+/// The journal folder is made when it's chosen; a write never makes it again (a drive unplugged,
+/// the folder moved away), or the journal would carry on in an empty folder in its place.
+fn still_there(root: &Path) -> Result<(), String> {
+    if root.is_dir() {
+        Ok(())
+    } else {
+        Err(format!("The journal folder, {}, can't be found. Is its drive connected?", root.display()))
+    }
+}
+
 /// Joins a checked relative path (`/`-separated) onto the journal folder.
 pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let ok = !rel.is_empty()
@@ -133,7 +168,12 @@ fn icloud_download(path: &Path) -> bool {
 /// target, so a crash or a sync tool never sees half a file.
 pub fn write(root: &Path, rel: &str, data: &[u8]) -> Result<(), String> {
     let target = resolve(root, rel)?;
-    write_atomic(&target, data).map_err(|e| describe(rel, e))
+    still_there(root)?;
+    note_own_change(rel);
+    write_atomic(&target, data).map_err(|e| describe(rel, e))?;
+    // Again once written: a big file can take longer than the note lasts.
+    note_own_change(rel);
+    Ok(())
 }
 
 pub fn write_atomic(target: &Path, data: &[u8]) -> io::Result<()> {
@@ -205,6 +245,8 @@ impl Pieces {
         let target = resolve(root, rel)?;
         let mut writes = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if part == Part::First {
+            still_there(root)?;
+            note_own_change(rel);
             if let Some(old) = writes.remove(id) {
                 old.discard();
             }
@@ -223,6 +265,7 @@ impl Pieces {
             return Err(describe(rel, e));
         }
         if part == Part::Last {
+            note_own_change(rel);
             let piece = writes.remove(id).expect("found above");
             drop(piece.file);
             if let Err(e) = fs::rename(&piece.tmp, &piece.target) {
@@ -260,7 +303,10 @@ pub fn remove_unfinished_writes(root: &Path) -> usize {
 
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
     let (a, b) = (resolve(root, from)?, resolve(root, to)?);
+    still_there(root)?;
     materialize(&a, &icloud_download, icloud_wait()).map_err(|e| describe(from, e))?;
+    note_own_change(from);
+    note_own_change(to);
     if let Some(dir) = b.parent() {
         fs::create_dir_all(dir).map_err(|e| describe(to, e))?;
     }
@@ -270,8 +316,15 @@ pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
 /// Deletes a file, or its iCloud placeholder; a missing file is fine.
 pub fn remove(root: &Path, rel: &str) -> Result<(), String> {
     let path = resolve(root, rel)?;
+    note_own_change(rel);
     let target = match icloud_placeholder(&path) {
-        Some(placeholder) if !path.exists() && placeholder.exists() => placeholder,
+        Some(placeholder) if !path.exists() && placeholder.exists() => {
+            note_own_change(&match rel.rsplit_once('/') {
+                Some((dir, name)) => format!("{dir}/.{name}.icloud"),
+                None => format!(".{rel}.icloud"),
+            });
+            placeholder
+        }
         _ => path,
     };
     match fs::remove_file(target) {
@@ -383,6 +436,16 @@ mod tests {
         assert_eq!(list(root, "media").unwrap().len(), 3);
         assert_eq!(remove_unfinished_writes(root), 1);
         assert_eq!(list(root, "media").unwrap(), vec!["media/ab/a.mp4", "media/ab/v.mp4"]);
+    }
+
+    #[test]
+    fn never_makes_a_journal_folder_that_has_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("Logbook");
+        assert!(write(&root, "entries/2019/gone--z9y8x7w6v5u4.json", b"{}").unwrap_err().contains("can't be found"));
+        assert!(!root.exists());
+        fs::create_dir(&root).unwrap();
+        write(&root, "entries/2019/gone--z9y8x7w6v5u4.json", b"{}").unwrap();
     }
 
     #[test]

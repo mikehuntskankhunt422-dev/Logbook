@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { WrongPasscodeError, fontFor, fontStack, type Settings } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
@@ -18,6 +18,10 @@ import { spring, useReducedMotion } from '../lib/motion.ts';
 import { motion } from 'motion/react';
 
 
+/** The desktop app's copies to sort out (D102): a banner above every page, and their own page. */
+const CopiesBanner = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/CopiesView.tsx').then((m) => ({ default: m.CopiesBanner }))) : null;
+const CopiesView = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/CopiesView.tsx').then((m) => ({ default: m.CopiesView }))) : null;
+
 const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'home' }, label: 'Journal', icon: '📓' },
   { route: { name: 'calendar' }, label: 'Calendar', icon: '🗓️' },
@@ -30,7 +34,9 @@ const NAV: { route: Route; label: string; icon: string }[] = [
 
 export function App() {
   const { journal, locked, settings } = useJournal();
-  const route = useRoute();
+  const asked = useRoute();
+  // Only the desktop app has copies to sort out: elsewhere that address is the journal.
+  const route: Route = asked.name === 'copies' && !CopiesView ? { name: 'home' } : asked;
   const reduced = useReducedMotion();
   useTheme(settings.theme);
   useReadability(settings);
@@ -66,7 +72,7 @@ export function App() {
   // The garden's own pages (D98) count as pages too, while the garden is shown.
   const routeKey = route.name === 'entry' ? route.id : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', copies: 'Copies to sort out · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -115,10 +121,20 @@ export function App() {
       </header>
       <main id="main" tabIndex={-1}>
         <BackupBanner />
+        {CopiesBanner && route.name !== 'copies' && (
+          <Suspense fallback={null}>
+            <CopiesBanner />
+          </Suspense>
+        )}
         {/* Keyed by page, so each page comes in with its animation; a new entry and the same entry
             once saved are one page (the URL changes on the first save, the editor stays). */}
         <div className="page" key={route.name === 'new' ? 'entry' : route.name}>
           {route.name === 'home' && <Timeline />}
+          {route.name === 'copies' && CopiesView && (
+            <Suspense fallback={null}>
+              <CopiesView />
+            </Suspense>
+          )}
           {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}
           {route.name === 'calendar' && <CalendarView month={route.month} />}
           {route.name === 'memories' && <Memories />}

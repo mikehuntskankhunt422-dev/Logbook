@@ -4,7 +4,7 @@ A private journal for your computer: write about your days with photos, video, v
 
 Logbook is a free app for Windows, macOS, Linux and Android phones. Your journal is kept as ordinary files on your own device, never on our servers. Nothing in it costs money.
 
-> **Status: preview (0.8.1).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, export to Markdown, text, web page or PDF, a clock with alarms and timers, a garden that grows a plant for every entry, your own picture as the desktop app's icon, automatic updates and an Android app all work. **Not yet:** a screen for sorting out sync conflicts. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
+> **Status: preview (0.8.2).** Writing with rich formatting, photos and media, search, the calendar, backups, the passcode lock, export to Markdown, text, web page or PDF, a clock with alarms and timers, a garden that grows a plant for every entry, your own picture as the desktop app's icon, a journal folder shared through Dropbox, OneDrive or iCloud Drive (changes from another computer show up straight away, and copies a sync service made can be compared and sorted out), automatic updates and an Android app all work. **Not yet:** a security policy for the desktop window. Progress is tracked in [docs/PLAN.md](docs/PLAN.md) and [docs/M5.md](docs/M5.md).
 
 ## Download
 

@@ -30,6 +30,8 @@ tokio = { version = "1", features = ["time"] }
 tauri-plugin-single-instance = "=2.5.0"
 # Phones update from the store or a new APK (D90).
 tauri-plugin-updater = "=2.13.1"
+# Another computer's changes to the journal folder (D102).
+notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
 # The person's own picture as the app's icon (D101): an .ico for Windows, and PNGs read for Linux
 # windows. The versions Tauri's build already locks.
 ico = "=0.5.0"

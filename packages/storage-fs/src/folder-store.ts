@@ -1,4 +1,4 @@
-import { entrySchema, extensionFor, isSealed, mimeForExtension, paths, type Entry, type MediaMeta, type RecordStore, type StoreKeys, type StoreName, type StoreRecords } from '@logbook/core';
+import { entrySchema, extensionFor, isSealed, mimeForExtension, paths, type CopyFile, type Entry, type MediaMeta, type RecordStore, type StoreKeys, type StoreName, type StoreRecords } from '@logbook/core';
 import { assertRelativePath, type FsBackend } from './backend.ts';
 
 /**
@@ -53,12 +53,7 @@ const MEDIA_DATA = new RegExp(`^media/[^/]+/(${ID})\\.(?!meta\\.)([a-z0-9]{1,8})
 /** Files the operating system or sync tools leave around, and our own temporary files. */
 const IGNORED = /(^|\/)(\.DS_Store|desktop\.ini|Thumbs\.db|\.localized|Icon\r|\.dropbox[^/]*|~\$[^/]*|\._[^/]*)$|\.logbook-tmp-[^/]*$/i;
 
-export interface ConflictFile {
-  path: string;
-  /** The record the file probably belongs to, if its name still contains a known ID. */
-  id: string | null;
-  kind: 'entry' | 'media';
-}
+export type ConflictFile = CopyFile;
 
 /** A journal file that exists but can't be read: Logbook refuses to change it rather than guess. */
 export class DamagedFileError extends Error {
@@ -94,6 +89,8 @@ export class FolderStore implements RecordStore {
   private unreadable = new Set<string>();
   /** The losing copies of same-`rev` duplicates with different content: kept, and reported as conflicts. */
   private held = new Set<string>();
+  /** Where kept copies were moved aside to (keepAside), so a copy being sorted out is still found. */
+  private movedAside = new Map<string, string>();
   /** Every change runs in order, so two saves of one entry can't interleave their renames. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -123,9 +120,14 @@ export class FolderStore implements RecordStore {
     return store;
   }
 
-  /** Re-reads the folder (RecordStore.refresh): another computer may have changed it. */
+  /** Re-reads the folder (RecordStore.refresh): another computer may have changed it. Not in the middle of a change. */
   refresh(): Promise<void> {
-    return this.rescan();
+    return this.serial(() => this.rescan());
+  }
+
+  /** Whether any file in the folder is this record's, readable or not (RecordStore.has). */
+  has(store: StoreName, id: string): boolean {
+    return (this.table(store).get(id)?.length ?? 0) > 0;
   }
 
   /** Resolves once every change asked for so far is on disk. */
@@ -141,6 +143,11 @@ export class FolderStore implements RecordStore {
     const strays: string[] = [];
     const add = (m: Map<string, string[]>, id: string, path: string) => m.set(id, [...(m.get(id) ?? []), path]);
     const files = [...(await this.fs.list('entries')), ...(await this.fs.list('trash')), ...(await this.fs.list('media'))];
+    // A folder that has gone (a drive unplugged) isn't taken for an empty journal: what was read
+    // stays until it's back.
+    if (!files.length && this.entries.size + this.media.size > 0 && !(await this.readLogbook().catch(() => true))) {
+      throw new Error("The journal folder can't be found, or it's empty. Logbook keeps what it has read until it's back.");
+    }
     for (const path of files.sort()) {
       if (IGNORED.test(path)) continue;
       let m: RegExpExecArray | null;
@@ -158,7 +165,10 @@ export class FolderStore implements RecordStore {
     // Still-unreadable files stay listed: a rescan in the middle of a read pass mustn't hide them.
     const present = new Set(files);
     for (const path of this.unreadable) if (!present.has(path)) this.unreadable.delete(path);
-    this.held.clear();
+    // Copies being kept stay kept while their record still has another file: a save between a read
+    // and a rescan must still move them aside, not delete them.
+    const shared = (path: string) => [...entries.values(), ...media.values()].some((list) => list.length > 1 && list.includes(path));
+    for (const path of this.held) if (!shared(path)) this.held.delete(path);
   }
 
   private hasSealedFiles(): boolean {
@@ -174,13 +184,65 @@ export class FolderStore implements RecordStore {
     return [...this.strays, ...this.held].map((path) => {
       const ids = [...path.matchAll(/[0-9a-z]{12}/g)].map((m) => m[0]);
       const known = path.startsWith('media/') ? this.media : this.entries;
-      return { path, id: ids.find((id) => known.has(id)) ?? null, kind: path.startsWith('media/') ? 'media' : 'entry' };
+      return { path, id: ids.find((id) => known.has(id)) ?? null, kind: path.startsWith('media/') ? 'media' : 'entry', kept: KEPT_COPY.test(path) };
     });
   }
 
-  /** Files that couldn't be read as JSON the last time they were read (a sync still in progress, or damage). */
+  /**
+   * Files that couldn't be read as JSON the last time they were read (a sync still in progress, or
+   * damage). Copies aren't among them: `conflicts()` lists those, readable or not.
+   */
   unreadableFiles(): string[] {
-    return [...this.unreadable];
+    return [...this.unreadable].filter((p) => !this.isCopy(p));
+  }
+
+  private isCopy(path: string): boolean {
+    return this.strays.includes(path) || this.held.has(path);
+  }
+
+  /** A copy's path now (a kept copy is moved aside when its record is saved over its name), or null if it isn't one. */
+  private copyPath(path: string): string | null {
+    const moved = this.movedAside.get(path);
+    const now = !this.isCopy(path) && moved ? moved : path;
+    return this.isCopy(now) ? now : null;
+  }
+
+  /** A copy's record (one of `conflicts()`): undefined when it's gone or isn't JSON. */
+  async readCopy(given: string): Promise<unknown> {
+    const path = this.copyPath(given);
+    if (!path) throw new Error(`${given} isn't a copy to sort out.`);
+    return this.readJson(path);
+  }
+
+  /** Deletes a copy once a person has sorted it out; one already gone is done. */
+  removeCopy(given: string): Promise<void> {
+    return this.serial(async () => {
+      const path = this.copyPath(given);
+      if (!path) return;
+      await this.fs.remove(path);
+      this.movedAside.delete(given);
+      this.strays = this.strays.filter((p) => p !== path);
+      this.held.delete(path);
+      this.unreadable.delete(path);
+      // A kept same-revision copy has its record's own name: it's one of that record's files.
+      for (const table of [this.entries, this.media]) {
+        for (const [id, list] of table) if (list.includes(path)) table.set(id, list.filter((p) => p !== path));
+      }
+    });
+  }
+
+  /**
+   * Keeps an entry's record as a copy beside it, named outside the naming scheme (D102): the
+   * version a person was writing when another computer saved the same entry first.
+   */
+  keepCopy(record: StoreRecords['entries']): Promise<string> {
+    return this.serial(async () => {
+      const path = conflictName(entryPath(record), 'your version');
+      assertRelativePath(path);
+      await this.fs.write(path, jsonBytes(record));
+      this.strays.push(path);
+      return path;
+    });
   }
 
   async all<S extends StoreName>(store: S): Promise<StoreRecords[S][]> {
@@ -218,7 +280,9 @@ export class FolderStore implements RecordStore {
     // Kept as well, rather than deleted by the next save: a copy with the same revision but other
     // content (two computers edited the same version), and a sealed copy beside a plain one (a
     // passcode switched while another computer was writing; a sealed copy's revision can't be read).
+    // Worked out afresh each read: a copy kept earlier may since have become the newest.
     for (const f of found) {
+      this.held.delete(f.path);
       if (!best || f === best) continue;
       const sameRevision = rev(f.record) === rev(best.record) && f.text !== best.text;
       if (sameRevision || isSealed(f.record) !== isSealed(best.record)) this.held.add(f.path);
@@ -353,6 +417,7 @@ export class FolderStore implements RecordStore {
     const kept = conflictName(path);
     await this.fs.rename(path, kept);
     this.strays.push(kept);
+    this.movedAside.set(path, kept);
   }
 
   /** A media file is named after its details (extension, sealed or not): keep it in step with them. */
@@ -410,9 +475,13 @@ export class FolderStore implements RecordStore {
 }
 
 /** `…--k3f9x2m4n5p6.json` → `…--k3f9x2m4n5p6 (conflict lq2x9a).json` (`.json.enc` alike): outside the naming scheme. */
-function conflictName(path: string): string {
-  return path.replace(/(\.json(?:\.enc)?)?$/, ` (conflict ${Date.now().toString(36)})$1`);
+function conflictName(path: string, what = 'conflict'): string {
+  // The time, and a little more so two in one millisecond don't share a name.
+  const mark = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return path.replace(/(\.json(?:\.enc)?)?$/, ` (${what} ${mark})$1`);
 }
+/** keepCopy's name for a version someone was writing. */
+const KEPT_COPY = / \(your version [0-9a-z]+\)\.json(?:\.enc)?$/;
 
 
 function rev(r: unknown): number {

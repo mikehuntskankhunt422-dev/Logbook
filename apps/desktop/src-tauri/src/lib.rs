@@ -11,6 +11,8 @@ mod folder;
 mod journal_fs;
 #[cfg(desktop)]
 mod updates;
+#[cfg(desktop)]
+mod watch;
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -559,6 +561,7 @@ pub fn run() {
         app_icon::app_icon_status,
         app_icon::app_icon_set,
         app_icon::app_icon_reset,
+        watch::journal_watch,
     ];
     #[cfg(mobile)]
     let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
@@ -592,7 +595,8 @@ pub fn run() {
             .plugin(tauri_plugin_updater::Builder::new().build())
             .manage(updates::PendingUpdate::default())
             .manage(updates::DownloadedUpdate::default())
-            .manage(clock::Watcher::default());
+            .manage(clock::Watcher::default())
+            .manage(watch::FolderWatch::default());
     }
     #[cfg(target_os = "android")]
     {
