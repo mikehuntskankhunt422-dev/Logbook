@@ -13,6 +13,14 @@ export async function watchJournal(journal: Journal): Promise<void> {
   let running = false;
   let again = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  // The folder may have gone (a drive unplugged): its watch went with it. Watch it afresh every so
+  // often until that works, then read it again.
+  const rewatch = () => {
+    retry ??= setTimeout(() => {
+      retry = undefined;
+      invoke('journal_watch').then(refresh, rewatch);
+    }, RETRY_MS);
+  };
   const refresh = () => {
     if (running) {
       again = true;
@@ -23,14 +31,7 @@ export async function watchJournal(journal: Journal): Promise<void> {
       .refresh()
       .catch((err: unknown) => {
         console.warn("Couldn't read the journal folder again:", err);
-        // The folder may have gone (a drive unplugged): its watch went with it. Watch it afresh
-        // and read it again every so often until it's back.
-        retry ??= setTimeout(() => {
-          retry = undefined;
-          void invoke('journal_watch')
-            .catch(() => {})
-            .finally(refresh);
-        }, RETRY_MS);
+        rewatch();
       })
       .finally(() => {
         running = false;

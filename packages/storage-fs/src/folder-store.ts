@@ -120,19 +120,9 @@ export class FolderStore implements RecordStore {
     return store;
   }
 
-  /**
-   * Re-reads the folder (RecordStore.refresh): another computer may have changed it. Not in the
-   * middle of a change. A folder that has gone (a drive unplugged) isn't taken for an empty
-   * journal: what was read stays until it's back.
-   */
+  /** Re-reads the folder (RecordStore.refresh): another computer may have changed it. Not in the middle of a change. */
   refresh(): Promise<void> {
-    return this.serial(async () => {
-      if (this.entries.size + this.media.size > 0 && !(await this.readLogbook().catch(() => true))) {
-        const files = [...(await this.fs.list('entries')), ...(await this.fs.list('trash')), ...(await this.fs.list('media'))];
-        if (!files.length) throw new Error("The journal folder can't be found, or it's empty. Logbook keeps what it has read until it's back.");
-      }
-      await this.rescan();
-    });
+    return this.serial(() => this.rescan());
   }
 
   /** Whether any file in the folder is this record's, readable or not (RecordStore.has). */
@@ -153,6 +143,11 @@ export class FolderStore implements RecordStore {
     const strays: string[] = [];
     const add = (m: Map<string, string[]>, id: string, path: string) => m.set(id, [...(m.get(id) ?? []), path]);
     const files = [...(await this.fs.list('entries')), ...(await this.fs.list('trash')), ...(await this.fs.list('media'))];
+    // A folder that has gone (a drive unplugged) isn't taken for an empty journal: what was read
+    // stays until it's back.
+    if (!files.length && this.entries.size + this.media.size > 0 && !(await this.readLogbook().catch(() => true))) {
+      throw new Error("The journal folder can't be found, or it's empty. Logbook keeps what it has read until it's back.");
+    }
     for (const path of files.sort()) {
       if (IGNORED.test(path)) continue;
       let m: RegExpExecArray | null;

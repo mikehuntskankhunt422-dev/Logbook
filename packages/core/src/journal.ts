@@ -666,7 +666,10 @@ export class Journal {
         // the key that's there now. Writes check the key anyway (writeCipher). Without logbook.json,
         // the store gives the copy of the key kept beside it, so a missing file isn't "turned off".
         const vault = await this.store.getKey('vault');
-        if (JSON.stringify(vault) !== JSON.stringify(this.vault) && !this.isLocked) {
+        // Neither key nor settings: logbook.json (and the copy of the key beside it) may be missing
+        // altogether, which says nothing about the passcode.
+        const unknown = vault === undefined && raw === undefined;
+        if (!unknown && JSON.stringify(vault) !== JSON.stringify(this.vault) && !this.isLocked) {
           if (!this.vault) this.vault = vault;
           this.cipher = null;
           this.emit('lock');

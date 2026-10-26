@@ -79,7 +79,7 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   useEffect(() => {
     const where = refocus.current;
     refocus.current = null;
-    if (!where) return;
+    if (where === null) return;
     // The text editors are made once mounted: a frame later they're there. The same block if the
     // other version has it, else the first text.
     const frame = requestAnimationFrame(() => {
@@ -264,9 +264,10 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   /**
    * Deleting: what was just typed is saved first and goes to Recently deleted with the entry, rather
    * than meeting the deleted version as a conflict once the editor closes. A draft never saved is
-   * dropped. Null if the last words couldn't be saved (the save says why).
+   * dropped. 'kept' if another computer's version came in instead (nothing is deleted then), null
+   * if the last words couldn't be saved (the save says why).
    */
-  const discard = async (): Promise<'dropped' | 'binned' | null> => {
+  const discard = async (): Promise<'dropped' | 'binned' | 'kept' | null> => {
     clearTimeout(timer.current);
     if (savedRev.current === null && !inFlight.current) {
       dirty.current = false;
@@ -275,7 +276,8 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     const met = conflicts.current;
     await save();
     // Not saved, or another computer's version came in instead: that isn't what was asked to go.
-    if (dirty.current || conflicts.current !== met || !latest.current) return null;
+    if (conflicts.current !== met) return 'kept';
+    if (dirty.current || !latest.current) return null;
     await journal.trashEntry(latest.current.id);
     return 'binned';
   };
@@ -305,7 +307,7 @@ function EditorBody({
   update: (fn: (e: Entry) => Entry) => void;
   saveState: SaveState;
   isNew: boolean;
-  discard: () => Promise<'dropped' | 'binned' | null>;
+  discard: () => Promise<'dropped' | 'binned' | 'kept' | null>;
 }) {
   const { journal, settings } = useJournal();
   const toast = useToast();
@@ -462,7 +464,8 @@ function EditorBody({
 
   const trash = async () => {
     const done = await discard();
-    if (!done) return;
+    if (done === 'kept') toast('It wasn’t deleted: another computer saved it just now. Have a look at that version first.');
+    if (!done || done === 'kept') return;
     navigate({ name: 'home' });
     if (done === 'binned') toast('Moved to trash.', { label: 'Undo', run: () => void journal.restoreEntry(entry.id) }, 8000);
   };

@@ -752,9 +752,25 @@ describe('copies to sort out (D102)', () => {
     // Nothing is announced, so the page keeps showing the journal; the settings stay as they were.
     await expect(j.refresh()).rejects.toThrow(/can't be found/);
     expect([seen, j.getSettings().theme, j.isLocked]).toEqual([[], 'dark', false]);
+    // Not even after reading an entry whose file has gone meanwhile.
+    await expect(j.listEntries()).rejects.toThrow(/can't be found/);
+    await expect(j.refresh()).rejects.toThrow(/can't be found/);
+    expect(seen).toEqual([]);
     await rename(`${root}-away`, root);
     await j.refresh();
     expect((await j.listEntries()).map((x) => x.title)).toEqual(['Still here']);
+  });
+
+  it('doesn’t take a passcode journal whose folder has gone for one without a passcode', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    await j.enableEncryption('correct horse', FAST_KDF);
+    await rename(root, `${root}-away`);
+    await j.refresh().catch(() => {});
+    expect([j.isEncrypted, j.isLocked]).toEqual([true, false]);
+    await rename(`${root}-away`, root);
+    await j.refresh();
+    expect([j.isEncrypted, j.isLocked]).toEqual([true, false]);
   });
 
   it('asks for the passcode when another computer turned it on, but not after turning it on here', async () => {
