@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+// No compiled parsers: zod's speed-up builds code with `new Function`, which the app window's
+// security policy forbids (D104). Set before any schema below is made, as they decide then.
+z.config({ jitless: true });
+
 /** Bumped whenever the stored shape of an entry or media record changes; see migrations.ts. */
 export const SCHEMA_VERSION = 1;
 

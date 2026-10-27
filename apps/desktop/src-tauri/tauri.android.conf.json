@@ -13,5 +13,12 @@
       "script": "npm run build:android",
       "cwd": "../../web"
     }
+  },
+  "app": {
+    "security": {
+      "csp": {
+        "connect-src": "'self' ipc: http://ipc.localhost blob: https://rumble.com https://api.github.com"
+      }
+    }
   }
 }

