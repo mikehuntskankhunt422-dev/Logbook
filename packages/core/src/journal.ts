@@ -203,7 +203,7 @@ export class Journal {
     // stay sealed after its key is gone: stop before changing anything (D85). Files sealed with a
     // different key don't stop it, since this key couldn't open them anyway; every replaced key is
     // kept beside the journal.
-    const waiting = [...(this.store.unreadableFiles?.() ?? []), ...notArrived];
+    const waiting = [...(this.store.unreadableFiles?.({ kept: true }) ?? []), ...notArrived];
     if (waiting.length) {
       const shown = waiting.slice(0, 3).join(', ') + (waiting.length > 3 ? ` and ${waiting.length - 3} more` : '');
       throw new Error(
@@ -488,10 +488,12 @@ export class Journal {
     info: { name: string; mime?: string; width?: number; height?: number; durationMs?: number; derivedFrom?: string },
   ): Promise<MediaMeta> {
     this.assertUnlocked();
+    // Whatever type a file claims, it's kept: one too long to be a real type is just a file.
+    const mime = info.mime || blob.type;
     const meta = mediaMetaSchema.parse({
       id: newId(),
       name: info.name.slice(0, 255) || 'untitled',
-      mime: info.mime || blob.type || 'application/octet-stream',
+      mime: mime && mime.length <= 127 ? mime : 'application/octet-stream',
       bytes: blob.size,
       width: info.width,
       height: info.height,

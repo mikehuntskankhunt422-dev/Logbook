@@ -1,3 +1,9 @@
+**Videos, GIFs and photos with an entry.** **🎵 Music → Choose a sound file** now takes any file. A video plays in the bar as you read or write, with its own controls, and its sound is the entry's music; a GIF or photo is shown there while the entry is open. Any other file is kept with the entry, with a button to download it.
+
+**A file still syncing is kept.** If your journal folder is in a sync service and an entry's newest version from another computer hasn't finished arriving, saving the entry used to delete that file, and the deletion could reach every computer. Logbook now keeps it, as a copy to sort out.
+
+What came in 0.9.1:
+
 **A safer window.** On a computer and on your phone, Logbook's window now only runs Logbook's own code and only talks to the places it needs: the video sites you play music from. Anything that slipped into your journal folder pretending to be part of the app (say, a file crafted to look like an entry) can't run or send your writing anywhere. You shouldn't notice any other difference.
 
 What came in 0.9.0:

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { strFromU8, unzipSync } from 'fflate';
 import { writeEntry } from './helpers.ts';
 
@@ -60,6 +60,64 @@ test('background music, and exporting from the entry and the journal page', asyn
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Journal' }).click();
   await page.getByRole('button', { name: '⬇️ Export' }).click();
   await expect(page.getByRole('dialog', { name: 'Export your journal' }).getByRole('button', { name: /Download 1 entry/ })).toBeVisible();
+});
+
+test('any file in the music bar: a video or picture shown, anything else kept to download, nothing run (D106)', async ({ page }) => {
+  await writeEntry(page, 'Rainy day', 'Stayed in');
+  await page.getByRole('button', { name: '🎵 Music' }).click();
+  const bar = page.getByRole('group', { name: 'Background music' });
+  await expect(bar.getByRole('button', { name: '🎵 Choose a sound file…' })).toBeVisible();
+  const file = bar.locator('input[type=file]');
+  // Every file can be picked.
+  expect(await file.getAttribute('accept')).toBeNull();
+
+  // A video plays in view, with its own controls instead of Logbook's button.
+  await file.setInputFiles({ name: 'rain.webm', mimeType: 'video/webm', buffer: await webm(page) });
+  await expect(bar.getByText('🎬 rain.webm')).toBeVisible();
+  const video = bar.locator('video[aria-label="rain.webm"]');
+  await expect(video).toBeVisible();
+  await expect(video).toHaveAttribute('controls', '');
+  await expect(bar.getByRole('button', { name: /the music$/ })).toHaveCount(0);
+  await page.waitForTimeout(1500);
+  await expect(page.getByText('Saved on this device')).toBeVisible();
+  await page.reload();
+  await expect(video).toBeVisible();
+
+  // A GIF is shown in its place.
+  await file.setInputFiles({ name: 'cat.gif', mimeType: 'image/gif', buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') });
+  await expect(bar.getByText('🖼 cat.gif')).toBeVisible();
+  await expect(bar.getByRole('img', { name: 'cat.gif' })).toBeVisible();
+  await expect(bar.locator('video')).toHaveCount(0);
+
+  // A picture with a script in it is only ever a picture.
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" onload="top.ranSvg=1"><script>top.ranSvg=1</script><rect width="40" height="40" fill="red"/></svg>';
+  await file.setInputFiles({ name: 'trick.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) });
+  await expect(bar.getByText(/trick\.svg/)).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as { ranSvg?: number }).ranSvg)).toBeUndefined();
+
+  // Any other file is kept, with a button that saves it rather than opening it in the window.
+  await file.setInputFiles({ name: 'page.html', mimeType: 'text/html', buffer: Buffer.from('<script>top.ranHtml = 1</script><p>hi</p>') });
+  await expect(bar.getByText('📎 page.html')).toBeVisible();
+  await expect(bar.getByRole('status')).toContainText('can’t play or show this kind of file');
+  const save = bar.getByRole('link', { name: 'Download' });
+  await expect(save).toHaveAttribute('download', 'page.html');
+  const pending = page.waitForEvent('download');
+  await save.click();
+  expect((await pending).suggestedFilename()).toBe('page.html');
+  expect(await page.evaluate(() => (window as { ranHtml?: number }).ranHtml)).toBeUndefined();
+
+  // A "picture" this device can't read is kept the same way.
+  await file.setInputFiles({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not really a picture') });
+  await expect(bar.getByText('🖼 broken.png')).toBeVisible();
+  await expect(bar.getByRole('status')).toContainText('This picture doesn’t play or show here');
+  await expect(bar.getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'broken.png');
+
+  // And a sound file still plays with Logbook's own button.
+  await file.setInputFiles({ name: 'waves.wav', mimeType: 'audio/wav', buffer: wav() });
+  await expect(bar.getByText('🎵 waves.wav')).toBeVisible();
+  await expect(bar.getByRole('button', { name: /the music$/ })).toBeEnabled();
+  await expect(bar.getByRole('link', { name: 'Download' })).toHaveCount(0);
 });
 
 test('background music from a link: a site’s player, a stream, and saying when a link won’t play (D93)', async ({ page }) => {
@@ -146,6 +204,30 @@ test('a writing prompt on a new entry: another, write about it, or turn them off
   await expect(page.getByRole('textbox', { name: 'Entry text' })).toBeVisible();
   await expect(card).toHaveCount(0);
 });
+
+/** Half a second of video, recorded from a canvas in the page, as a WebM file. */
+async function webm(page: Page): Promise<Buffer> {
+  const base64 = await page.evaluate(async () => {
+    const canvas = Object.assign(document.createElement('canvas'), { width: 64, height: 48 });
+    const ctx = canvas.getContext('2d')!;
+    const recorder = new MediaRecorder(canvas.captureStream(10), { mimeType: 'video/webm' });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    const stopped = new Promise((resolve) => (recorder.onstop = resolve));
+    recorder.start();
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = `hsl(${i * 60} 80% 50%)`;
+      ctx.fillRect(0, 0, 64, 48);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    recorder.stop();
+    await stopped;
+    let bytes = '';
+    for (const b of new Uint8Array(await new Blob(chunks).arrayBuffer())) bytes += String.fromCharCode(b);
+    return btoa(bytes);
+  });
+  return Buffer.from(base64, 'base64');
+}
 
 /** A quarter of a second of silence, as a WAV file. */
 function wav(): Buffer {
