@@ -144,6 +144,19 @@ describe('entries as documents', () => {
     expect(entryHtml(withMusic, lookup, { mode: 'print' })).not.toContain('waves.mp3');
   });
 
+  it('names a background video or picture as what it is (D106)', () => {
+    const lookup = (id: string) =>
+      id === 'clip' ? { kind: 'video' as const, name: 'waves.mp4', src: 'media/waves.mp4' } : id === 'gif' ? { kind: 'image' as const, name: 'cat.gif', src: 'media/cat.gif' } : undefined;
+    const video = { ...entry, musicId: 'clip' };
+    expect(entryHtml(video, lookup)).toContain('<video src="media/waves.mp4" controls preload="metadata"></video><figcaption>Background video</figcaption>');
+    expect(entryToMarkdown(video, lookup)).toContain('[▶ waves.mp4](media/waves.mp4)\n*Background video*');
+    const picture = { ...entry, musicId: 'gif' };
+    expect(entryHtml(picture, lookup)).toContain('<img src="media/cat.gif" alt="Background picture" loading="lazy"><figcaption>Background picture</figcaption>');
+    expect(entryToMarkdown(picture, lookup)).toContain('![Background picture](media/cat.gif)\n*Background picture*');
+    expect(entryToText(picture, () => ({ kind: 'image', name: 'cat.gif' }))).toContain('[Photo: cat.gif] Background picture');
+    expect(entryHtml(picture, lookup, { mode: 'print' })).not.toContain('cat.gif');
+  });
+
   it('links background music from the web in exports, not on paper (D93)', () => {
     const withLink = { ...entry, musicUrl: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' };
     expect(entryToMarkdown(withLink, () => undefined)).toContain('🎵 Background music: [https://www.youtube.com/watch?v=jfKfPfyJRdk](https://www.youtube.com/watch?v=jfKfPfyJRdk)');

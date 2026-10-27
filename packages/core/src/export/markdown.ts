@@ -1,7 +1,7 @@
 import type { Block, Entry, RichNode } from '../model.ts';
 import { shortUrl } from '../html-text.ts';
 import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
-import { mediaLabel, metaLine, safeHref, type MediaLookup, type RenderOptions } from './common.ts';
+import { backgroundLabel, mediaLabel, metaLine, safeHref, type MediaLookup, type RenderOptions } from './common.ts';
 
 /**
  * Markdown and plain text from entries (D89). One walker for both: Markdown keeps headings, lists,
@@ -48,7 +48,10 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
   out.push(`${'#'.repeat(level)} ${keepClosingHashes(escapeLine(escapeMd(entry.title || 'Untitled')))}`);
   out.push(`*${metaLine(entry, opts).map(escapeMd).join(' · ')}*`);
   if (entry.cover.kind === 'photo') out.push(mediaMd(media(entry.cover.mediaId), 'Cover photo', ''));
-  if (entry.musicId) out.push(mediaMd(media(entry.musicId), 'Audio', 'Background music'));
+  if (entry.musicId) {
+    const m = media(entry.musicId);
+    out.push(mediaMd(m, m?.kind === 'video' || m?.kind === 'image' ? mediaLabel(m.kind) : 'Audio', backgroundLabel(m?.kind)));
+  }
   const musicHref = entry.musicUrl ? safeHref(entry.musicUrl) : null;
   if (musicHref) out.push(`🎵 Background music: ${linkMd(musicHref, musicHref)}`);
   for (const b of entry.blocks) {
@@ -61,7 +64,10 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
 export function entryToText(entry: Entry, media: MediaLookup, opts: RenderOptions = {}): string {
   const ctx: Ctx = { mode: 'text', shift: 0 };
   const out = [`${entry.title || 'Untitled'}\n${metaLine(entry, opts).join(' · ')}`];
-  if (entry.musicId) out.push(mediaText(media(entry.musicId), 'audio', 'Background music'));
+  if (entry.musicId) {
+    const m = media(entry.musicId);
+    out.push(mediaText(m, 'audio', backgroundLabel(m?.kind)));
+  }
   if (entry.musicUrl) out.push(`Background music: ${entry.musicUrl}`);
   for (const b of entry.blocks) {
     const text = blockText(b, media, ctx);

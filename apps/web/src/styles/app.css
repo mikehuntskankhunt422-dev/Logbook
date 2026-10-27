@@ -2157,6 +2157,20 @@ mark {
   border: 0;
   display: block;
 }
+/* A video, GIF or photo of the entry's own (D106), at its own shape. */
+.music-media {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 400px);
+  max-height: 320px;
+  border-radius: var(--radius);
+}
+/* A video is always wide enough for its controls; a tall one sits in black bars. */
+video.music-media {
+  width: min(100%, 400px);
+  background: #000;
+}
 .music-problem {
   margin: 0;
 }

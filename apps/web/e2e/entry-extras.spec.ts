@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { strFromU8, unzipSync } from 'fflate';
 import { writeEntry } from './helpers.ts';
 
@@ -60,6 +60,37 @@ test('background music, and exporting from the entry and the journal page', asyn
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Journal' }).click();
   await page.getByRole('button', { name: '⬇️ Export' }).click();
   await expect(page.getByRole('dialog', { name: 'Export your journal' }).getByRole('button', { name: /Download 1 entry/ })).toBeVisible();
+});
+
+test('a video, GIF or photo in the music bar, shown while the entry is open (D106)', async ({ page }) => {
+  await writeEntry(page, 'Rainy day', 'Stayed in');
+  await page.getByRole('button', { name: '🎵 Music' }).click();
+  const bar = page.getByRole('group', { name: 'Background music' });
+  const file = bar.locator('input[type=file]');
+  await expect(file).toHaveAttribute('accept', 'audio/*,video/*,image/*');
+
+  // A video plays in view, with its own controls instead of Logbook's button.
+  await file.setInputFiles({ name: 'rain.webm', mimeType: 'video/webm', buffer: await webm(page) });
+  await expect(bar.getByText('🎬 rain.webm')).toBeVisible();
+  const video = bar.locator('video[aria-label="rain.webm"]');
+  await expect(video).toBeVisible();
+  await expect(video).toHaveAttribute('controls', '');
+  await expect(bar.getByRole('button', { name: /the music$/ })).toHaveCount(0);
+  await page.waitForTimeout(1500);
+  await expect(page.getByText('Saved on this device')).toBeVisible();
+  await page.reload();
+  await expect(bar.locator('video[aria-label="rain.webm"]')).toBeVisible();
+
+  // A GIF is shown in its place.
+  await file.setInputFiles({ name: 'cat.gif', mimeType: 'image/gif', buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') });
+  await expect(bar.getByText('🖼 cat.gif')).toBeVisible();
+  await expect(bar.getByRole('img', { name: 'cat.gif' })).toBeVisible();
+  await expect(bar.locator('video')).toHaveCount(0);
+
+  // Anything else isn't taken, and the GIF stays.
+  await file.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+  await expect(page.getByText('notes.txt isn\'t a sound, video or picture Logbook can show.')).toBeVisible();
+  await expect(bar.getByRole('img', { name: 'cat.gif' })).toBeVisible();
 });
 
 test('background music from a link: a site’s player, a stream, and saying when a link won’t play (D93)', async ({ page }) => {
@@ -146,6 +177,30 @@ test('a writing prompt on a new entry: another, write about it, or turn them off
   await expect(page.getByRole('textbox', { name: 'Entry text' })).toBeVisible();
   await expect(card).toHaveCount(0);
 });
+
+/** Half a second of video, recorded from a canvas in the page, as a WebM file. */
+async function webm(page: Page): Promise<Buffer> {
+  const base64 = await page.evaluate(async () => {
+    const canvas = Object.assign(document.createElement('canvas'), { width: 64, height: 48 });
+    const ctx = canvas.getContext('2d')!;
+    const recorder = new MediaRecorder(canvas.captureStream(10), { mimeType: 'video/webm' });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    const stopped = new Promise((resolve) => (recorder.onstop = resolve));
+    recorder.start();
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = `hsl(${i * 60} 80% 50%)`;
+      ctx.fillRect(0, 0, 64, 48);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    recorder.stop();
+    await stopped;
+    let bytes = '';
+    for (const b of new Uint8Array(await new Blob(chunks).arrayBuffer())) bytes += String.fromCharCode(b);
+    return btoa(bytes);
+  });
+  return Buffer.from(base64, 'base64');
+}
 
 /** A quarter of a second of silence, as a WAV file. */
 function wav(): Buffer {

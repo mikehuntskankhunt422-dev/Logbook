@@ -2,7 +2,7 @@ import type { Block, Entry, RichNode } from '../model.ts';
 import { esc, shortUrl } from '../html-text.ts';
 import { alignStyle, codeBlockHtml, isChecked, tableHtml, wrapMark } from '../rich-html.ts';
 import { hasTopHeading, outputHeadingLevel } from '../richtext.ts';
-import { mediaLabel, metaLine, safeHref, type ExportMedia, type MediaLookup, type RenderOptions } from './common.ts';
+import { backgroundLabel, mediaLabel, metaLine, safeHref, type ExportMedia, type MediaLookup, type RenderOptions } from './common.ts';
 
 /**
  * Entries as a web page (D89): the "Web page" export, and the page Logbook prints for "PDF". Unlike
@@ -25,8 +25,11 @@ export function entryHtml(entry: Entry, media: MediaLookup, opts: HtmlOptions = 
   const mode = opts.mode ?? 'page';
   const parts = [`<h2 class="lbx-title">${esc(entry.title || 'Untitled')}</h2>`, `<p class="lbx-meta">${metaLine(entry, opts).map(esc).join(' · ')}</p>`];
   if (entry.cover.kind === 'photo') parts.push(mediaHtml(media(entry.cover.mediaId), '', mode, 'image'));
-  // Background music (D91): a player in a saved page; nothing on paper.
-  if (entry.musicId && mode === 'page') parts.push(mediaHtml(media(entry.musicId), 'Background music', mode, 'audio'));
+  // Background music (D91), or a video or picture (D106): in a saved page; nothing on paper.
+  if (entry.musicId && mode === 'page') {
+    const m = media(entry.musicId);
+    parts.push(mediaHtml(m, backgroundLabel(m?.kind), mode, 'audio'));
+  }
   if (entry.musicUrl && mode === 'page') parts.push(`<p class="lbx-attachment">🎵 Background music: ${anchor(entry.musicUrl, entry.musicUrl)}</p>`);
   for (const b of entry.blocks) parts.push(blockHtml(b, media, mode));
   return `<article class="lbx-entry">${parts.join('')}</article>`;
