@@ -203,7 +203,7 @@ export class Journal {
     // stay sealed after its key is gone: stop before changing anything (D85). Files sealed with a
     // different key don't stop it, since this key couldn't open them anyway; every replaced key is
     // kept beside the journal.
-    const waiting = [...(this.store.unreadableFiles?.() ?? []), ...notArrived];
+    const waiting = [...(this.store.unreadableFiles?.({ kept: true }) ?? []), ...notArrived];
     if (waiting.length) {
       const shown = waiting.slice(0, 3).join(', ') + (waiting.length > 3 ? ` and ${waiting.length - 3} more` : '');
       throw new Error(

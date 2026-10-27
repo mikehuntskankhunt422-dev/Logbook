@@ -181,7 +181,7 @@ export class FolderStore implements RecordStore {
    * tool made when two computers changed the same file. Nothing reads them; a person decides.
    */
   conflicts(): ConflictFile[] {
-    return [...this.strays, ...this.held].map((path) => {
+    return [...this.strays, ...[...this.held].filter((p) => this.isCopy(p))].map((path) => {
       const ids = [...path.matchAll(/[0-9a-z]{12}/g)].map((m) => m[0]);
       const known = path.startsWith('media/') ? this.media : this.entries;
       return { path, id: ids.find((id) => known.has(id)) ?? null, kind: path.startsWith('media/') ? 'media' : 'entry', kept: KEPT_COPY.test(path) };
@@ -190,14 +190,23 @@ export class FolderStore implements RecordStore {
 
   /**
    * Files that couldn't be read as JSON the last time they were read (a sync still in progress, or
-   * damage). Copies aren't among them: `conflicts()` lists those, readable or not.
+   * damage). Copies aren't among them: `conflicts()` lists those, readable or not; with `kept`, the
+   * ones kept beside their record are (another computer's version, maybe its newest).
    */
-  unreadableFiles(): string[] {
-    return [...this.unreadable].filter((p) => !this.isCopy(p));
+  unreadableFiles({ kept = false }: { kept?: boolean } = {}): string[] {
+    return [...this.unreadable].filter((p) => !this.isCopy(p) || (kept && this.held.has(p)));
   }
 
+  /**
+   * A file a person sorts out: one outside the naming scheme, or one kept beside its record's other
+   * file. A kept file that is its record's only one (unreadable, say) is the record itself.
+   */
   private isCopy(path: string): boolean {
-    return this.strays.includes(path) || this.held.has(path);
+    if (this.strays.includes(path)) return true;
+    if (!this.held.has(path)) return false;
+    const table = path.startsWith('media/') ? this.media : this.entries;
+    for (const list of table.values()) if (list.includes(path)) return list.length > 1;
+    return false;
   }
 
   /** A copy's path now (a kept copy is moved aside when its record is saved over its name), or null if it isn't one. */
@@ -271,13 +280,17 @@ export class FolderStore implements RecordStore {
     let missing = 0;
     const found: { path: string; record: StoreRecords[S]; text: string }[] = [];
     for (const path of paths) {
-      const record = await this.readJson<StoreRecords[S]>(path, () => missing++);
+      let gone = false;
+      const record = await this.readJson<StoreRecords[S]>(path, () => ((gone = true), missing++));
       if (record) found.push({ path, record, text: JSON.stringify(record) });
+      // There but unreadable (mid-sync, damaged): it may be another computer's newest version, so
+      // a save moves it aside, as a copy to sort out, rather than deleting it everywhere.
+      else if (!gone) this.held.add(path);
     }
     // The newest copy wins (the first, on equal revisions).
     let best = found[0];
     for (const f of found) if (best && rev(f.record) > rev(best.record)) best = f;
-    // Kept as well, rather than deleted by the next save: a copy with the same revision but other
+    // Kept too, rather than deleted by the next save: a copy with the same revision but other
     // content (two computers edited the same version), and a sealed copy beside a plain one (a
     // passcode switched while another computer was writing; a sealed copy's revision can't be read).
     // Worked out afresh each read: a copy kept earlier may since have become the newest.

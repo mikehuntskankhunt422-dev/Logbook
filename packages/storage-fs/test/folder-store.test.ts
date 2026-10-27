@@ -773,6 +773,44 @@ describe('copies to sort out (D102)', () => {
     expect([j.isEncrypted, j.isLocked]).toEqual([true, false]);
   });
 
+  it('keeps another computer’s version it can’t read yet, rather than deleting it with a save', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Desk' }));
+    const laptop = `entries/2026/2026-10-07--laptop--${e.id}.json`;
+    await writeFile(join(root, laptop), '{"id":"' + e.id); // still arriving
+    const j2 = await Journal.open(await open(root));
+    await j2.listEntries();
+    expect(j2.store.conflicts!().map((c) => c.path)).toEqual([laptop]);
+    // A backup would miss it, so it waits, as it does for other files that can't be read yet.
+    expect(j2.store.unreadableFiles!({ kept: true })).toEqual([laptop]);
+    await expect(exportBackup(j2)).rejects.toThrow(/can't be read right now/);
+    const shown = (await j2.getEntry(e.id))!;
+    await j2.saveEntry({ ...shown, title: 'Desk again' }, { expectedRev: shown.rev, expectedUpdatedAt: shown.updatedAt });
+    const after = (await files(root)).filter((f) => f.includes(e.id));
+    expect(after).toContain(`entries/2026/2026-10-07--desk-again--${e.id}.json`);
+    const kept = after.find((f) => f.includes('(conflict '));
+    expect(kept && (await readFile(join(root, kept), 'utf8'))).toBe('{"id":"' + e.id);
+  });
+
+  it('doesn’t offer to delete an entry whose only file it can’t read, and keeps that file when the entry is saved over', async () => {
+    const root = await folder();
+    const j = await Journal.open(await open(root));
+    const e = await j.saveEntry(j.newEntry({ date: '2026-10-07', title: 'Only' }));
+    const own = `entries/2026/2026-10-07--only--${e.id}.json`;
+    await writeFile(join(root, own), '{"id":"' + e.id);
+    const j2 = await Journal.open(await open(root));
+    expect(await j2.listEntries()).toEqual([]);
+    expect([j2.store.conflicts!(), j2.store.unreadableFiles!()]).toEqual([[], [own]]);
+    await j2.store.removeCopy!(own);
+    expect(await files(root)).toContain(own);
+    // Restoring it from a backup: the unreadable file is moved aside, not written over.
+    await j2.importEntry({ ...e, title: 'Only' });
+    const after = (await files(root)).filter((f) => f.includes(e.id));
+    expect(after.sort()).toEqual([own, expect.stringContaining('(conflict ')].sort());
+    expect((await j2.getEntry(e.id))!.title).toBe('Only');
+  });
+
   it('asks for the passcode when another computer turned it on, but not after turning it on here', async () => {
     const root = await folder();
     const desktop = await Journal.open(await open(root));

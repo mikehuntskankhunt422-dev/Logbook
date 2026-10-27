@@ -51,8 +51,12 @@ export interface RecordStore {
   refresh?(): Promise<void>;
   /** Resolves once every change asked for so far is stored (the desktop app waits on it before closing). */
   whenIdle?(): Promise<void>;
-  /** Files that exist but couldn't be read when last tried (a sync still in progress, damage). */
-  unreadableFiles?(): string[];
+  /**
+   * Files that exist but couldn't be read when last tried (a sync still in progress, damage). With
+   * `kept`, also those kept beside their record as copies: another computer's version, maybe its
+   * newest, which a backup or turning the passcode off must wait for.
+   */
+  unreadableFiles?(opts?: { kept?: boolean }): string[];
   /**
    * Copies kept beside records for a person to sort out (D102): a sync tool's conflict copies, and
    * versions Logbook kept when two computers saved the same entry. The desktop folder only.
