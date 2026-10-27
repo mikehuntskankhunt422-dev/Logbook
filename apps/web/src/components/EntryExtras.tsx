@@ -202,7 +202,7 @@ function MusicFile({ id, actions, onRemove }: { id: string; actions: ReactNode; 
       )}
       {video.failed && (
         <p className="notice notice-warn music-problem" role="status">
-          This video doesn’t play here: its format isn’t one this app can play. MP4 and WebM videos play everywhere.
+          This video doesn’t play here: this app can’t play its format. An MP4 video is the safest choice.
         </p>
       )}
       {url && shown === 'image' && <img className="music-media" src={url} alt={name} width={meta?.width} height={meta?.height} />}
