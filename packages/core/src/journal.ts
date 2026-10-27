@@ -488,10 +488,12 @@ export class Journal {
     info: { name: string; mime?: string; width?: number; height?: number; durationMs?: number; derivedFrom?: string },
   ): Promise<MediaMeta> {
     this.assertUnlocked();
+    // Whatever type a file claims, it's kept: one too long to be a real type is just a file.
+    const mime = info.mime || blob.type;
     const meta = mediaMetaSchema.parse({
       id: newId(),
       name: info.name.slice(0, 255) || 'untitled',
-      mime: info.mime || blob.type || 'application/octet-stream',
+      mime: mime && mime.length <= 127 ? mime : 'application/octet-stream',
       bytes: blob.size,
       width: info.width,
       height: info.height,

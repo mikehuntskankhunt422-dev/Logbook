@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { MEDIA_LIMITS, mediaKind, musicSource, normaliseMusicUrl, withAutoplay, type Entry, type MusicSource } from '@logbook/core';
+import { formatBytes, mediaKind, musicSource, normaliseMusicUrl, sizeAdvice, withAutoplay, type Entry, type MusicSource } from '@logbook/core';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { importFile } from '../lib/media-import.ts';
@@ -112,29 +112,38 @@ export function MusicBar({ entry, onChange }: { entry: Entry; onChange: (patch: 
   const input = useRef<HTMLInputElement>(null);
   const [linking, setLinking] = useState(false);
 
+  // Any file is taken (D106): a sound plays, a video or picture shows, anything else is kept to save.
   const choose = (file: File | undefined) =>
     trackWork(
       (async () => {
         if (!file) return;
-        const large = mediaKind(file.type) === 'audio' ? MEDIA_LIMITS.audioWarnBytes * 4 : MEDIA_LIMITS.videoWarnBytes;
-        if (file.size > large) toast('That file is very large for an entry’s background; it will make backups slower.');
-        const { meta: added, kind } = await importFile(journal, file, { compress: settings.compressLargeMedia });
-        if (kind === 'file') {
-          toast(`${file.name} isn't a sound, video or picture Logbook can show.`);
-          await journal.deleteMedia(added.id).catch(() => {});
-          return;
+        const advice = sizeAdvice(file.size, file.type);
+        if (advice.level !== 'ok') toast(advice.message);
+        try {
+          const { meta: added } = await importFile(journal, file, { compress: settings.compressLargeMedia });
+          onChange({ musicId: added.id, musicUrl: null });
+          setLinking(false);
+        } catch (err) {
+          toast(`Couldn’t add ${file.name}: ${(err as Error).message}`);
         }
-        onChange({ musicId: added.id, musicUrl: null });
-        setLinking(false);
       })(),
     );
   const remove = () => onChange({ musicId: null, musicUrl: null });
 
   const changers = (
     <>
-      <input ref={input} type="file" accept="audio/*,video/*,image/*" hidden onChange={(e) => void choose(e.target.files?.[0])} />
+      <input
+        ref={input}
+        type="file"
+        hidden
+        onChange={(e) => {
+          void choose(e.target.files?.[0]);
+          // The same file again is a change too.
+          e.target.value = '';
+        }}
+      />
       <button type="button" className="btn btn-small" onClick={() => input.current?.click()}>
-        🎵 {entry.musicId || entry.musicUrl ? 'File…' : 'Choose a file…'}
+        🎵 {entry.musicId || entry.musicUrl ? 'Sound file…' : 'Choose a sound file…'}
       </button>
       <button type="button" className="btn btn-small" aria-expanded={linking} onClick={() => setLinking((l) => !l)}>
         🔗 {entry.musicId || entry.musicUrl ? 'Link…' : 'Paste a link…'}
@@ -150,7 +159,7 @@ export function MusicBar({ entry, onChange }: { entry: Entry; onChange: (patch: 
         <MusicFile key={entry.musicId} id={entry.musicId} actions={changers} onRemove={remove} />
       ) : (
         <div className="music-row">
-          <span className="hint">Music, a video, a GIF or a photo for while this entry is open.</span>
+          <span className="hint">Music that plays while this entry is open, or a video, GIF or photo to show.</span>
           {changers}
         </div>
       )}
@@ -167,45 +176,58 @@ export function MusicBar({ entry, onChange }: { entry: Entry; onChange: (patch: 
   );
 }
 
-/** A sound plays with Logbook's own button; a video plays in view, with its own controls; a photo or GIF is shown. */
+/**
+ * A sound plays with Logbook's own button; a video plays in view, with its own controls; a photo or
+ * GIF is shown. Only as those (an audio, video or picture element) does a file reach the page, so
+ * nothing in one can run. Any other file, or one this device can't play or show, is named, with a
+ * button that saves it (never opens it in the window).
+ */
 function MusicFile({ id, actions, onRemove }: { id: string; actions: ReactNode; onRemove: () => void }) {
   const url = useMediaUrl(id);
   const meta = useMediaMeta(id);
   const poster = useMediaUrl(meta?.posterId);
-  // Known once its details are read; anything that isn't a video or picture is played as a sound,
-  // as every background file was before D106.
+  const [unshown, setUnshown] = useState(false);
+  // Known once its details are read.
   const kind = meta ? mediaKind(meta.mime) : undefined;
-  const shown = kind === 'video' || kind === 'image' ? kind : kind && 'audio';
-  const sound = useAudio(shown === 'audio' ? (url ?? undefined) : undefined);
-  const video = usePlayback<HTMLVideoElement>(shown === 'video' ? (url ?? undefined) : undefined);
+  const sound = useAudio(kind === 'audio' ? (url ?? undefined) : undefined);
+  const video = usePlayback<HTMLVideoElement>(kind === 'video' ? (url ?? undefined) : undefined);
+  const failed = sound.failed || video.failed || unshown;
   const name = meta?.name ?? 'Music';
   const playing = sound.playing || video.playing;
+  const icon = kind === 'video' ? '🎬' : kind === 'image' ? '🖼' : kind === 'file' ? '📎' : '🎵';
   return (
     <>
       <div className="music-row">
-        {shown !== 'video' && shown !== 'image' && (
-          <button type="button" className="btn btn-small music-toggle" aria-label={playing ? 'Pause the music' : 'Play the music'} disabled={!url || !shown} onClick={sound.toggle}>
+        {(kind === 'audio' || !kind) && !failed && (
+          <button type="button" className="btn btn-small music-toggle" aria-label={playing ? 'Pause the music' : 'Play the music'} disabled={!url || !kind} onClick={sound.toggle}>
             {playing ? '⏸' : '▶️'}
           </button>
         )}
         <span className={`music-name${playing ? ' music-playing' : ''}`}>
-          {shown === 'video' ? '🎬' : shown === 'image' ? '🖼' : '🎵'} {name}
+          {icon} {name}
         </span>
         {sound.element}
+        {url && meta && (kind === 'file' || failed) && (
+          <a className="btn btn-small" href={url} download={meta.name}>
+            Download
+          </a>
+        )}
         {actions}
         <button type="button" className="btn btn-small" onClick={onRemove}>
           Remove
         </button>
       </div>
-      {url && shown === 'video' && (
+      {url && kind === 'video' && !failed && (
         <video ref={video.ref} className="music-media" src={url} poster={poster ?? undefined} width={meta?.width} height={meta?.height} loop preload="auto" controls playsInline aria-label={name} {...video.handlers} />
       )}
-      {video.failed && (
-        <p className="notice notice-warn music-problem" role="status">
-          This video doesn’t play here: this app can’t play its format. An MP4 video is the safest choice.
+      {url && kind === 'image' && !failed && <img className="music-media" src={url} alt={name} width={meta?.width} height={meta?.height} onError={() => setUnshown(true)} />}
+      {meta && (kind === 'file' || failed) && (
+        <p className="hint music-problem" role="status">
+          {kind === 'file'
+            ? `Logbook can’t play or show this kind of file here (${formatBytes(meta.bytes)}). It’s kept with the entry: download it to open it.`
+            : `This ${kind === 'image' ? 'picture' : kind === 'video' ? 'video' : 'sound'} doesn’t play or show here: this device can’t read its format. It’s kept with the entry: download it to open it elsewhere.`}
         </p>
       )}
-      {url && shown === 'image' && <img className="music-media" src={url} alt={name} width={meta?.width} height={meta?.height} />}
     </>
   );
 }

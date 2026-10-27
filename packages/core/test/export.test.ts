@@ -155,6 +155,11 @@ describe('entries as documents', () => {
     expect(entryToMarkdown(picture, lookup)).toContain('![Background picture](media/cat.gif)\n*Background picture*');
     expect(entryToText(picture, () => ({ kind: 'image', name: 'cat.gif' }))).toContain('[Photo: cat.gif] Background picture');
     expect(entryHtml(picture, lookup, { mode: 'print' })).not.toContain('cat.gif');
+    // Any other file is linked, as a file.
+    const other = { ...entry, musicId: 'pdf' };
+    const pdf = () => ({ kind: 'file' as const, name: 'tabs.pdf', src: 'media/tabs.pdf' });
+    expect(entryToMarkdown(other, pdf)).toContain('[📎 tabs.pdf](media/tabs.pdf)\n*Background file*');
+    expect(entryHtml(other, pdf)).toContain('<a href="media/tabs.pdf">📎 File: tabs.pdf</a><br><span class="lbx-caption">Background file</span>');
   });
 
   it('links background music from the web in exports, not on paper (D93)', () => {

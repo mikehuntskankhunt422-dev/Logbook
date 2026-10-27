@@ -50,7 +50,7 @@ export function entryToMarkdown(entry: Entry, media: MediaLookup, opts: Markdown
   if (entry.cover.kind === 'photo') out.push(mediaMd(media(entry.cover.mediaId), 'Cover photo', ''));
   if (entry.musicId) {
     const m = media(entry.musicId);
-    out.push(mediaMd(m, m?.kind === 'video' || m?.kind === 'image' ? mediaLabel(m.kind) : 'Audio', backgroundLabel(m?.kind)));
+    out.push(mediaMd(m, m && m.kind !== 'audio' ? mediaLabel(m.kind) : 'Audio', backgroundLabel(m?.kind)));
   }
   const musicHref = entry.musicUrl ? safeHref(entry.musicUrl) : null;
   if (musicHref) out.push(`🎵 Background music: ${linkMd(musicHref, musicHref)}`);

@@ -62,12 +62,14 @@ test('background music, and exporting from the entry and the journal page', asyn
   await expect(page.getByRole('dialog', { name: 'Export your journal' }).getByRole('button', { name: /Download 1 entry/ })).toBeVisible();
 });
 
-test('a video, GIF or photo in the music bar, shown while the entry is open (D106)', async ({ page }) => {
+test('any file in the music bar: a video or picture shown, anything else kept to download, nothing run (D106)', async ({ page }) => {
   await writeEntry(page, 'Rainy day', 'Stayed in');
   await page.getByRole('button', { name: '🎵 Music' }).click();
   const bar = page.getByRole('group', { name: 'Background music' });
+  await expect(bar.getByRole('button', { name: '🎵 Choose a sound file…' })).toBeVisible();
   const file = bar.locator('input[type=file]');
-  await expect(file).toHaveAttribute('accept', 'audio/*,video/*,image/*');
+  // Every file can be picked.
+  expect(await file.getAttribute('accept')).toBeNull();
 
   // A video plays in view, with its own controls instead of Logbook's button.
   await file.setInputFiles({ name: 'rain.webm', mimeType: 'video/webm', buffer: await webm(page) });
@@ -79,7 +81,7 @@ test('a video, GIF or photo in the music bar, shown while the entry is open (D10
   await page.waitForTimeout(1500);
   await expect(page.getByText('Saved on this device')).toBeVisible();
   await page.reload();
-  await expect(bar.locator('video[aria-label="rain.webm"]')).toBeVisible();
+  await expect(video).toBeVisible();
 
   // A GIF is shown in its place.
   await file.setInputFiles({ name: 'cat.gif', mimeType: 'image/gif', buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') });
@@ -87,10 +89,35 @@ test('a video, GIF or photo in the music bar, shown while the entry is open (D10
   await expect(bar.getByRole('img', { name: 'cat.gif' })).toBeVisible();
   await expect(bar.locator('video')).toHaveCount(0);
 
-  // Anything else isn't taken, and the GIF stays.
-  await file.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
-  await expect(page.getByText('notes.txt isn\'t a sound, video or picture Logbook can show.')).toBeVisible();
-  await expect(bar.getByRole('img', { name: 'cat.gif' })).toBeVisible();
+  // A picture with a script in it is only ever a picture.
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" onload="top.ranSvg=1"><script>top.ranSvg=1</script><rect width="40" height="40" fill="red"/></svg>';
+  await file.setInputFiles({ name: 'trick.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) });
+  await expect(bar.getByText(/trick\.svg/)).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as { ranSvg?: number }).ranSvg)).toBeUndefined();
+
+  // Any other file is kept, with a button that saves it rather than opening it in the window.
+  await file.setInputFiles({ name: 'page.html', mimeType: 'text/html', buffer: Buffer.from('<script>top.ranHtml = 1</script><p>hi</p>') });
+  await expect(bar.getByText('📎 page.html')).toBeVisible();
+  await expect(bar.getByRole('status')).toContainText('can’t play or show this kind of file');
+  const save = bar.getByRole('link', { name: 'Download' });
+  await expect(save).toHaveAttribute('download', 'page.html');
+  const pending = page.waitForEvent('download');
+  await save.click();
+  expect((await pending).suggestedFilename()).toBe('page.html');
+  expect(await page.evaluate(() => (window as { ranHtml?: number }).ranHtml)).toBeUndefined();
+
+  // A "picture" this device can't read is kept the same way.
+  await file.setInputFiles({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not really a picture') });
+  await expect(bar.getByText('🖼 broken.png')).toBeVisible();
+  await expect(bar.getByRole('status')).toContainText('This picture doesn’t play or show here');
+  await expect(bar.getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'broken.png');
+
+  // And a sound file still plays with Logbook's own button.
+  await file.setInputFiles({ name: 'waves.wav', mimeType: 'audio/wav', buffer: wav() });
+  await expect(bar.getByText('🎵 waves.wav')).toBeVisible();
+  await expect(bar.getByRole('button', { name: /the music$/ })).toBeEnabled();
+  await expect(bar.getByRole('link', { name: 'Download' })).toHaveCount(0);
 });
 
 test('background music from a link: a site’s player, a stream, and saying when a link won’t play (D93)', async ({ page }) => {

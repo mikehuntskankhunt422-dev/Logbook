@@ -33,9 +33,9 @@ export function metaLine(entry: Entry, opts: RenderOptions): string[] {
   return parts;
 }
 
-/** What an entry's background file is called (D91): music, or a video or picture shown with it (D106). */
+/** What an entry's background file is called (D91): music, or a video, picture or other file kept with it (D106). */
 export function backgroundLabel(kind: ExportMedia['kind'] | undefined): string {
-  return kind === 'video' ? 'Background video' : kind === 'image' ? 'Background picture' : 'Background music';
+  return kind === 'video' ? 'Background video' : kind === 'image' ? 'Background picture' : kind === 'file' ? 'Background file' : 'Background music';
 }
 
 /** What a media block is called when its file isn't in the export. */

@@ -77,6 +77,15 @@ describe('Journal entries', () => {
 });
 
 describe('Journal media', () => {
+  it('keeps any file, whatever type it claims (D106)', async () => {
+    const { journal } = await fresh();
+    const odd = await journal.addMedia(new Blob([new Uint8Array([1])], { type: `application/${'x'.repeat(200)}` }), { name: 'odd.bin' });
+    expect(odd.mime).toBe('application/octet-stream');
+    const plain = await journal.addMedia(new Blob([]), { name: '' });
+    expect(plain).toMatchObject({ mime: 'application/octet-stream', name: 'untitled', bytes: 0 });
+    expect(await journal.getMediaBlob(odd.id)).toBeDefined();
+  });
+
   it('stores media and garbage-collects unreferenced files but keeps posters of used videos', async () => {
     const { journal } = await fresh();
     const used = await journal.addMedia(new Blob([pngBytes()], { type: 'image/png' }), { name: 'a.png' });

@@ -1,4 +1,4 @@
-**Videos, GIFs and photos with an entry.** **🎵 Music → Choose a file** now takes a video, a GIF or a photo as well as a sound. A video plays in the bar as you read or write, with its own controls, and its sound is the entry's music; a GIF or photo is shown there while the entry is open.
+**Videos, GIFs and photos with an entry.** **🎵 Music → Choose a sound file** now takes any file. A video plays in the bar as you read or write, with its own controls, and its sound is the entry's music; a GIF or photo is shown there while the entry is open. Any other file is kept with the entry, with a button to download it.
 
 **A file still syncing is kept.** If your journal folder is in a sync service and an entry's newest version from another computer hasn't finished arriving, saving the entry used to delete that file, and the deletion could reach every computer. Logbook now keeps it, as a copy to sort out.
 
