@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { FONTS, fontFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { FONTS, fontFor, fontStackFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
@@ -7,6 +7,7 @@ import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { trackWork } from '../lib/pending-saves.ts';
+import { addFont, removeFont, useCustomFonts, type CustomFont } from '../lib/custom-fonts.ts';
 import { isAndroid, isApp, isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
@@ -77,10 +78,113 @@ const LINE_SPACINGS = [
   ['loose', 'Loose'],
 ] as const;
 
+const WEIGHT_NAMES: Record<number, string> = { 100: 'Thin', 200: 'Extra light', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' };
+
+/** A family's files, as "Regular, Bold, Bold italic". */
+function facesOf(font: CustomFont): string {
+  return font.faces
+    .map((m) => {
+      const weight = WEIGHT_NAMES[m.font!.weight] ?? String(m.font!.weight);
+      return m.font!.style === 'italic' ? (m.font!.weight === 400 ? 'Italic' : `${weight} italic`) : weight;
+    })
+    .join(', ');
+}
+
+/** Fonts of your own (D107): add font files, see each family in its own letters, remove one. */
+function YourFonts({ fonts }: { fonts: CustomFont[] }) {
+  const { journal } = useJournal();
+  const toast = useToast();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<CustomFont | null>(null);
+  const add = (files: File[]) =>
+    trackWork(
+      (async () => {
+        setBusy(true);
+        for (const file of files) {
+          try {
+            const family = await addFont(journal, file);
+            toast(`Added ${family}. Choose it as your writing font above, or for some words in the text toolbar.`);
+          } catch (err) {
+            toast((err as Error).message);
+          }
+        }
+        setBusy(false);
+      })(),
+    );
+  return (
+    <>
+      <h3 className="settings-sub">Your fonts</h3>
+      <p className="hint">
+        Add font files of your own to write in: TrueType (.ttf), OpenType (.otf) or WOFF. They're kept in your journal, so they go with it to your other computers and into backups. For bold and italic words, add the family's bold and italic files too.
+      </p>
+      {fonts.length > 0 && (
+        <ul className="font-list" aria-label="Your fonts">
+          {fonts.map((f) => (
+            <li key={f.family}>
+              <span className="font-sample" style={{ fontFamily: fontStackFor(f.family) }}>
+                {f.family}
+              </span>
+              <span className="muted">{facesOf(f)}</span>
+              <button type="button" className="btn btn-small" aria-label={`Remove ${f.family}`} onClick={() => setRemoving(f)}>
+                Remove…
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input
+        ref={input}
+        type="file"
+        multiple
+        hidden
+        data-testid="font-input"
+        onChange={(e) => {
+          void add([...(e.target.files ?? [])]);
+          e.target.value = '';
+        }}
+      />
+      <button type="button" className="btn" disabled={busy} onClick={() => input.current?.click()}>
+        🔤 {busy ? 'Adding…' : 'Add a font…'}
+      </button>
+      <Dialog
+        open={removing !== null}
+        title={`Remove ${removing?.family ?? 'this font'}?`}
+        onClose={() => setRemoving(null)}
+        actions={
+          <>
+            <button type="button" className="btn" onClick={() => setRemoving(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                const font = removing!;
+                setRemoving(null);
+                void trackWork(removeFont(journal, font)).then(
+                  () => toast(`Removed ${font.family}.`),
+                  (err: Error) => toast(err.message),
+                );
+              }}
+            >
+              Remove it
+            </button>
+          </>
+        }
+      >
+        <p>Words set in it go back to the journal font, on every computer that shares this journal.</p>
+      </Dialog>
+    </>
+  );
+}
+
 function AppearancePanel() {
   const { journal, settings } = useJournal();
   const [prompts, setPrompts] = useState(promptsOn);
   const garden = useGardenPrefs();
+  const custom = useCustomFonts();
+  const ownFont = custom.find((f) => f.family.toLowerCase() === settings.writingFont.toLowerCase());
   return (
     <section className="panel" aria-labelledby="appearance-h">
       <h2 id="appearance-h">Appearance</h2>
@@ -114,17 +218,32 @@ function AppearancePanel() {
       </div>
       <div className="field">
         <label htmlFor="writing-font">Writing font</label>
-        <select id="writing-font" className="text-input" value={fontFor(settings.writingFont)?.family ?? ''} onChange={(e) => void journal.updateSettings({ writingFont: e.target.value })}>
+        <select
+          id="writing-font"
+          className="text-input"
+          value={ownFont?.family ?? fontFor(settings.writingFont)?.family ?? ''}
+          onChange={(e) => void journal.updateSettings({ writingFont: e.target.value })}
+        >
           <option value="">Newsreader (the journal font)</option>
           {FONTS.filter((f) => f.family !== 'Newsreader').map((f) => (
             <option key={f.family} value={f.family}>
               {f.label}
             </option>
           ))}
+          {custom.length > 0 && (
+            <optgroup label="Your fonts">
+              {custom.map((f) => (
+                <option key={f.family} value={f.family}>
+                  {f.family}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </div>
       <p className="reading-sample">The quick brown fox wrote about its day in the forest. 🦊 🇯🇵 🇧🇷</p>
       <p className="hint">The writing font is how your entries look on this device; to set words in a font of their own, pick it in the text toolbar. Animations follow your device's reduce-motion setting.</p>
+      <YourFonts fonts={custom} />
       <label className="row" style={{ marginTop: 10 }}>
         <input
           type="checkbox"

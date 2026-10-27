@@ -41,6 +41,10 @@ export class IndexedDbStore implements RecordStore {
     return this.db.getAll(store) as Promise<StoreRecords[S][]>;
   }
 
+  async ids(store: StoreName): Promise<string[]> {
+    return (await this.db.getAllKeys(store)).map(String);
+  }
+
   get<S extends StoreName>(store: S, id: string): Promise<StoreRecords[S] | undefined> {
     return this.db.get(store, id) as Promise<StoreRecords[S] | undefined>;
   }

@@ -121,6 +121,14 @@ export const mediaMetaSchema = z.object({
   posterId: id.optional(),
   /** Set on derived media (poster frames) so garbage collection keeps them with their parent. */
   derivedFrom: id.optional(),
+  /** Set on a font of your own (D107): the family text names it by, and which face of it this file is. Kept until removed in Settings. */
+  font: z
+    .object({
+      family: z.string().min(1).max(60),
+      weight: z.number().int().min(100).max(900),
+      style: z.enum(['normal', 'italic']),
+    })
+    .optional(),
   createdAt: z.string(),
 });
 export type MediaMeta = z.infer<typeof mediaMetaSchema>;

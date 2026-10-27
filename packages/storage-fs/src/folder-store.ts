@@ -263,6 +263,10 @@ export class FolderStore implements RecordStore {
     return out;
   }
 
+  async ids(store: StoreName): Promise<string[]> {
+    return [...this.table(store).keys()];
+  }
+
   async get<S extends StoreName>(store: S, id: string): Promise<StoreRecords[S] | undefined> {
     const found = await this.read(store, id);
     // Every file the index knew is gone: another computer renamed, trashed or restored the entry.

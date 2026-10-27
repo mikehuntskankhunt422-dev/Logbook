@@ -1,11 +1,13 @@
 import type { RichNode } from './model.ts';
 import { esc } from './html-text.ts';
-import { fontFor, fontStack, safeAlign, safeColor } from './richtext.ts';
+import { fontStackFor } from './fonts.ts';
+import { safeAlign, safeColor } from './richtext.ts';
 
 /**
  * Pieces of HTML shared by the web-page export and the printed book (D91). Only checked values
- * reach the markup: opaque `#rrggbb` colours, Logbook's own fonts, a fixed set of alignments and
- * whole-number cell spans. Everything else in a document is text, escaped.
+ * reach the markup: opaque `#rrggbb` colours, Logbook's own fonts or a safe name of your own
+ * (D107), a fixed set of alignments and whole-number cell spans. Everything else in a document is
+ * text, escaped.
  */
 
 /** Marks that are one HTML element each. */
@@ -33,8 +35,8 @@ export function wrapMark(m: Mark, html: string): string {
     const styles: string[] = [];
     const color = safeColor(m.attrs?.['color']);
     if (color) styles.push(`color:${color}`);
-    const font = fontFor(m.attrs?.['fontFamily']);
-    if (font) styles.push(`font-family:${esc(fontStack(font))}`);
+    const font = fontStackFor(m.attrs?.['fontFamily']);
+    if (font) styles.push(`font-family:${esc(font)}`);
     return styles.length ? `<span style="${styles.join(';')}">${html}</span>` : html;
   }
   return html;

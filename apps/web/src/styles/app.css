@@ -2063,6 +2063,28 @@ mark {
   margin: 0.8em 0 0.3em;
   font-weight: 600;
 }
+/* Fonts of your own (D107): each family in its own letters. */
+.font-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  display: grid;
+  gap: 8px;
+}
+.font-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.font-sample {
+  font-size: 1.3rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.font-list .btn {
+  margin-left: auto;
+}
 .reading-sample {
   font-family: var(--font-body);
   font-size: 1.18rem;

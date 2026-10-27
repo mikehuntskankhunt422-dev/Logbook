@@ -11,6 +11,8 @@ import { Subscript } from '@tiptap/extension-subscript';
 import { Superscript } from '@tiptap/extension-superscript';
 import {
   FONTS,
+  firstFamily,
+  fontStackFor,
   HIGHLIGHT_COLORS,
   TEXT_COLORS,
   embedPlayerUrl,
@@ -22,6 +24,7 @@ import {
   type MediaMeta,
 } from '@logbook/core';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
+import { useCustomFonts } from '../lib/custom-fonts.ts';
 import { allFlags } from '../lib/flags.ts';
 import { tiltFor } from '../lib/motion.ts';
 
@@ -52,6 +55,31 @@ function Caption({ value, onChange, label, placeholder = 'Add a caption…' }: {
 
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
 
+/**
+ * A font named in the text (D91, D107), shown with the same quoted list of fallbacks the exports use,
+ * so any font of your own works ("Hand 2" too), and a name that could break out of CSS shows nothing.
+ * A list pasted in (from Logbook or elsewhere) is read as its first font.
+ */
+const FontFamilyStack = FontFamily.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          fontFamily: {
+            default: null,
+            parseHTML: (element) => firstFamily(element.style.fontFamily),
+            renderHTML: (attributes) => {
+              const stack = fontStackFor(attributes['fontFamily']);
+              return stack ? { style: `font-family: ${stack}` } : {};
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
 /** The editor's formatting (D91): everything the exports know how to show. */
 const EXTENSIONS = [
   StarterKit.configure({
@@ -69,7 +97,7 @@ const EXTENSIONS = [
   TableKit.configure({ table: { resizable: false } }),
   TextStyle,
   Color,
-  FontFamily,
+  FontFamilyStack,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Subscript,
@@ -102,6 +130,7 @@ function afterPress(fn: () => void) {
 }
 
 export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'> & { autoFocus?: boolean }) {
+  const custom = useCustomFonts();
   const latest = useRef({ block, onChange });
   latest.current = { block, onChange };
   const [linkOpen, setLinkOpen] = useState(false);
@@ -200,6 +229,15 @@ export function RichTextBlock({ block, onChange, autoFocus }: BlockProps<'text'>
                 {f.label}
               </option>
             ))}
+            {custom.length > 0 && (
+              <optgroup label="Your fonts">
+                {custom.map((f) => (
+                  <option key={f.family} value={f.family} style={{ fontFamily: fontStackFor(f.family) }}>
+                    {f.family}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <select aria-label="Alignment" value={align} onChange={(e) => (e.target.value === 'left' ? chain().unsetTextAlign().run() : chain().setTextAlign(e.target.value).run())}>
             <option value="left">Align left</option>

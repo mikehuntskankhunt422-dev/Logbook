@@ -298,6 +298,16 @@ try {
   // compile anyway; making an instance of it is what the policy decides.
   const wasm = await run(s, "return WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then((m) => WebAssembly.instantiate(m, {})).then(() => 'runs', (e) => String(e))");
   check(wasm === 'runs', `WebAssembly runs, for the passcode (${wasm})`);
+  // Fonts of your own (D107) go into the page from their bytes, which the policy has no say over.
+  const font = await run(
+    s,
+    `const rules = [...document.styleSheets].flatMap((sheet) => { try { return [...sheet.cssRules]; } catch { return []; } });
+     const rule = rules.find((r) => r instanceof CSSFontFaceRule && /url\\(["']?[^"')]+\\.woff2?["']?\\)/.test(r.cssText));
+     const file = rule && new URL(/url\\(["']?([^"')]+\\.woff2?)["']?\\)/.exec(rule.cssText)[1], rule.parentStyleSheet.href ?? location.href).href;
+     return file ? fetch(file).then((r) => r.arrayBuffer()).then((b) => new FontFace('Smoke Font', b).load()).then(() => 'loads', (e) => String(e)) : 'no font file to try';`,
+  );
+  const fontBlocked = await blocked(s);
+  check(font === 'loads' && Array.isArray(fontBlocked) && fontBlocked.length === 0, `a font of your own loads in the window (${font}, ${JSON.stringify(fontBlocked)})`);
   // What it's for: script slipped into the page (a crafted entry from a synced folder) doesn't run,
   // and can't send anything anywhere.
   await run(
