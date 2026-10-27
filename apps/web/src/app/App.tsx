@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { WrongPasscodeError, fontFor, fontStack, type Settings } from '@logbook/core';
+import { WrongPasscodeError, fontStackFor, type Settings } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
 import { consumeReplaceFlag, href, useRoute, type Route } from './router.ts';
@@ -12,6 +12,7 @@ import { Ringer } from './clock.tsx';
 import { useGarden, useGardenEffects } from './garden.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
+import { useFontLoader } from '../lib/custom-fonts.ts';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
@@ -39,6 +40,7 @@ export function App() {
   const route: Route = asked.name === 'copies' && !CopiesView ? { name: 'home' } : asked;
   const reduced = useReducedMotion();
   useTheme(settings.theme);
+  useFontLoader();
   useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
   usePwaUpdates();
@@ -170,8 +172,9 @@ function useReadability({ textSize, lineSpacing, writingFont }: Pick<Settings, '
     else root.setAttribute('data-text-size', textSize);
     if (lineSpacing === 'normal') root.removeAttribute('data-line-spacing');
     else root.setAttribute('data-line-spacing', lineSpacing);
-    const font = fontFor(writingFont);
-    if (font) root.style.setProperty('--font-body', fontStack(font));
+    // One of Logbook's fonts or one of your own (D107).
+    const font = fontStackFor(writingFont);
+    if (font) root.style.setProperty('--font-body', font);
     else root.style.removeProperty('--font-body');
   }, [textSize, lineSpacing, writingFont]);
 }

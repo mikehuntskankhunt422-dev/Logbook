@@ -77,6 +77,18 @@ describe('Journal entries', () => {
 });
 
 describe('Journal media', () => {
+  it('keeps a font of your own while no entry uses it (D107)', async () => {
+    const { journal } = await fresh();
+    const font = await journal.addMedia(new Blob([new Uint8Array([0, 1, 0, 0])], { type: 'font/ttf' }), { name: 'Hand.ttf', font: { family: 'Hand', weight: 400, style: 'normal' } });
+    const stray = await journal.addMedia(new Blob([new Uint8Array([0, 1, 0, 0])], { type: 'font/ttf' }), { name: 'Stray.ttf' });
+    await journal.collectGarbage();
+    expect((await journal.getMediaMeta(font.id))?.font).toEqual({ family: 'Hand', weight: 400, style: 'normal' });
+    expect(await journal.getMediaMeta(stray.id)).toBeUndefined();
+    // Found by its id, without reading anything else.
+    expect(font.id).toMatch(/^font[0-9a-z]+$/);
+    expect((await journal.listFontMeta()).map((m) => m.id)).toEqual([font.id]);
+  });
+
   it('keeps any file, whatever type it claims (D106)', async () => {
     const { journal } = await fresh();
     const odd = await journal.addMedia(new Blob([new Uint8Array([1])], { type: `application/${'x'.repeat(200)}` }), { name: 'odd.bin' });

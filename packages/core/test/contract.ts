@@ -31,8 +31,12 @@ export function recordStoreContract(name: string, make: () => Promise<RecordStor
       expect((await s.get('entries', 'a')) as Entry).toMatchObject({ title: 'updated' });
       expect((await s.all('entries')).map((r) => r.id).sort()).toEqual(['a', 'b']);
       expect(await s.all('media')).toEqual([]);
+      // Ids too, without reading the records (D107).
+      expect((await s.ids?.('entries'))?.sort()).toEqual(['a', 'b']);
+      expect(await s.ids?.('media')).toEqual([]);
       await s.delete('entries', 'a');
       expect(await s.get('entries', 'a')).toBeUndefined();
+      expect(await s.ids?.('entries')).toEqual(['b']);
     });
 
     it('returns copies, not live references', async () => {

@@ -1,5 +1,6 @@
 import { createVault, openVault, rewrapVault, type Cipher, type KdfParams, type Vault } from './crypto.ts';
 import { addDays, today } from './dates.ts';
+import { FONT_ID_PREFIX } from './fonts.ts';
 import { newId } from './ids.ts';
 import {
   DEFAULT_SETTINGS,
@@ -485,13 +486,14 @@ export class Journal {
 
   async addMedia(
     blob: Blob,
-    info: { name: string; mime?: string; width?: number; height?: number; durationMs?: number; derivedFrom?: string },
+    info: { name: string; mime?: string; width?: number; height?: number; durationMs?: number; derivedFrom?: string; font?: MediaMeta['font'] },
   ): Promise<MediaMeta> {
     this.assertUnlocked();
     // Whatever type a file claims, it's kept: one too long to be a real type is just a file.
     const mime = info.mime || blob.type;
     const meta = mediaMetaSchema.parse({
-      id: newId(),
+      // A font's id says so, so fonts are found without reading every photo's details (D107).
+      id: info.font ? `${FONT_ID_PREFIX}${newId()}` : newId(),
       name: info.name.slice(0, 255) || 'untitled',
       mime: mime && mime.length <= 127 ? mime : 'application/octet-stream',
       bytes: blob.size,
@@ -499,6 +501,7 @@ export class Journal {
       height: info.height,
       durationMs: info.durationMs,
       derivedFrom: info.derivedFrom,
+      font: info.font,
       createdAt: new Date().toISOString(),
     });
     await this.writeBlob(meta.id, blob);
@@ -531,6 +534,15 @@ export class Journal {
     const rec = await this.store.get('media', id);
     if (!rec) return undefined;
     return mediaMetaSchema.parse(isSealed(rec) ? await this.cipher!.openJson('media', rec) : rec);
+  }
+
+  /** Fonts of your own (D107): the media whose id marks it as one, read without reading the rest. */
+  async listFontMeta(): Promise<MediaMeta[]> {
+    this.assertUnlocked();
+    if (!this.store.ids) return (await this.listMediaMeta()).filter((m) => m.font);
+    const ids = (await this.store.ids('media')).filter((id) => id.startsWith(FONT_ID_PREFIX));
+    const metas = await Promise.all(ids.map((id) => this.getMediaMeta(id).catch(() => undefined)));
+    return metas.filter((m): m is MediaMeta => Boolean(m?.font));
   }
 
   /** Every photo and other media item this journal can open; ones sealed with another key are skipped. */
@@ -608,7 +620,8 @@ export class Journal {
     let removed = 0;
     for (const m of all) {
       const parentUsed = m.derivedFrom !== undefined && used.has(m.derivedFrom);
-      if (!used.has(m.id) && !parentUsed) {
+      // A font of your own stays until it's removed in Settings (D107).
+      if (!used.has(m.id) && !parentUsed && !m.font) {
         await this.deleteMedia(m.id);
         removed++;
       }

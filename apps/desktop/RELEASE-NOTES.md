@@ -1,3 +1,7 @@
+**Your own fonts.** **Settings → Appearance → Your fonts** adds font files of your own (TrueType, OpenType or WOFF) to write in. Choose one as your writing font, or for some words from the text toolbar. They're kept in your journal, so they go with it to your other computers and into backups. Add a family's bold and italic files too, for bold and italic words.
+
+What came in 0.9.2:
+
 **Videos, GIFs and photos with an entry.** **🎵 Music → Choose a sound file** now takes any file. A video plays in the bar as you read or write, with its own controls, and its sound is the entry's music; a GIF or photo is shown there while the entry is open. Any other file is kept with the entry, with a button to download it.
 
 **A file still syncing is kept.** If your journal folder is in a sync service and an entry's newest version from another computer hasn't finished arriving, saving the entry used to delete that file, and the deletion could reach every computer. Logbook now keeps it, as a copy to sort out.

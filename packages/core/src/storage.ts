@@ -34,6 +34,8 @@ export interface StoreKeys {
 export interface RecordStore {
   readonly kind: 'memory' | 'indexeddb' | 'filesystem';
   all<S extends StoreName>(store: S): Promise<StoreRecords[S][]>;
+  /** The ids of a store's records, without reading them (fonts of your own are found by theirs, D107). */
+  ids?(store: StoreName): Promise<string[]>;
   get<S extends StoreName>(store: S, id: string): Promise<StoreRecords[S] | undefined>;
   put<S extends StoreName>(store: S, record: StoreRecords[S]): Promise<void>;
   delete(store: StoreName, id: string): Promise<void>;
@@ -94,6 +96,9 @@ export class MemoryStore implements RecordStore {
 
   async all<S extends StoreName>(store: S): Promise<StoreRecords[S][]> {
     return [...this.tables[store].values()].map((r) => structuredClone(r));
+  }
+  async ids(store: StoreName): Promise<string[]> {
+    return [...this.tables[store].keys()];
   }
   async get<S extends StoreName>(store: S, id: string): Promise<StoreRecords[S] | undefined> {
     const r = this.tables[store].get(id);
