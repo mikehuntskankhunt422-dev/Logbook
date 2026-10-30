@@ -2776,6 +2776,55 @@ dialog[open]::backdrop {
 :root[data-theme='dark'][data-accent='midnight'] { --accent: #9aa4ff; --accent-ink: #0e1033; --accent-soft: #22254a; }
 :root[data-theme='dark'][data-accent='sakura'] { --accent: #ffb3cf; --accent-ink: #2e0d1b; --accent-soft: #3d2230; }
 :root[data-theme='dark'][data-accent='gold'] { --accent: #ffcf5a; --accent-ink: #2a1d00; --accent-soft: #3a2e12; }
+/* Holidays (D108): their colours while they last, over the garden's (these come after them). */
+:root[data-holiday='halloween'] { --accent: #6a2c91; --accent-ink: #ffffff; --accent-soft: #ffe3c7; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-holiday='halloween'] { --accent: #ff9a3c; --accent-ink: #1d0b00; --accent-soft: #2e1a3d; }
+}
+:root[data-theme='dark'][data-holiday='halloween'] { --accent: #ff9a3c; --accent-ink: #1d0b00; --accent-soft: #2e1a3d; }
+.holiday-badge {
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: default;
+}
+/* Jack-o'-lanterns in the newest bed (D108), their candles flickering unless motion is reduced. */
+.garden-holiday {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  align-self: flex-end;
+}
+.garden-holiday svg {
+  width: 30px;
+  height: 30px;
+  overflow: visible;
+}
+.garden-holiday .lantern-glow {
+  animation: lantern-flicker 2.4s ease-in-out infinite;
+}
+.garden-holiday svg:nth-child(2) .lantern-glow {
+  animation-delay: -0.8s;
+}
+.garden-holiday svg:nth-child(3) .lantern-glow {
+  animation-delay: -1.6s;
+}
+@keyframes lantern-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.7;
+  }
+  55% {
+    opacity: 0.9;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .garden-holiday .lantern-glow {
+    animation: none;
+  }
+}
 
 .garden-page { max-width: 920px; margin: 0 auto; }
 .garden-rank { display: flex; gap: 16px; align-items: center; }

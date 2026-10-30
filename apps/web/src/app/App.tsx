@@ -13,6 +13,7 @@ import { useGarden, useGardenEffects } from './garden.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
 import { useFontLoader } from '../lib/custom-fonts.ts';
+import { useHoliday, useHolidayColours } from '../lib/holidays.ts';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
@@ -40,6 +41,8 @@ export function App() {
   const route: Route = asked.name === 'copies' && !CopiesView ? { name: 'home' } : asked;
   const reduced = useReducedMotion();
   useTheme(settings.theme);
+  const holiday = useHoliday();
+  useHolidayColours(holiday);
   useFontLoader();
   useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
@@ -108,6 +111,11 @@ export function App() {
           Logbook
         </a>
         <StreakBadge />
+        {holiday && (
+          <span className="holiday-badge" role="img" aria-label={holiday.day ? `Happy ${holiday.name}` : `${holiday.name} is coming`} title={holiday.day ? `Happy ${holiday.name}!` : `${holiday.name} is coming`}>
+            {holiday.emoji}
+          </span>
+        )}
         <nav className="nav" aria-label="Main">
           {NAV.filter((n) => !(gardenHidden && n.route.name === 'garden')).map((n) => (
             <a key={n.label} href={href(n.route)} title={n.label} aria-current={section === n.route.name ? 'page' : undefined}>

@@ -1,3 +1,5 @@
+import { HOLIDAY_PROMPTS, type HolidayId } from '@logbook/core';
+
 /**
  * Writing prompts (D94): a question on a new, empty entry, for days when the page is blank. The
  * same one all day (picked by the date), another on request. Whether they show is this device's
@@ -47,11 +49,16 @@ export const PROMPTS: readonly string[] = [
   'What’s the weather like, outside and inside you?',
 ];
 
-/** Today's prompt, or another (`turn` steps through the list). */
-export function promptFor(date: string, turn = 0): string {
+/**
+ * Today's prompt, or another (`turn` steps through the list). On a holiday's day itself (D108), its
+ * own prompts come first.
+ */
+export function promptFor(date: string, turn = 0, holiday?: HolidayId): string {
+  const special = holiday ? HOLIDAY_PROMPTS[holiday] : [];
+  if (turn < special.length) return special[turn]!;
   let h = 0;
   for (const c of date) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return PROMPTS[(h + turn * 7) % PROMPTS.length]!;
+  return PROMPTS[(h + (turn - special.length) * 7) % PROMPTS.length]!;
 }
 
 const KEY = 'logbook.prompts';

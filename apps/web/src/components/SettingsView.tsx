@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { FONTS, fontFor, fontStackFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
+import { FONTS, HOLIDAYS, fontFor, fontStackFor, type HolidayInfo, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
@@ -8,6 +8,7 @@ import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { trackWork } from '../lib/pending-saves.ts';
 import { addFont, removeFont, useCustomFonts, type CustomFont } from '../lib/custom-fonts.ts';
+import { setHolidayOn, useHolidayOn } from '../lib/holidays.ts';
 import { isAndroid, isApp, isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
@@ -258,7 +259,22 @@ function AppearancePanel() {
       <label className="row">
         <input type="checkbox" checked={!garden.hidden} onChange={(e) => setGardenPrefs({ hidden: !e.target.checked })} /> 🌱 Show the garden
       </label>
+      <h3 className="settings-sub">Holidays</h3>
+      <p className="hint">For a few days around a holiday, the app takes on its colours, with a few touches in your garden and a prompt for the day. Your entries never change. These choices are for this device.</p>
+      {HOLIDAYS.map((h) => (
+        <HolidaySwitch key={h.id} holiday={h} />
+      ))}
     </section>
+  );
+}
+
+/** A holiday, on unless switched off here (D108). */
+function HolidaySwitch({ holiday }: { holiday: HolidayInfo }) {
+  const on = useHolidayOn(holiday.id);
+  return (
+    <label className="row">
+      <input type="checkbox" checked={on} onChange={(e) => setHolidayOn(holiday.id, e.target.checked)} /> {holiday.emoji} {holiday.name} ({holiday.when})
+    </label>
   );
 }
 
