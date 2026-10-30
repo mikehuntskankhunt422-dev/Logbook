@@ -1,3 +1,7 @@
+**Happy Halloween.** From 24 to 31 October, Logbook dresses up: purple and pumpkin colours, a 🎃 by your streak, jack-o'-lanterns flickering among your newest plants in the garden, and on the 31st a spooky writing prompt. Your entries don't change. Don't want it? Switch it off in **Settings → Appearance → Holidays**. Christmas, New Year, Easter and birthdays are coming the same way.
+
+What came in 0.9.3:
+
 **Your own fonts.** **Settings → Appearance → Your fonts** adds font files of your own (TrueType, OpenType or WOFF) to write in. Choose one as your writing font, or for some words from the text toolbar. They're kept in your journal, so they go with it to your other computers and into backups. Add a family's bold and italic files too, for bold and italic words.
 
 What came in 0.9.2:

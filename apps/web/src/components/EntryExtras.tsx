@@ -6,6 +6,7 @@ import { importFile } from '../lib/media-import.ts';
 import { trackWork } from '../lib/pending-saves.ts';
 import { formatExpiry } from '../lib/expiry.ts';
 import { promptFor } from '../lib/prompts.ts';
+import { useHolidayFor } from '../lib/holidays.ts';
 import { useMediaMeta } from './blocks.tsx';
 
 /** Expiry and background music on an entry (D91). */
@@ -375,8 +376,9 @@ function MusicLink({ href, actions, onRemove }: { href: string; actions: ReactNo
 export function PromptCard({ date, onUse }: { date: string; onUse: (prompt: string) => void }) {
   const [turn, setTurn] = useState(0);
   const [hidden, setHidden] = useState(false);
+  const holiday = useHolidayFor(date);
   if (hidden) return null;
-  const prompt = promptFor(date, turn);
+  const prompt = promptFor(date, turn, holiday?.day ? holiday.id : undefined);
   return (
     <div className="prompt-card" role="group" aria-label="Writing prompt">
       <p className="prompt-text" key={prompt} aria-live="polite">

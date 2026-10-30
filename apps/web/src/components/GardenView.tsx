@@ -1,5 +1,5 @@
 import { Fragment, memo, useMemo, useRef, useState } from 'react';
-import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type Plant as PlantData, type Season } from '@logbook/core';
+import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type HolidayId, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
 import { BIOMES, cardFeatures, CATALOGUE, FEATURES, fitText, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
 import { Pet, PET_TIER, SECOND_PET_TIER, STAR_TIER, StarSky } from './garden/Companions.tsx';
@@ -11,6 +11,7 @@ import { POSTCARD_TIER, PostcardDialog } from './garden/Postcard.tsx';
 import { SEASONS_TIER, SOUNDS_TIER, SoundControls, useGardenNow, WeatherLayer } from './garden/Weather.tsx';
 import { BIOME_TIER, GOLD_LANDMARK_TIER, Landmarks, TREE_TIER, WorldTree } from './garden/Wonders.tsx';
 import { useForcedColors, useReducedMotion } from '../lib/motion.ts';
+import { useHoliday } from '../lib/holidays.ts';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
 
@@ -41,6 +42,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const reduced = useReducedMotion();
   const forced = useForcedColors();
   const now = useGardenNow();
+  const holiday = useHoliday();
   const beds = useMemo(() => {
     const byMonth = new Map<string, PlantData[]>();
     for (const p of garden?.plants ?? []) {
@@ -204,7 +206,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                 return (
                   <Fragment key={bed.month}>
                     {sky && <StarSky map={sky} />}
-                    <Bed month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} pets={i === 0 ? pets : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />
+                    <Bed month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} pets={i === 0 ? pets : undefined} holiday={i === 0 ? holiday?.id : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />
                   </Fragment>
                 );
               })
@@ -333,6 +335,7 @@ const Bed = memo(function Bed({
   lantern,
   season,
   pets,
+  holiday,
   onPostcard,
 }: {
   month: string;
@@ -340,6 +343,8 @@ const Bed = memo(function Bed({
   lantern: boolean;
   season?: Season;
   pets?: { kind: PetKind; name: string }[];
+  /** A holiday's decorations, in the newest bed while it lasts (D108). */
+  holiday?: HolidayId;
   onPostcard?: (month: string) => void;
 }) {
   const name = new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
@@ -373,7 +378,30 @@ const Bed = memo(function Bed({
             {i === plants.length - 1 && pets?.map((pet, k) => <Pet key={k} kind={pet.kind} name={pet.name} />)}
           </li>
         ))}
+        {holiday === 'halloween' && (
+          <li className="garden-holiday" aria-hidden="true">
+            <JackOLantern />
+            <JackOLantern />
+            <JackOLantern />
+          </li>
+        )}
       </ul>
     </section>
   );
 });
+
+/** A jack-o'-lantern (Halloween, D108): a carved pumpkin with a candle glowing through its face. */
+function JackOLantern() {
+  return (
+    <svg viewBox="0 0 32 32" focusable="false">
+      <path d="M16 6c-1-2-.5-4 1.5-5" fill="none" stroke="#4e6b2a" strokeWidth={2.2} strokeLinecap="round" />
+      <ellipse cx={16} cy={19} rx={14} ry={11} fill="#e8731c" stroke="#9c4508" strokeWidth={1.4} />
+      <path d="M11 9c-2 6-2 14 0 20M21 9c2 6 2 14 0 20M16 8v22" fill="none" stroke="#c75c12" strokeWidth={1.1} />
+      <g className="lantern-glow" fill="#ffd34d">
+        <path d="M8.5 16l3.5-3 3 3z" />
+        <path d="M17 16l3-3 3.5 3z" />
+        <path d="M8 21c3 4 13 4 16 0l-2.5 1.5-1.5-1.5-2 2-2-2-2 2-2-2-1.5 1.5z" />
+      </g>
+    </svg>
+  );
+}
