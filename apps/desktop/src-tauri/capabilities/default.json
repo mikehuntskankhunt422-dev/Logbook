@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window: Logbook's own commands (src/lib.rs) plus the core event and window APIs. File access goes only through those commands, which stay inside the journal folder.",
+  "description": "The main window: Logbook's own commands (src/lib.rs), which need the page's secret (D111), and listening for Logbook's events. Nothing else: no emitting events, so a frame inside the page that Tauri's script reaches (an app of your own, on Windows and Android) can't pretend to be Logbook. File access goes only through Logbook's commands, which stay inside the journal folder.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
   ]
 }

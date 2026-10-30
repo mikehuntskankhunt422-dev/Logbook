@@ -7,6 +7,7 @@ import { useToast } from './toasts.tsx';
 import { EntryEditor } from '../components/EntryEditor.tsx';
 import { CalendarView, Memories, SearchView, Timeline } from '../components/views.tsx';
 import { SettingsView } from '../components/SettingsView.tsx';
+import { AppsView } from '../components/AppsView.tsx';
 import { ClockView } from '../components/ClockView.tsx';
 import { Ringer } from './clock.tsx';
 import { useGarden, useGardenEffects } from './garden.tsx';
@@ -31,6 +32,7 @@ const NAV: { route: Route; label: string; icon: string }[] = [
   { route: { name: 'search' }, label: 'Search', icon: '🔍' },
   { route: { name: 'garden' }, label: 'Garden', icon: '🌱' },
   { route: { name: 'clock' }, label: 'Clock', icon: '⏰' },
+  { route: { name: 'apps' }, label: 'Apps', icon: '🧩' },
   { route: { name: 'settings' }, label: 'Settings', icon: '⚙️' },
 ];
 
@@ -75,10 +77,10 @@ export function App() {
   }, [journal, locked, openEntry]);
 
   const firstRoute = useRef(true);
-  // The garden's own pages (D98) count as pages too, while the garden is shown.
-  const routeKey = route.name === 'entry' ? route.id : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
+  // The garden's own pages (D98) count as pages too, while the garden is shown, and each app (D111).
+  const routeKey = route.name === 'entry' ? route.id : route.name === 'apps' ? (route.id ?? '') : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', copies: 'Copies to sort out · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', apps: 'Apps · Logbook', copies: 'Copies to sort out · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -154,9 +156,11 @@ export function App() {
           {route.name === 'clock' && <ClockView />}
           {route.name === 'garden' && <GardenView garden={garden} view={route.view} />}
           {route.name === 'settings' && <SettingsView />}
+          {route.name === 'apps' && <AppsView id={route.id} />}
         </div>
       </main>
-      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && (
+      {/* Not over an app (D111), whose own buttons may be there. */}
+      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && !(route.name === 'apps' && route.id) && (
         <a className="btn btn-primary fab" href={href({ name: 'new' })}>
           ✍️ New entry
         </a>

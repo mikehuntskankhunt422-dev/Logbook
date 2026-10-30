@@ -6,11 +6,13 @@
 mod android;
 #[cfg(desktop)]
 mod app_icon;
+mod appbox;
 #[cfg(desktop)]
 mod autostart;
 mod clock;
 mod folder;
 mod journal_fs;
+mod session;
 #[cfg(desktop)]
 mod updates;
 #[cfg(desktop)]
@@ -536,6 +538,7 @@ pub fn run() {
     }
     // The page's commands: the journal folder's files, saving, links and printing everywhere; on
     // the desktop also choosing the folder, closing and updates.
+    let session = session::Session::new();
     #[cfg(desktop)]
     let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
         journal_folder,
@@ -566,6 +569,8 @@ pub fn run() {
         autostart::autostart_status,
         autostart::autostart_set,
         watch::journal_watch,
+        session::session_ready,
+        appbox::app_stage,
     ];
     #[cfg(mobile)]
     let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
@@ -584,6 +589,8 @@ pub fn run() {
         close_cancel,
         clock::clock_schedule,
         clock::clock_permission,
+        session::session_ready,
+        appbox::app_stage,
     ];
     #[cfg(desktop)]
     {
@@ -615,6 +622,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .manage(PendingSave::default())
         .manage(journal_fs::Pieces::default())
+        .manage(session.clone())
+        .manage(appbox::Staged::default())
+        // Your own apps' origin (D111).
+        .register_uri_scheme_protocol("appbox", |ctx, request| appbox::serve(&ctx.app_handle().state::<appbox::Staged>(), &request))
         .setup(|app| {
             let config_file = app.path().app_config_dir()?.join("config.json");
             #[cfg(desktop)]
@@ -656,7 +667,14 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(handler)
+        // Only with the page's secret (D111): never from a frame inside the page, such as an app.
+        .invoke_handler(move |invoke| {
+            if session.allows(&invoke) {
+                return handler(invoke);
+            }
+            invoke.resolver.reject("Only Logbook's own page can do that.");
+            true
+        })
         .build(tauri::generate_context!())
         .expect("Logbook couldn't start")
         .run(|_app, _event| {

@@ -11,7 +11,7 @@ export type NotifyPermission = 'granted' | 'denied' | 'prompt';
 
 export async function scheduleRings(rings: Ring[]): Promise<void> {
   if (!isApp) return;
-  const { invoke } = await import('@tauri-apps/api/core');
+  const { invoke } = await import('../desktop/ipc.ts');
   await invoke('clock_schedule', { rings: rings.map(({ id, at, title, body }) => ({ id, at, title, body })) });
 }
 
@@ -24,7 +24,7 @@ export async function onSystemRing(fn: () => void): Promise<() => void> {
 
 export async function notifyPermission(ask: boolean): Promise<NotifyPermission> {
   if (isApp) {
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await import('../desktop/ipc.ts');
     const state = await invoke<string>('clock_permission', { ask }).catch(() => 'denied');
     return state === 'granted' ? 'granted' : state === 'denied' ? 'denied' : 'prompt';
   }

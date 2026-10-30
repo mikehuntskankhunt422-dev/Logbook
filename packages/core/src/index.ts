@@ -3,6 +3,7 @@ export * from './ids.ts';
 export * from './dates.ts';
 export * from './richtext.ts';
 export * from './fonts.ts';
+export * from './apps.ts';
 export * from './holidays.ts';
 export * from './embeds.ts';
 export * from './music-links.ts';

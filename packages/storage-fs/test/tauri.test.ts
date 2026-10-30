@@ -49,4 +49,13 @@ describe('toBase64', () => {
       expect(toBase64(data)).toBe(Buffer.from(data).toString('base64'));
     }
   });
+
+  it('calls the commands the way it is given: the page’s own, with its secret (D111)', async () => {
+    const mine: string[] = [];
+    const fs = new TauriFsBackend({ invoke: (async (cmd: string) => void mine.push(cmd)) as never });
+    await fs.remove('entries/a.json');
+    await fs.write('entries/a.json', bytes(3));
+    expect(mine).toEqual(['journal_remove', 'journal_write']);
+    expect(calls).toEqual([]);
+  });
 });

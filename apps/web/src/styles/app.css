@@ -3211,3 +3211,71 @@ a.garden-landmark:focus-visible { outline: 3px solid var(--focus); outline-offse
 .postcard-option input { margin-top: 4px; }
 .postcard-preview { display: grid; place-items: center; min-height: 160px; margin-top: 8px; background: var(--bg-sunk); border-radius: 12px; padding: 8px; }
 .postcard-preview img { max-width: 100%; max-height: 46vh; border-radius: 6px; box-shadow: var(--shadow); }
+
+/* Your own apps (D111): a list, a code box, and the app in its frame. */
+.app-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 18px;
+  display: grid;
+  gap: 8px;
+}
+.app-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+}
+.app-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: inherit;
+  font-weight: 650;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.app-code {
+  min-height: 220px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 2;
+}
+.app-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.app-head h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.app-actions {
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.app-notice {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 8px 0;
+}
+/* White, as a browser shows a page that sets no colours of its own. */
+.app-frame {
+  display: block;
+  width: 100%;
+  height: max(420px, calc(100dvh - 260px));
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color-scheme: light;
+}

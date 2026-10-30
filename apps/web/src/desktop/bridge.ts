@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from './ipc.ts';
 import { PIECE as TEXT_PIECE, toBase64 } from '@logbook/storage-fs/tauri';
 import { announce } from '../app/toasts.tsx';
 
@@ -151,4 +152,12 @@ export function resetAppIcon(): Promise<void> {
   return invoke<void>('app_icon_reset').catch((err: unknown) => {
     throw new Error(String(err));
   });
+}
+
+/**
+ * One of your own apps, ready to open (D111): Rust keeps its page and serves it from an origin of
+ * its own (src-tauri/src/appbox.rs), and this is the address its frame loads.
+ */
+export async function appAddress(html: string): Promise<string> {
+  return convertFileSrc(await invoke<string>('app_stage', { html }), 'appbox');
 }

@@ -1,5 +1,5 @@
 import type { Root } from 'react-dom/client';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './ipc.ts';
 import { listen } from '@tauri-apps/api/event';
 import { Journal } from '@logbook/core';
 import { FolderStore } from '@logbook/storage-fs';
@@ -29,7 +29,7 @@ export async function bootApp(root: Root, render: (journal: Journal) => void): P
     void import('../android/updates.ts').then((m) => m.checkForUpdatesSoon());
   }
   const open = async () => {
-    const journal = await Journal.open(await FolderStore.open(new TauriFsBackend({ textOnly: import.meta.env.VITE_PLATFORM === 'android' })));
+    const journal = await Journal.open(await FolderStore.open(new TauriFsBackend({ textOnly: import.meta.env.VITE_PLATFORM === 'android', invoke })));
     setOpenJournal(journal);
     render(journal);
     // Another computer's changes, through a sync service (D102). The phone's journal is its own.
