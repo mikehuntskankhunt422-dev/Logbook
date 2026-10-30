@@ -1,4 +1,4 @@
-import { Fragment, memo, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { hemisphereOf, rankName, seasonOf, SIZE_STAGES, starMap, TIERS, weatherOn, type Garden, type HolidayId, type Plant as PlantData, type Season } from '@logbook/core';
 import { href, type GardenTab } from '../app/router.ts';
 import { BIOMES, cardFeatures, CATALOGUE, FEATURES, fitText, listed, PERKS, PETS, setGardenPrefs, unlockedTier, useGardenPrefs, type GardenPrefs, type PetKind } from '../lib/garden-prefs.ts';
@@ -11,7 +11,10 @@ import { POSTCARD_TIER, PostcardDialog } from './garden/Postcard.tsx';
 import { SEASONS_TIER, SOUNDS_TIER, SoundControls, useGardenNow, WeatherLayer } from './garden/Weather.tsx';
 import { BIOME_TIER, GOLD_LANDMARK_TIER, Landmarks, TREE_TIER, WorldTree } from './garden/Wonders.tsx';
 import { useForcedColors, useReducedMotion } from '../lib/motion.ts';
-import { useHoliday } from '../lib/holidays.ts';
+import { EGG_COUNT, useEggs, useHoliday, useToday } from '../lib/holidays.ts';
+import { celebrate } from '../lib/motion.ts';
+import { useToast } from '../app/toasts.tsx';
+import { EasterEgg, HolidayDecor } from './garden/Holidays.tsx';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
 
@@ -43,6 +46,21 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const forced = useForcedColors();
   const now = useGardenNow();
   const holiday = useHoliday();
+  const toast = useToast();
+  const eggs = useEggs(useToday().slice(0, 4));
+  const findEgg = eggs.find;
+  // Easter (D109): eggs among the newest bed's plants; every one found is a celebration.
+  const onFindEgg = useCallback(
+    (egg: number) => {
+      if (eggs.found.includes(egg)) return;
+      const n = findEgg(egg);
+      if (n === EGG_COUNT) {
+        celebrate('streak');
+        toast('You found every egg. Happy Easter!');
+      } else toast(`You found an egg: ${n} of ${EGG_COUNT}.`);
+    },
+    [eggs.found, findEgg, toast],
+  );
   const beds = useMemo(() => {
     const byMonth = new Map<string, PlantData[]>();
     for (const p of garden?.plants ?? []) {
@@ -206,7 +224,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
                 return (
                   <Fragment key={bed.month}>
                     {sky && <StarSky map={sky} />}
-                    <Bed month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} pets={i === 0 ? pets : undefined} holiday={i === 0 ? holiday?.id : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />
+                    <Bed month={bed.month} plants={bed.plants} lantern={on(6, 'lanterns')} season={seasons ? seasonOf(bed.month, hemisphere) : undefined} pets={i === 0 ? pets : undefined} holiday={i === 0 ? holiday?.id : undefined} snow={i === 0 && holiday?.id === 'christmas' && hemisphere === 'north'} eggs={i === 0 && holiday?.id === 'easter' ? eggs.found : undefined} onFindEgg={i === 0 ? onFindEgg : undefined} onPostcard={has(POSTCARD_TIER) ? setPostcard : undefined} />
                   </Fragment>
                 );
               })
@@ -336,6 +354,9 @@ const Bed = memo(function Bed({
   season,
   pets,
   holiday,
+  snow,
+  eggs,
+  onFindEgg,
   onPostcard,
 }: {
   month: string;
@@ -343,19 +364,31 @@ const Bed = memo(function Bed({
   lantern: boolean;
   season?: Season;
   pets?: { kind: PetKind; name: string }[];
-  /** A holiday's decorations, in the newest bed while it lasts (D108). */
+  /** A holiday's decorations, in the newest bed while it lasts (D108, D109). */
   holiday?: HolidayId;
+  /** Snow on the ground at Christmas, in the northern hemisphere only. */
+  snow?: boolean;
+  /** At Easter, the eggs found so far; the eggs are hidden among this bed's plants. */
+  eggs?: readonly number[];
+  onFindEgg?: (egg: number) => void;
   onPostcard?: (month: string) => void;
 }) {
   const name = new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  // Each egg after one of the plants, spread along the bed.
+  const eggsAfter = (i: number) => (eggs ? Array.from({ length: EGG_COUNT }, (_, k) => k).filter((k) => Math.min(plants.length - 1, Math.floor(((k + 1) * plants.length) / (EGG_COUNT + 1))) === i) : []);
   return (
-    <section className="garden-bed" aria-labelledby={`bed-${month}`} data-season={season}>
+    <section className="garden-bed" aria-labelledby={`bed-${month}`} data-season={season} data-snow={snow || undefined}>
       <div className="garden-bed-head">
         <h2 className="garden-sign" id={`bed-${month}`}>
           {lantern && <span aria-hidden="true">🏮 </span>}
           {name}
           <span className="garden-count"> · {plants.length === 1 ? '1 plant' : `${plants.length} plants`}</span>
         </h2>
+        {eggs && (
+          <span className="garden-eggs-count">
+            🥚 {eggs.length} of {EGG_COUNT} eggs found
+          </span>
+        )}
         {onPostcard && (
           <button type="button" className="btn btn-small garden-postcard" aria-label={`Postcard of ${name}`} onClick={() => onPostcard(month)}>
             📮 Postcard
@@ -377,31 +410,9 @@ const Bed = memo(function Bed({
             </a>
             {i === plants.length - 1 && pets?.map((pet, k) => <Pet key={k} kind={pet.kind} name={pet.name} />)}
           </li>
-        ))}
-        {holiday === 'halloween' && (
-          <li className="garden-holiday" aria-hidden="true">
-            <JackOLantern />
-            <JackOLantern />
-            <JackOLantern />
-          </li>
-        )}
+        )).flatMap((plant, i) => [plant, ...eggsAfter(i).map((k) => <EasterEgg key={`egg-${k}`} index={k} found={eggs!.includes(k)} onFind={(egg) => onFindEgg?.(egg)} />)])}
+        {holiday && holiday !== 'easter' && <HolidayDecor id={holiday} />}
       </ul>
     </section>
   );
 });
-
-/** A jack-o'-lantern (Halloween, D108): a carved pumpkin with a candle glowing through its face. */
-function JackOLantern() {
-  return (
-    <svg viewBox="0 0 32 32" focusable="false">
-      <path d="M16 6c-1-2-.5-4 1.5-5" fill="none" stroke="#4e6b2a" strokeWidth={2.2} strokeLinecap="round" />
-      <ellipse cx={16} cy={19} rx={14} ry={11} fill="#e8731c" stroke="#9c4508" strokeWidth={1.4} />
-      <path d="M11 9c-2 6-2 14 0 20M21 9c2 6 2 14 0 20M16 8v22" fill="none" stroke="#c75c12" strokeWidth={1.1} />
-      <g className="lantern-glow" fill="#ffd34d">
-        <path d="M8.5 16l3.5-3 3 3z" />
-        <path d="M17 16l3-3 3.5 3z" />
-        <path d="M8 21c3 4 13 4 16 0l-2.5 1.5-1.5-1.5-2 2-2-2-2 2-2-2-1.5 1.5z" />
-      </g>
-    </svg>
-  );
-}

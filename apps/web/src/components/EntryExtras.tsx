@@ -378,7 +378,7 @@ export function PromptCard({ date, onUse }: { date: string; onUse: (prompt: stri
   const [hidden, setHidden] = useState(false);
   const holiday = useHolidayFor(date);
   if (hidden) return null;
-  const prompt = promptFor(date, turn, holiday?.day ? holiday.id : undefined);
+  const prompt = promptFor(date, turn, holiday?.prompts);
   return (
     <div className="prompt-card" role="group" aria-label="Writing prompt">
       <p className="prompt-text" key={prompt} aria-live="polite">

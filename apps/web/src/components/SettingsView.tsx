@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { FONTS, HOLIDAYS, fontFor, fontStackFor, type HolidayInfo, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
+import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
+import { FONTS, HOLIDAYS, fontFor, fontStackFor, BackupError, MIN_PASSCODE_LENGTH, PasscodeRequiredError, WrongPasscodeError, formatBytes, importBackup, inspectBackup, type Entry } from '@logbook/core';
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
@@ -8,7 +8,7 @@ import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { trackWork } from '../lib/pending-saves.ts';
 import { addFont, removeFont, useCustomFonts, type CustomFont } from '../lib/custom-fonts.ts';
-import { setHolidayOn, useHolidayOn } from '../lib/holidays.ts';
+import { setHolidayOn, setHolidayPrefs, useHolidayPrefs } from '../lib/holidays.ts';
 import { isAndroid, isApp, isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
@@ -259,22 +259,65 @@ function AppearancePanel() {
       <label className="row">
         <input type="checkbox" checked={!garden.hidden} onChange={(e) => setGardenPrefs({ hidden: !e.target.checked })} /> 🌱 Show the garden
       </label>
-      <h3 className="settings-sub">Holidays</h3>
-      <p className="hint">For a few days around a holiday, the app takes on its colours, with a few touches in your garden and a prompt for the day. Your entries never change. These choices are for this device.</p>
-      {HOLIDAYS.map((h) => (
-        <HolidaySwitch key={h.id} holiday={h} />
-      ))}
+      <Holidays />
     </section>
   );
 }
 
-/** A holiday, on unless switched off here (D108). */
-function HolidaySwitch({ holiday }: { holiday: HolidayInfo }) {
-  const on = useHolidayOn(holiday.id);
+const MONTHS = Array.from({ length: 12 }, (_, m) => new Date(2000, m, 1).toLocaleDateString(undefined, { month: 'long' }));
+const DAYS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/**
+ * Holidays (D108, D109): all on unless switched off, all at once or one at a time, and your
+ * birthday (month and day only). These are this device's choices.
+ */
+function Holidays() {
+  const prefs = useHolidayPrefs();
+  const ids = useId();
+  const month = prefs.birthday ? Number(prefs.birthday.slice(0, 2)) : 0;
+  const day = prefs.birthday ? Number(prefs.birthday.slice(3, 5)) : 0;
+  const setBirthday = (m: number, d: number) => setHolidayPrefs({ birthday: m && d ? `${String(m).padStart(2, '0')}-${String(Math.min(d, DAYS_IN[m - 1]!)).padStart(2, '0')}` : '' });
   return (
-    <label className="row">
-      <input type="checkbox" checked={on} onChange={(e) => setHolidayOn(holiday.id, e.target.checked)} /> {holiday.emoji} {holiday.name} ({holiday.when})
-    </label>
+    <>
+      <h3 className="settings-sub">Holidays</h3>
+      <p className="hint">For a few days around a holiday, the app takes on its colours, with a few touches in your garden and a prompt for the day. Your entries never change. These choices are for this device.</p>
+      <label className="row">
+        <input type="checkbox" checked={prefs.all} onChange={(e) => setHolidayPrefs({ all: e.target.checked })} /> 🎉 Show holidays
+      </label>
+      <fieldset className="holiday-list" disabled={!prefs.all}>
+        <legend className="sr-only">Which holidays</legend>
+        {HOLIDAYS.map((h) => (
+          <label key={h.id} className="row">
+            <input type="checkbox" checked={!prefs.off.includes(h.id)} onChange={(e) => setHolidayOn(h.id, e.target.checked)} /> {h.emoji} {h.name} ({h.when})
+          </label>
+        ))}
+        <div className="row holiday-birthday" role="group" aria-labelledby={`${ids}-bd`}>
+          <span id={`${ids}-bd`}>Birthday date</span>
+          <select aria-label="Birthday month" className="text-input" value={month} onChange={(e) => setBirthday(Number(e.target.value), day || 1)}>
+            <option value={0}>Month</option>
+            {MONTHS.map((name, m) => (
+              <option key={m} value={m + 1}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Birthday day" className="text-input" value={day} disabled={!month} onChange={(e) => setBirthday(month, Number(e.target.value))}>
+            <option value={0}>Day</option>
+            {Array.from({ length: month ? DAYS_IN[month - 1]! : 31 }, (_, d) => (
+              <option key={d} value={d + 1}>
+                {d + 1}
+              </option>
+            ))}
+          </select>
+          {prefs.birthday && (
+            <button type="button" className="btn btn-small" onClick={() => setBirthday(0, 0)}>
+              Forget it
+            </button>
+          )}
+        </div>
+        <p className="hint">Only the month and day are kept, on this device. 29 February is celebrated on the 28th in other years.</p>
+      </fieldset>
+    </>
   );
 }
 
