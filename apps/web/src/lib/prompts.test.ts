@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOLIDAY_PROMPTS } from '@logbook/core';
+import { holidayOn } from '@logbook/core';
 import { PROMPTS, promptFor } from './prompts.ts';
 
 describe('writing prompts (D94)', () => {
@@ -11,8 +11,8 @@ describe('writing prompts (D94)', () => {
   });
 
   it('starts with a holiday’s own prompts on its day, then the everyday ones (D108)', () => {
-    const halloween = HOLIDAY_PROMPTS.halloween;
-    expect(halloween.map((_, turn) => promptFor('2026-10-31', turn, 'halloween'))).toEqual([...halloween]);
-    expect(promptFor('2026-10-31', halloween.length, 'halloween')).toBe(promptFor('2026-10-31', 0));
+    const halloween = holidayOn('2026-10-31')!.prompts;
+    expect(halloween.map((_, turn) => promptFor('2026-10-31', turn, halloween))).toEqual([...halloween]);
+    expect(promptFor('2026-10-31', halloween.length, halloween)).toBe(promptFor('2026-10-31', 0));
   });
 });

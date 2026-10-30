@@ -1,5 +1,3 @@
-import { HOLIDAY_PROMPTS, type HolidayId } from '@logbook/core';
-
 /**
  * Writing prompts (D94): a question on a new, empty entry, for days when the page is blank. The
  * same one all day (picked by the date), another on request. Whether they show is this device's
@@ -53,8 +51,7 @@ export const PROMPTS: readonly string[] = [
  * Today's prompt, or another (`turn` steps through the list). On a holiday's day itself (D108), its
  * own prompts come first.
  */
-export function promptFor(date: string, turn = 0, holiday?: HolidayId): string {
-  const special = holiday ? HOLIDAY_PROMPTS[holiday] : [];
+export function promptFor(date: string, turn = 0, special: readonly string[] = []): string {
   if (turn < special.length) return special[turn]!;
   let h = 0;
   for (const c of date) h = (h * 31 + c.charCodeAt(0)) >>> 0;

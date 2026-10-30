@@ -1,3 +1,7 @@
+**More holidays.** Logbook now celebrates **New Year** (with a countdown to midnight on the ⏰ Clock and fireworks in your garden), **Easter** (find the painted eggs hidden among your plants), **Christmas** (a tree and presents, with snow if it's winter where you are) and **your birthday** (a cake, and confetti when you open Logbook that day). Each has its own colours and a writing prompt on the day. Set your birthday, and switch holidays off, all at once or one at a time, in **Settings → Appearance → Holidays**. Your entries never change.
+
+What came in 0.9.4:
+
 **Happy Halloween.** From 24 to 31 October, Logbook dresses up: purple and pumpkin colours, a 🎃 by your streak, jack-o'-lanterns flickering among your newest plants in the garden, and on the 31st a spooky writing prompt. Your entries don't change. Don't want it? Switch it off in **Settings → Appearance → Holidays**. Christmas, New Year, Easter and birthdays are coming the same way.
 
 What came in 0.9.3:

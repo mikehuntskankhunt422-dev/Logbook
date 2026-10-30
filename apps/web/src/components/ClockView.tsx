@@ -5,6 +5,7 @@ import { arm, DAY_NAMES, describeDays, formatClock, formatTime, nextRing, ringsI
 import { primeSound } from '../lib/chime.ts';
 import { notifyPermission, type NotifyPermission } from '../lib/clock-native.ts';
 import { isAndroid, isApp } from '../lib/platform.ts';
+import { useHoliday } from '../lib/holidays.ts';
 
 /** The clock (D92): alarms, a timer and a stopwatch, like a phone's clock app. */
 
@@ -52,6 +53,7 @@ export function ClockView() {
         <div className="muted">{new Date(now).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
       <h1 className="sr-only">Clock</h1>
+      <NewYearCountdown now={now} />
       <NotificationNotice />
       <div className="clock-tabs" role="tablist" aria-label="Clock">
         {TABS.map(([t, label, icon]) => (
@@ -385,5 +387,29 @@ function Stopwatch() {
         </ol>
       )}
     </div>
+  );
+}
+
+/** New Year (D109): on New Year's Eve, the time left to midnight; from midnight, the new year's greeting. */
+function NewYearCountdown({ now }: { now: number }) {
+  const holiday = useHoliday();
+  if (holiday?.id !== 'newyear') return null;
+  const at = new Date(now);
+  if (at.getMonth() === 0)
+    return (
+      <p className="clock-newyear" role="status">
+        🎆 Happy New Year!
+      </p>
+    );
+  const midnight = new Date(at.getFullYear() + 1, 0, 1).getTime();
+  const left = Math.max(0, Math.ceil((midnight - now) / 1000));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    <p className="clock-newyear" role="timer" aria-label={`The new year in ${Math.floor(left / 3600)} hours and ${Math.floor((left % 3600) / 60)} minutes`}>
+      🎆 The new year in{' '}
+      <strong>
+        {pad(Math.floor(left / 3600))}:{pad(Math.floor((left % 3600) / 60))}:{pad(left % 60)}
+      </strong>
+    </p>
   );
 }

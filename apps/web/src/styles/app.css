@@ -2776,18 +2776,30 @@ dialog[open]::backdrop {
 :root[data-theme='dark'][data-accent='midnight'] { --accent: #9aa4ff; --accent-ink: #0e1033; --accent-soft: #22254a; }
 :root[data-theme='dark'][data-accent='sakura'] { --accent: #ffb3cf; --accent-ink: #2e0d1b; --accent-soft: #3d2230; }
 :root[data-theme='dark'][data-accent='gold'] { --accent: #ffcf5a; --accent-ink: #2a1d00; --accent-soft: #3a2e12; }
-/* Holidays (D108): their colours while they last, over the garden's (these come after them). */
+/* Holidays (D108, D109): their colours while they last, over the garden's (these come after them). */
 :root[data-holiday='halloween'] { --accent: #6a2c91; --accent-ink: #ffffff; --accent-soft: #ffe3c7; }
+:root[data-holiday='christmas'] { --accent: #b3122e; --accent-ink: #ffffff; --accent-soft: #e3f1e3; }
+:root[data-holiday='newyear'] { --accent: #1f2a6b; --accent-ink: #ffffff; --accent-soft: #fbefc6; }
+:root[data-holiday='easter'] { --accent: #2f7356; --accent-ink: #ffffff; --accent-soft: #fff1c2; }
+:root[data-holiday='birthday'] { --accent: #b0177a; --accent-ink: #ffffff; --accent-soft: #e2f4ff; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light'])[data-holiday='halloween'] { --accent: #ff9a3c; --accent-ink: #1d0b00; --accent-soft: #2e1a3d; }
+  :root:not([data-theme='light'])[data-holiday='christmas'] { --accent: #ff8f8f; --accent-ink: #2a0507; --accent-soft: #16301f; }
+  :root:not([data-theme='light'])[data-holiday='newyear'] { --accent: #f2c94c; --accent-ink: #1a1400; --accent-soft: #1d2347; }
+  :root:not([data-theme='light'])[data-holiday='easter'] { --accent: #9fe0bd; --accent-ink: #0b2217; --accent-soft: #2c2847; }
+  :root:not([data-theme='light'])[data-holiday='birthday'] { --accent: #ff8fd0; --accent-ink: #2b0620; --accent-soft: #10304a; }
 }
 :root[data-theme='dark'][data-holiday='halloween'] { --accent: #ff9a3c; --accent-ink: #1d0b00; --accent-soft: #2e1a3d; }
+:root[data-theme='dark'][data-holiday='christmas'] { --accent: #ff8f8f; --accent-ink: #2a0507; --accent-soft: #16301f; }
+:root[data-theme='dark'][data-holiday='newyear'] { --accent: #f2c94c; --accent-ink: #1a1400; --accent-soft: #1d2347; }
+:root[data-theme='dark'][data-holiday='easter'] { --accent: #9fe0bd; --accent-ink: #0b2217; --accent-soft: #2c2847; }
+:root[data-theme='dark'][data-holiday='birthday'] { --accent: #ff8fd0; --accent-ink: #2b0620; --accent-soft: #10304a; }
 .holiday-badge {
   font-size: 1.25rem;
   line-height: 1;
   cursor: default;
 }
-/* Jack-o'-lanterns in the newest bed (D108), their candles flickering unless motion is reduced. */
+/* In the newest bed: decorations at the end of its plants, and Easter's eggs among them. */
 .garden-holiday {
   display: flex;
   align-items: flex-end;
@@ -2799,30 +2811,105 @@ dialog[open]::backdrop {
   height: 30px;
   overflow: visible;
 }
-.garden-holiday .lantern-glow {
-  animation: lantern-flicker 2.4s ease-in-out infinite;
+.garden-holiday svg.garden-holiday-tall {
+  height: 38px;
 }
-.garden-holiday svg:nth-child(2) .lantern-glow {
+.garden-holiday .holiday-glow {
+  animation: holiday-flicker 2.4s ease-in-out infinite;
+}
+.garden-holiday svg:nth-child(2) .holiday-glow {
   animation-delay: -0.8s;
 }
-.garden-holiday svg:nth-child(3) .lantern-glow {
+.garden-holiday svg:nth-child(3) .holiday-glow {
   animation-delay: -1.6s;
 }
-@keyframes lantern-flicker {
+@keyframes holiday-flicker {
   0%,
   100% {
     opacity: 1;
   }
   40% {
-    opacity: 0.7;
+    opacity: 0.6;
   }
   55% {
     opacity: 0.9;
   }
 }
+.garden-egg-spot {
+  align-self: flex-end;
+}
+.garden-egg {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.2s var(--spring);
+}
+.garden-egg svg {
+  width: 100%;
+  height: 100%;
+}
+.garden-egg:hover,
+.garden-egg:focus-visible {
+  transform: rotate(-12deg) scale(1.1);
+}
+.garden-egg[data-found] {
+  transform: translateY(-4px);
+}
+.garden-egg-shine {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  color: #c48a00;
+  font-size: 0.85rem;
+}
+.garden-eggs-count {
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.85);
+  color: #1d1a17;
+}
+/* Christmas snow, in the northern hemisphere only (D109). */
+.garden-scene .garden-bed[data-snow] .garden-ground {
+  background: linear-gradient(transparent calc(100% - 22px), #f4f8ff calc(100% - 22px), #dbe6f2);
+}
+.clock-newyear {
+  margin: 0 auto 14px;
+  max-width: 28rem;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-align: center;
+  font-size: 1.1rem;
+}
+.clock-newyear strong {
+  font-variant-numeric: tabular-nums;
+}
+/* Each holiday's switch under the switch for them all. */
+.holiday-list {
+  border: 0;
+  margin: 0;
+  padding: 0 0 0 24px;
+  min-width: 0;
+}
+.holiday-list:disabled {
+  opacity: 0.55;
+}
+.holiday-birthday select {
+  width: auto;
+}
 @media (prefers-reduced-motion: reduce) {
-  .garden-holiday .lantern-glow {
+  .garden-holiday .holiday-glow {
     animation: none;
+  }
+  .garden-egg {
+    transition: none;
   }
 }
 

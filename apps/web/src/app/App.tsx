@@ -13,7 +13,7 @@ import { useGarden, useGardenEffects } from './garden.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
 import { useFontLoader } from '../lib/custom-fonts.ts';
-import { useHoliday, useHolidayColours } from '../lib/holidays.ts';
+import { useHoliday, useHolidayCheer, useHolidayColours, useToday } from '../lib/holidays.ts';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
@@ -43,6 +43,7 @@ export function App() {
   useTheme(settings.theme);
   const holiday = useHoliday();
   useHolidayColours(holiday);
+  useHolidayCheer(holiday, useToday());
   useFontLoader();
   useReadability(settings);
   useAutoLock(journal.isEncrypted && !locked ? settings.autoLockMinutes : 0, () => journal.lock());
@@ -112,7 +113,7 @@ export function App() {
         </a>
         <StreakBadge />
         {holiday && (
-          <span className="holiday-badge" role="img" aria-label={holiday.day ? `Happy ${holiday.name}` : `${holiday.name} is coming`} title={holiday.day ? `Happy ${holiday.name}!` : `${holiday.name} is coming`}>
+          <span className="holiday-badge" role="img" aria-label={holiday.greeting} title={holiday.greeting}>
             {holiday.emoji}
           </span>
         )}
