@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { easterSunday, holidayOn, isBirthday } from '../src/holidays.ts';
+import { easterSunday, HOLIDAYS, holidayOn, holidayPreview, isBirthday } from '../src/holidays.ts';
 
 const id = (date: string, choices?: Parameters<typeof holidayOn>[1]) => holidayOn(date, choices)?.id;
 
@@ -53,5 +53,11 @@ describe('holidays (D108, D109)', () => {
     // A birthday switched off leaves the holiday under it.
     expect(id('2026-10-31', { birthday: '10-31', off: new Set(['birthday']) })).toBe('halloween');
     for (const date of ['2026-10-31', '2026-12-25', '2027-01-01', '2027-03-28', '2027-03-07']) expect(id(date, { all: false, birthday: '03-07' })).toBeUndefined();
+  });
+
+  it('previews each holiday as on its day, whatever the date (D110)', () => {
+    for (const { id } of HOLIDAYS) expect(holidayPreview(id, 2026)).toMatchObject({ id, day: true, upcoming: false, preview: true });
+    expect(holidayPreview('christmas', 2026).greeting).toBe('Merry Christmas');
+    expect(holidayPreview('birthday', 2026).prompts.length).toBe(3);
   });
 });

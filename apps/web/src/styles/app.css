@@ -2799,12 +2799,33 @@ dialog[open]::backdrop {
   line-height: 1;
   cursor: default;
 }
-/* In the newest bed: decorations at the end of its plants, and Easter's eggs among them. */
+/*
+ * In the newest bed: decorations at the front of its ground, on the right, on a strip of ground of
+ * their own, so they never take a plant's place in the row (or wrap onto a row alone); and Easter's
+ * eggs among the plants.
+ */
+.garden-ground[data-decor] {
+  --holiday-band: 30px;
+  position: relative;
+  padding-bottom: calc(14px + var(--holiday-band));
+}
 .garden-holiday {
+  position: absolute;
+  right: 14px;
+  bottom: 2px;
+  z-index: 1;
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  align-self: flex-end;
+  pointer-events: none;
+}
+/* Clear of the island's rounded shore. */
+.garden-scene[data-biome='isles'] .garden-ground[data-decor] {
+  --holiday-band: 38px;
+}
+.garden-scene[data-biome='isles'] .garden-holiday {
+  right: 12%;
+  bottom: 10px;
 }
 .garden-holiday svg {
   width: 30px;
@@ -2877,7 +2898,7 @@ dialog[open]::backdrop {
 }
 /* Christmas snow, in the northern hemisphere only (D109). */
 .garden-scene .garden-bed[data-snow] .garden-ground {
-  background: linear-gradient(transparent calc(100% - 22px), #f4f8ff calc(100% - 22px), #dbe6f2);
+  background: linear-gradient(transparent calc(100% - 22px - var(--holiday-band, 0px)), #f4f8ff calc(100% - 22px - var(--holiday-band, 0px)), #dbe6f2);
 }
 .clock-newyear {
   margin: 0 auto 14px;
@@ -2898,8 +2919,24 @@ dialog[open]::backdrop {
   padding: 0 0 0 24px;
   min-width: 0;
 }
-.holiday-list:disabled {
+.holiday-list[data-off] label {
   opacity: 0.55;
+}
+/* One line each, the label's words wrapping, so the Preview button never crowds a checkbox. */
+.holiday-row {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0;
+}
+.holiday-row > label {
+  flex: 1;
+  min-width: 0;
+}
+.holiday-row input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: none;
 }
 .holiday-birthday select {
   width: auto;
@@ -2965,7 +3002,7 @@ dialog[open]::backdrop {
 .garden-ground {
   list-style: none; margin: 0; padding: 10px 12px 14px;
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 10px;
-  background: linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep));
+  background: linear-gradient(transparent calc(100% - 22px - var(--holiday-band, 0px)), var(--ground) calc(100% - 22px - var(--holiday-band, 0px)), var(--ground-deep));
   border-radius: 0 0 16px 16px;
 }
 .garden-scene[data-border='picket'] .garden-ground { border-bottom: 6px dashed #fffaf0; }
@@ -2989,7 +3026,7 @@ dialog[open]::backdrop {
   --biome-decor: radial-gradient(ellipse 4px 2.5px, #eef0f2 0 85%, transparent) 4px calc(100% - 8px) / 31px 9px repeat-x, radial-gradient(circle, #f6e05e 0 1.5px, transparent 2px) 19px calc(100% - 14px) / 37px 9px repeat-x;
 }
 .garden-scene[data-biome='isles'] { --biome-sky-top: #dbe2ff; --biome-sky-bottom: #f5f2ff; --biome-ground: #a3d17f; --biome-ground-deep: #86b862; }
-.garden-scene[data-biome] .garden-ground { background: var(--biome-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
+.garden-scene[data-biome] .garden-ground { background: var(--biome-decor, none), linear-gradient(transparent calc(100% - 22px - var(--holiday-band, 0px)), var(--ground) calc(100% - 22px - var(--holiday-band, 0px)), var(--ground-deep)); }
 /* Each bed an island, with its rock beneath and a wisp of cloud. */
 .garden-scene[data-biome='isles'] .garden-ground { border-radius: 0 0 50% 50% / 0 0 26px 26px; box-shadow: 0 7px 0 -2px #9b7a55, 0 13px 10px -6px rgb(255 255 255 / 0.9); margin-bottom: 14px; }
 .garden-scene[data-biome='isles'][data-weather] .garden-ground::after { left: 6%; right: 6%; }
@@ -3084,8 +3121,8 @@ dialog[open]::backdrop {
 :root[data-theme='dark'] .garden-bed[data-season='spring'] { --ground: #2f4a2a; --ground-deep: #263d22; }
 :root[data-theme='dark'] .garden-bed[data-season='summer'] { --ground: #24401f; --ground-deep: #1c3318; }
 :root[data-theme='dark'] .garden-bed[data-season='autumn'] { --ground: #4a3520; --ground-deep: #3b2a19; }
-.garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
-.garden-scene[data-biome] .garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), var(--biome-decor, none), linear-gradient(transparent calc(100% - 22px), var(--ground) calc(100% - 22px), var(--ground-deep)); }
+.garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), linear-gradient(transparent calc(100% - 22px - var(--holiday-band, 0px)), var(--ground) calc(100% - 22px - var(--holiday-band, 0px)), var(--ground-deep)); }
+.garden-scene[data-biome] .garden-bed[data-season] .garden-ground { background: var(--ground-decor, none), var(--biome-decor, none), linear-gradient(transparent calc(100% - 22px - var(--holiday-band, 0px)), var(--ground) calc(100% - 22px - var(--holiday-band, 0px)), var(--ground-deep)); }
 /* Ancient ground keeps its amber soil through the seasons; the season's frost, blossom or leaves lie on it. */
 .garden-scene[data-ancient] .garden-bed[data-season] { --ground: #b98c4e; --ground-deep: #8a6234; }
 /* Ancient ground keeps its soil with a biome too. */
@@ -3113,8 +3150,8 @@ a.garden-landmark:focus-visible { outline: 3px solid var(--focus); outline-offse
 /* The weather on the ground: snow lying, puddles, fallen petals. With reduced motion, all there is. */
 .garden-scene[data-weather] .garden-ground { position: relative; }
 /* Behind the plants, so it never hides their stems or tier dots. */
-.garden-scene[data-weather] .garden-ground > li { position: relative; z-index: 1; }
-.garden-scene[data-weather] .garden-ground::after { content: ''; position: absolute; left: 0; right: 0; bottom: 15px; height: 7px; pointer-events: none; z-index: 0; }
+.garden-scene[data-weather] .garden-ground > li:not(.garden-holiday) { position: relative; z-index: 1; }
+.garden-scene[data-weather] .garden-ground::after { content: ''; position: absolute; left: 0; right: 0; bottom: calc(15px + var(--holiday-band, 0px)); height: 7px; pointer-events: none; z-index: 0; }
 .garden-scene[data-weather='snow'] .garden-ground::after { background: linear-gradient(rgb(255 255 255 / 0.95), rgb(235 242 250 / 0.9)); border-radius: 4px 4px 0 0; }
 .garden-scene[data-weather='rain'] .garden-ground::after { background: radial-gradient(ellipse 14px 3px, rgb(170 205 245 / 0.75) 0 70%, transparent) 4px 50% / 53px 7px repeat-x; }
 .garden-scene[data-weather='petals'] .garden-ground::after { background: radial-gradient(ellipse 3px 2px, #ff8fab 0 90%, transparent) 0 50% / 21px 7px repeat-x, radial-gradient(ellipse 3px 2px, #fbcfe8 0 90%, transparent) 10px 30% / 33px 7px repeat-x; }

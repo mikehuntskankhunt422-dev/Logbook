@@ -47,7 +47,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const now = useGardenNow();
   const holiday = useHoliday();
   const toast = useToast();
-  const eggs = useEggs(useToday().slice(0, 4));
+  const year = useToday().slice(0, 4);
+  const eggs = useEggs(holiday?.preview ? 'preview' : year);
   const findEgg = eggs.find;
   // Easter (D109): eggs among the newest bed's plants; every one found is a celebration.
   const onFindEgg = useCallback(
@@ -375,6 +376,7 @@ const Bed = memo(function Bed({
 }) {
   const name = new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   // Each egg after one of the plants, spread along the bed.
+  const decor = holiday === 'easter' ? undefined : holiday;
   const eggsAfter = (i: number) => (eggs ? Array.from({ length: EGG_COUNT }, (_, k) => k).filter((k) => Math.min(plants.length - 1, Math.floor(((k + 1) * plants.length) / (EGG_COUNT + 1))) === i) : []);
   return (
     <section className="garden-bed" aria-labelledby={`bed-${month}`} data-season={season} data-snow={snow || undefined}>
@@ -395,7 +397,7 @@ const Bed = memo(function Bed({
           </button>
         )}
       </div>
-      <ul className="garden-ground">
+      <ul className="garden-ground" data-decor={decor}>
         {plants.map((p, i) => (
           // The pets nap beside the newest plant (D100), in its place, so they wrap with it.
           <li key={p.entry.id} className={pets?.length && i === plants.length - 1 ? 'garden-newest' : undefined}>
@@ -411,7 +413,7 @@ const Bed = memo(function Bed({
             {i === plants.length - 1 && pets?.map((pet, k) => <Pet key={k} kind={pet.kind} name={pet.name} />)}
           </li>
         )).flatMap((plant, i) => [plant, ...eggsAfter(i).map((k) => <EasterEgg key={`egg-${k}`} index={k} found={eggs!.includes(k)} onFind={(egg) => onFindEgg?.(egg)} />)])}
-        {holiday && holiday !== 'easter' && <HolidayDecor id={holiday} />}
+        {decor && <HolidayDecor id={decor} />}
       </ul>
     </section>
   );

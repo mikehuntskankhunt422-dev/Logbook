@@ -394,6 +394,7 @@ function Stopwatch() {
 function NewYearCountdown({ now }: { now: number }) {
   const holiday = useHoliday();
   if (holiday?.id !== 'newyear') return null;
+  if (holiday.preview) return <p className="clock-newyear">🎆 On New Year’s Eve, the clock counts down to midnight here.</p>;
   const at = new Date(now);
   if (at.getMonth() === 0)
     return (

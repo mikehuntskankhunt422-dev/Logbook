@@ -39,6 +39,22 @@ test('Halloween: its colours, a pumpkin, jack-o’-lanterns in the garden and a 
   await expect(page.locator('.garden-holiday')).toHaveCount(0);
 });
 
+test('decorations sit at the front of the newest bed, on the right, never on a row of their own', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.clock.install({ time: new Date('2026-10-30T10:00:00') });
+  for (let i = 1; i <= 6; i++) await writeEntry(page, `Day ${i}`, 'A few words.');
+  await page.goto('/#/garden');
+  const ground = page.locator('.garden-bed').first().locator('.garden-ground');
+  const decor = ground.locator('.garden-holiday');
+  await expect(decor.locator('svg')).toHaveCount(3);
+  const g = (await ground.boundingBox())!;
+  const d = (await decor.boundingBox())!;
+  const bases = await ground.locator('.garden-plant').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().bottom));
+  // In front of every plant, not beside or under them at the left.
+  expect(d.y).toBeGreaterThan(Math.max(...bases));
+  expect(Math.abs(g.x + g.width - 14 - (d.x + d.width))).toBeLessThan(2);
+});
+
 test('every holiday off at once, and back, keeping the ones switched off one by one', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-31T10:00:00') });
   await writeEntry(page, 'Switches', 'On and off.');
@@ -135,6 +151,39 @@ test('your birthday: set in Settings (month and day only), then a greeting, a ca
   await page.goto('/#/settings');
   await page.getByRole('button', { name: 'Forget it' }).click();
   await expect(page.locator('.holiday-badge')).toHaveCount(0);
+});
+
+test('a preview of any holiday, whatever the date and even when switched off, until stopped (D110)', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-01T10:00:00') });
+  await writeEntry(page, 'An ordinary day', 'Nothing on.');
+  // In-app moves keep the preview, as a person moving around would (a reload ends it).
+  const go = (hash: string) => page.evaluate((h) => (location.hash = h), hash);
+  await go('#/settings');
+  await page.getByRole('checkbox', { name: 'Show holidays' }).uncheck();
+  await page.getByRole('button', { name: 'Preview Christmas' }).click();
+  const root = page.locator('html');
+  await expect(root).toHaveAttribute('data-holiday', 'christmas');
+  const bar = page.getByRole('region', { name: 'Holiday preview' });
+  await expect(bar).toContainText('Previewing 🎄 Christmas');
+  await expect(badge(page, 'Merry Christmas')).toBeVisible();
+  await go('#/garden');
+  await expect(page.locator('.garden-holiday[data-holiday="christmas"]')).toBeVisible();
+  await go('#/new');
+  await expect(prompt(page)).toContainText('What’s a Christmas memory that still makes you smile?');
+
+  // Easter's eggs can be found in a preview, but aren't kept.
+  await go('#/settings');
+  await page.getByRole('button', { name: 'Preview Easter' }).click();
+  await expect(root).toHaveAttribute('data-holiday', 'easter');
+  await go('#/garden');
+  await page.getByRole('button', { name: 'A painted egg: find it' }).first().click();
+  await expect(page.getByText('You found an egg: 1 of 4.')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('logbook.holidays.eggs'))).toBeNull();
+
+  await bar.getByRole('button', { name: 'Stop preview' }).click();
+  await expect(root).not.toHaveAttribute('data-holiday');
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('.garden-holiday, .garden-egg')).toHaveCount(0);
 });
 
 test('no holiday on an ordinary day (D108)', async ({ page }) => {

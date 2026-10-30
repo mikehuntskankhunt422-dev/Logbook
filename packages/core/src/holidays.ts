@@ -34,6 +34,8 @@ export interface Holiday extends HolidayInfo {
   greeting: string;
   /** The day's writing prompts, offered before the everyday ones; none on the days around it. */
   prompts: readonly string[];
+  /** Shown as a preview from Settings, not because of the date. */
+  preview?: boolean;
 }
 
 export interface HolidayChoices {
@@ -112,4 +114,10 @@ export function holidayOn(date: string, choices: HolidayChoices = {}): Holiday |
   if (!off.has('halloween') && md >= '10-24' && md <= '10-31') return make('halloween', md === '10-31', md < '10-31', 'Happy Halloween', PROMPTS.halloween);
   if (!off.has('christmas') && md >= '12-01' && md <= '12-26') return make('christmas', md === '12-25', md < '12-25', 'Merry Christmas', PROMPTS.christmas);
   return undefined;
+}
+
+/** A holiday as it looks on its day, for a preview from Settings: whatever the date, and even if switched off. */
+export function holidayPreview(id: HolidayId, year: number): Holiday {
+  const day = { newyear: `${year}-01-01`, easter: easterSunday(year), halloween: `${year}-10-31`, christmas: `${year}-12-25`, birthday: `${year}-06-15` }[id];
+  return { ...holidayOn(day, { birthday: id === 'birthday' ? '06-15' : undefined })!, preview: true };
 }
