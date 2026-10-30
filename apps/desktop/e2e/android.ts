@@ -247,15 +247,19 @@ try {
     return text && text !== 'checking' ? text : null;
   }).catch((e: Error) => `never finished (${e.message})`);
   await screenshot('app');
-  const files = await page.evaluate(async () => {
-    const tauri = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<string[]> } }).__TAURI_INTERNALS__;
+  // The file it tried to write, read as the page reads: never there.
+  const escaped = await page.evaluate(async (path) => {
+    const tauri = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
     const key = await new Promise<string>((resolve) => {
       (window as unknown as { __logbookSession: (s: string) => void }).__logbookSession = resolve;
       void tauri.invoke('session_ready');
     });
-    return tauri.invoke('journal_list', { dir: '' }, { headers: { 'logbook-session': key } });
-  });
-  check(WALLED_OFF.test(walls) && !files.includes(ESCAPED), `an app can't reach Logbook's commands or page (${walls}; the folder: ${files.join(', ')})`);
+    return tauri.invoke('journal_read', { path }, { headers: { 'logbook-session': key } }).then(
+      () => 'written',
+      (e: unknown) => (e === 'ENOENT' ? 'not there' : String(e)),
+    );
+  }, ESCAPED);
+  check(WALLED_OFF.test(walls) && escaped === 'not there', `an app can't reach Logbook's commands or page (${walls}; ${ESCAPED}: ${escaped})`);
   const appBlocked = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? []);
   check(appBlocked.length === afterCheck.length, `the window lets the app's frame in (${JSON.stringify(appBlocked.slice(afterCheck.length))})`);
 } catch (err) {
