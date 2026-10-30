@@ -237,6 +237,16 @@ try {
   check((await filesUnder(join(configDir, 'app-icon'))).length === 0 && !JSON.parse(await readFile(join(configDir, 'config.json'), 'utf8')).appIcon, 'the picture is deleted');
   check(JSON.stringify(windowIcon()?.sizes) === JSON.stringify(usual?.sizes), 'the window has its usual icon again');
 
+  // ── opening at sign-in (D110): the system's own autostart entry, made and taken away ──
+  const autostartEntry = join(home, '.config', 'autostart', 'Logbook.desktop');
+  const startSwitch = "//label[contains(., 'when you sign in to this computer')]/input";
+  await click(s, await until('the start-at-sign-in switch', () => find(s, 'xpath', `${startSwitch}[not(@disabled)]`)));
+  const entry = await until('the autostart entry', () => readFile(autostartEntry, 'utf8').catch(() => '')).catch(() => '');
+  check(/^Exec=.*logbook/im.test(entry), `switching it on adds Logbook to the computer's autostart entries (${autostartEntry})`);
+  await click(s, await until('the switch, on', () => find(s, 'xpath', `${startSwitch}[not(@disabled)]`)));
+  const entryGone = await until('the entry to go', () => readFile(autostartEntry, 'utf8').then(() => false, () => true)).catch(() => false);
+  check(entryGone, 'switching it off takes the entry away');
+
   // ── another computer's changes, through a sync service (D102) ──
   await run(s, "location.hash = '#/'");
   const deskFile = (await filesUnder(join(folder, 'entries'))).find((f) => f.includes('--desktop-day--'))!;

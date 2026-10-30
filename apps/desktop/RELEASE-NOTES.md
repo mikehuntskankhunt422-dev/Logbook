@@ -1,3 +1,9 @@
+**Open Logbook when you sign in.** On a computer, **Settings → Starting Logbook** can open Logbook by itself each time you sign in, ready to write in. It's off until you switch it on.
+
+**Preview the holidays.** **Settings → Appearance → Holidays** now has a **Preview** button beside each holiday: see how Logbook looks on Christmas Day or your birthday, whatever today's date, then **Stop preview**.
+
+What came in 0.9.5:
+
 **More holidays.** Logbook now celebrates **New Year** (with a countdown to midnight on the ⏰ Clock and fireworks in your garden), **Easter** (find the painted eggs hidden among your plants), **Christmas** (a tree and presents, with snow if it's winter where you are) and **your birthday** (a cake, and confetti when you open Logbook that day). Each has its own colours and a writing prompt on the day. Set your birthday, and switch holidays off, all at once or one at a time, in **Settings → Appearance → Holidays**. Your entries never change.
 
 What came in 0.9.4:

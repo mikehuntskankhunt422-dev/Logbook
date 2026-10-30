@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { holidayOn, today, type Holiday, type HolidayChoices, type HolidayId } from '@logbook/core';
+import { holidayOn, holidayPreview, today, type Holiday, type HolidayChoices, type HolidayId } from '@logbook/core';
 import { celebrate } from './motion.ts';
 
 /**
@@ -113,15 +113,43 @@ export function useToday(): string {
   return day;
 }
 
-/** The holiday today falls in, if it's on. */
-export function useHoliday(): Holiday | undefined {
-  const day = useToday();
-  return holidayOn(day, choicesOf(useHolidayPrefs()));
+// A holiday shown from Settings to see how it looks (D110), until stopped or the app reloads.
+let previewing: HolidayId | null = null;
+const previewListeners = new Set<() => void>();
+
+/** Shows a holiday now, whatever the date and even if it's switched off; null stops. */
+export function setHolidayPreview(id: HolidayId | null): void {
+  previewing = id;
+  // Each preview's eggs start unfound, and none are kept.
+  eggs.delete('preview');
+  for (const l of previewListeners) l();
+  for (const l of eggListeners) l();
+  // The confetti its day brings, as a person would see it.
+  if (id === 'birthday' || id === 'newyear') celebrate('streak');
 }
 
-/** The holiday a given day falls in, if it's on (for that day's writing prompt). */
+/** The holiday being previewed, if any. */
+export function useHolidayPreview(): HolidayId | null {
+  return useSyncExternalStore(
+    (l) => (previewListeners.add(l), () => void previewListeners.delete(l)),
+    () => previewing,
+    () => previewing,
+  );
+}
+
+/** The holiday today falls in, if it's on; the one being previewed, while there is one. */
+export function useHoliday(): Holiday | undefined {
+  const day = useToday();
+  const preview = useHolidayPreview();
+  const prefs = useHolidayPrefs();
+  return preview ? holidayPreview(preview, Number(day.slice(0, 4))) : holidayOn(day, choicesOf(prefs));
+}
+
+/** The holiday a given day falls in, if it's on (for that day's writing prompt); the one being previewed, while there is one. */
 export function useHolidayFor(date: string): Holiday | undefined {
-  return holidayOn(date, choicesOf(useHolidayPrefs()));
+  const preview = useHolidayPreview();
+  const prefs = useHolidayPrefs();
+  return preview ? holidayPreview(preview, Number(date.slice(0, 4))) : holidayOn(date, choicesOf(prefs));
 }
 
 /** The app's colours for the holiday (app.css, `data-holiday`), over the garden's colours while it lasts. */
@@ -141,7 +169,8 @@ const CHEERED = 'logbook.holidays.cheered';
  * first time it's opened on 1 January). Once per year on this device; never with reduced motion.
  */
 export function useHolidayCheer(holiday: Holiday | undefined, date: string): void {
-  const due = holiday && (holiday.id === 'birthday' || (holiday.id === 'newyear' && date.endsWith('-01-01'))) ? `${holiday.id}:${date.slice(0, 4)}` : '';
+  // A preview's confetti comes when it starts (setHolidayPreview), and is never counted.
+  const due = holiday && !holiday.preview && (holiday.id === 'birthday' || (holiday.id === 'newyear' && date.endsWith('-01-01'))) ? `${holiday.id}:${date.slice(0, 4)}` : '';
   useEffect(() => {
     if (!due) return;
     try {
@@ -159,24 +188,46 @@ const EGGS = 'logbook.holidays.eggs';
 /** Eggs hidden among the newest bed's plants at Easter. */
 export const EGG_COUNT = 4;
 
-/** Which of this Easter's eggs have been found on this device. */
-export function useEggs(year: string): { found: number[]; find: (egg: number) => number } {
-  const [found, setFound] = useState<number[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(EGGS) ?? '{}') as { year?: string; found?: number[] };
-      return saved.year === year && Array.isArray(saved.found) ? saved.found : [];
-    } catch {
-      return [];
+// The eggs found, by year ('preview' for a preview's, which are never kept).
+const eggs = new Map<string, number[]>();
+const eggListeners = new Set<() => void>();
+
+function eggsFound(key: string): number[] {
+  let found = eggs.get(key);
+  if (!found) {
+    found = [];
+    if (key !== 'preview') {
+      try {
+        const saved = JSON.parse(localStorage.getItem(EGGS) ?? '{}') as { year?: string; found?: number[] };
+        if (saved.year === key && Array.isArray(saved.found)) found = saved.found;
+      } catch {
+        // None found yet.
+      }
     }
-  });
+    eggs.set(key, found);
+  }
+  return found;
+}
+
+/** Which of this Easter's eggs have been found on this device; `key` is the year, or 'preview'. */
+export function useEggs(key: string): { found: number[]; find: (egg: number) => number } {
+  const found = useSyncExternalStore(
+    (l) => (eggListeners.add(l), () => void eggListeners.delete(l)),
+    () => eggsFound(key),
+    () => eggsFound(key),
+  );
   const find = (egg: number) => {
-    const next = found.includes(egg) ? found : [...found, egg];
-    setFound(next);
-    try {
-      localStorage.setItem(EGGS, JSON.stringify({ year, found: next }));
-    } catch {
-      // Found until the page closes.
+    const before = eggsFound(key);
+    const next = before.includes(egg) ? before : [...before, egg];
+    eggs.set(key, next);
+    if (key !== 'preview') {
+      try {
+        localStorage.setItem(EGGS, JSON.stringify({ year: key, found: next }));
+      } catch {
+        // Found until the page closes.
+      }
     }
+    for (const l of eggListeners) l();
     return next.length;
   };
   return { found, find };

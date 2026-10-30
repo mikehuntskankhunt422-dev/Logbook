@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { WrongPasscodeError, fontStackFor, type Settings } from '@logbook/core';
+import { HOLIDAYS, WrongPasscodeError, fontStackFor, type Settings } from '@logbook/core';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useJournal } from './journal-context.tsx';
 import { consumeReplaceFlag, href, useRoute, type Route } from './router.ts';
@@ -13,7 +13,7 @@ import { useGarden, useGardenEffects } from './garden.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
 import { useFontLoader } from '../lib/custom-fonts.ts';
-import { useHoliday, useHolidayCheer, useHolidayColours, useToday } from '../lib/holidays.ts';
+import { setHolidayPreview, useHoliday, useHolidayCheer, useHolidayColours, useHolidayPreview, useToday } from '../lib/holidays.ts';
 import { StreakBadge } from '../components/common.tsx';
 import { BACKUP_DONE, downloadBackup } from '../lib/backup-io.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
@@ -131,6 +131,7 @@ export function App() {
         </nav>
       </header>
       <main id="main" tabIndex={-1}>
+        <HolidayPreviewBar />
         <BackupBanner />
         {CopiesBanner && route.name !== 'copies' && (
           <Suspense fallback={null}>
@@ -219,6 +220,23 @@ function usePwaUpdates() {
   useEffect(() => {
     if (needRefresh) toast('A new version of Logbook is ready.', { label: 'Reload', run: () => void updateServiceWorker(true) }, 0);
   }, [needRefresh, toast, updateServiceWorker]);
+}
+
+/** While a holiday is previewed from Settings (D110): which one, and a way back to today. */
+function HolidayPreviewBar() {
+  const id = useHolidayPreview();
+  const info = HOLIDAYS.find((h) => h.id === id);
+  if (!info) return null;
+  return (
+    <div className="banner" role="region" aria-label="Holiday preview">
+      <span>
+        👀 Previewing {info.emoji} {info.name}: how Logbook looks on its day. Look around the journal, the garden and a new entry.
+      </span>
+      <button type="button" className="btn btn-small btn-primary" onClick={() => setHolidayPreview(null)}>
+        Stop preview
+      </button>
+    </div>
+  );
 }
 
 function BackupBanner() {

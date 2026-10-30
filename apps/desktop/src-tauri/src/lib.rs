@@ -6,6 +6,8 @@
 mod android;
 #[cfg(desktop)]
 mod app_icon;
+#[cfg(desktop)]
+mod autostart;
 mod clock;
 mod folder;
 mod journal_fs;
@@ -561,6 +563,8 @@ pub fn run() {
         app_icon::app_icon_status,
         app_icon::app_icon_set,
         app_icon::app_icon_reset,
+        autostart::autostart_status,
+        autostart::autostart_set,
         watch::journal_watch,
     ];
     #[cfg(mobile)]
@@ -593,6 +597,7 @@ pub fn run() {
                 }
             })
             .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_autostart::Builder::new().build())
             .manage(updates::PendingUpdate::default())
             .manage(updates::DownloadedUpdate::default())
             .manage(clock::Watcher::default())

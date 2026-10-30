@@ -47,7 +47,8 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   const now = useGardenNow();
   const holiday = useHoliday();
   const toast = useToast();
-  const eggs = useEggs(useToday().slice(0, 4));
+  const year = useToday().slice(0, 4);
+  const eggs = useEggs(holiday?.preview ? 'preview' : year);
   const findEgg = eggs.find;
   // Easter (D109): eggs among the newest bed's plants; every one found is a celebration.
   const onFindEgg = useCallback(

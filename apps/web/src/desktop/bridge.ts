@@ -107,6 +107,16 @@ export function routeLinks(): void {
   });
 }
 
+/** Whether Logbook opens when the person signs in to this computer (D110). Desktop only. */
+export function autostartStatus(): Promise<boolean> {
+  return invoke<boolean>('autostart_status');
+}
+
+/** Turns opening at sign-in on or off; answers how it is now. */
+export function setAutostart(on: boolean): Promise<boolean> {
+  return invoke<boolean>('autostart_set', { on });
+}
+
 /** Which sizes of the app's icon this computer takes, and the person's picture in use (base64 PNG). */
 export interface AppIconStatus {
   os: 'windows' | 'macos' | 'linux';

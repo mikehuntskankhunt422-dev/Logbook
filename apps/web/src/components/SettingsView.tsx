@@ -8,7 +8,7 @@ import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
 import { trackWork } from '../lib/pending-saves.ts';
 import { addFont, removeFont, useCustomFonts, type CustomFont } from '../lib/custom-fonts.ts';
-import { setHolidayOn, setHolidayPrefs, useHolidayPrefs } from '../lib/holidays.ts';
+import { setHolidayOn, setHolidayPreview, setHolidayPrefs, useHolidayPreview, useHolidayPrefs } from '../lib/holidays.ts';
 import { isAndroid, isApp, isDesktop } from '../lib/platform.ts';
 import { celebrate } from '../lib/motion.ts';
 import { Dialog, formatLongDate } from './common.tsx';
@@ -26,6 +26,7 @@ const JournalFolderPanel =
       : null;
 /** The desktop app's icon from the person's own picture (D101). */
 const AppIconPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/AppIconPanel.tsx').then((m) => ({ default: m.AppIconPanel }))) : null;
+const StartupPanel = import.meta.env.VITE_PLATFORM === 'desktop' ? lazy(() => import('../desktop/StartupPanel.tsx').then((m) => ({ default: m.StartupPanel }))) : null;
 /** The desktop app's automatic updates (D88), or the Android app's update check (D90). */
 const UpdatesPanel =
   import.meta.env.VITE_PLATFORM === 'desktop'
@@ -55,6 +56,11 @@ export function SettingsView() {
         </Suspense>
       ) : (
         <StoragePanel />
+      )}
+      {StartupPanel && (
+        <Suspense fallback={null}>
+          <StartupPanel />
+        </Suspense>
       )}
       {UpdatesPanel && (
         <Suspense fallback={null}>
@@ -273,6 +279,7 @@ const DAYS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
  */
 function Holidays() {
   const prefs = useHolidayPrefs();
+  const previewing = useHolidayPreview();
   const ids = useId();
   const month = prefs.birthday ? Number(prefs.birthday.slice(0, 2)) : 0;
   const day = prefs.birthday ? Number(prefs.birthday.slice(3, 5)) : 0;
@@ -284,16 +291,22 @@ function Holidays() {
       <label className="row">
         <input type="checkbox" checked={prefs.all} onChange={(e) => setHolidayPrefs({ all: e.target.checked })} /> 🎉 Show holidays
       </label>
-      <fieldset className="holiday-list" disabled={!prefs.all}>
+      <fieldset className="holiday-list" data-off={!prefs.all || undefined}>
         <legend className="sr-only">Which holidays</legend>
         {HOLIDAYS.map((h) => (
-          <label key={h.id} className="row">
-            <input type="checkbox" checked={!prefs.off.includes(h.id)} onChange={(e) => setHolidayOn(h.id, e.target.checked)} /> {h.emoji} {h.name} ({h.when})
-          </label>
+          <div key={h.id} className="row holiday-row">
+            <label className="row">
+              <input type="checkbox" disabled={!prefs.all} checked={!prefs.off.includes(h.id)} onChange={(e) => setHolidayOn(h.id, e.target.checked)} /> {h.emoji} {h.name} ({h.when})
+            </label>
+            {/* A preview shows even a holiday that's off, to help decide. */}
+            <button type="button" className="btn btn-small" aria-pressed={previewing === h.id} aria-label={previewing === h.id ? `Stop previewing ${h.name}` : `Preview ${h.name}`} onClick={() => setHolidayPreview(previewing === h.id ? null : h.id)}>
+              {previewing === h.id ? 'Stop preview' : 'Preview'}
+            </button>
+          </div>
         ))}
         <div className="row holiday-birthday" role="group" aria-labelledby={`${ids}-bd`}>
           <span id={`${ids}-bd`}>Birthday date</span>
-          <select aria-label="Birthday month" className="text-input" value={month} onChange={(e) => setBirthday(Number(e.target.value), day || 1)}>
+          <select aria-label="Birthday month" className="text-input" value={month} disabled={!prefs.all} onChange={(e) => setBirthday(Number(e.target.value), day || 1)}>
             <option value={0}>Month</option>
             {MONTHS.map((name, m) => (
               <option key={m} value={m + 1}>
@@ -301,7 +314,7 @@ function Holidays() {
               </option>
             ))}
           </select>
-          <select aria-label="Birthday day" className="text-input" value={day} disabled={!month} onChange={(e) => setBirthday(month, Number(e.target.value))}>
+          <select aria-label="Birthday day" className="text-input" value={day} disabled={!prefs.all || !month} onChange={(e) => setBirthday(month, Number(e.target.value))}>
             <option value={0}>Day</option>
             {Array.from({ length: month ? DAYS_IN[month - 1]! : 31 }, (_, d) => (
               <option key={d} value={d + 1}>
@@ -310,7 +323,7 @@ function Holidays() {
             ))}
           </select>
           {prefs.birthday && (
-            <button type="button" className="btn btn-small" onClick={() => setBirthday(0, 0)}>
+            <button type="button" className="btn btn-small" disabled={!prefs.all} onClick={() => setBirthday(0, 0)}>
               Forget it
             </button>
           )}

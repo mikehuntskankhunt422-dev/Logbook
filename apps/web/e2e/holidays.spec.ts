@@ -137,6 +137,39 @@ test('your birthday: set in Settings (month and day only), then a greeting, a ca
   await expect(page.locator('.holiday-badge')).toHaveCount(0);
 });
 
+test('a preview of any holiday, whatever the date and even when switched off, until stopped (D110)', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-01T10:00:00') });
+  await writeEntry(page, 'An ordinary day', 'Nothing on.');
+  // In-app moves keep the preview, as a person moving around would (a reload ends it).
+  const go = (hash: string) => page.evaluate((h) => (location.hash = h), hash);
+  await go('#/settings');
+  await page.getByRole('checkbox', { name: 'Show holidays' }).uncheck();
+  await page.getByRole('button', { name: 'Preview Christmas' }).click();
+  const root = page.locator('html');
+  await expect(root).toHaveAttribute('data-holiday', 'christmas');
+  const bar = page.getByRole('region', { name: 'Holiday preview' });
+  await expect(bar).toContainText('Previewing 🎄 Christmas');
+  await expect(badge(page, 'Merry Christmas')).toBeVisible();
+  await go('#/garden');
+  await expect(page.locator('.garden-holiday[data-holiday="christmas"]')).toBeVisible();
+  await go('#/new');
+  await expect(prompt(page)).toContainText('What’s a Christmas memory that still makes you smile?');
+
+  // Easter's eggs can be found in a preview, but aren't kept.
+  await go('#/settings');
+  await page.getByRole('button', { name: 'Preview Easter' }).click();
+  await expect(root).toHaveAttribute('data-holiday', 'easter');
+  await go('#/garden');
+  await page.getByRole('button', { name: 'A painted egg: find it' }).first().click();
+  await expect(page.getByText('You found an egg: 1 of 4.')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('logbook.holidays.eggs'))).toBeNull();
+
+  await bar.getByRole('button', { name: 'Stop preview' }).click();
+  await expect(root).not.toHaveAttribute('data-holiday');
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('.garden-holiday, .garden-egg')).toHaveCount(0);
+});
+
 test('no holiday on an ordinary day (D108)', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-01T10:00:00') });
   await writeEntry(page, 'The day after', 'Leftover sweets.');
