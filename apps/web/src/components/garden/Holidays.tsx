@@ -7,7 +7,7 @@ import type { HolidayId } from '@logbook/core';
  * lights, sparks) stays still when motion is reduced (app.css).
  */
 
-/** A holiday's decorations, sitting on the bed's ground at the end of its plants. Easter's are its eggs. */
+/** A holiday's decorations, at the front of the bed's ground, on the right (app.css). Easter's are its eggs. */
 export function HolidayDecor({ id }: { id: Exclude<HolidayId, 'easter'> }) {
   return (
     <li className="garden-holiday" data-holiday={id} aria-hidden="true">

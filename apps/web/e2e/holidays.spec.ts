@@ -39,6 +39,22 @@ test('Halloween: its colours, a pumpkin, jack-o’-lanterns in the garden and a 
   await expect(page.locator('.garden-holiday')).toHaveCount(0);
 });
 
+test('decorations sit at the front of the newest bed, on the right, never on a row of their own', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.clock.install({ time: new Date('2026-10-30T10:00:00') });
+  for (let i = 1; i <= 6; i++) await writeEntry(page, `Day ${i}`, 'A few words.');
+  await page.goto('/#/garden');
+  const ground = page.locator('.garden-bed').first().locator('.garden-ground');
+  const decor = ground.locator('.garden-holiday');
+  await expect(decor.locator('svg')).toHaveCount(3);
+  const g = (await ground.boundingBox())!;
+  const d = (await decor.boundingBox())!;
+  const bases = await ground.locator('.garden-plant').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().bottom));
+  // In front of every plant, not beside or under them at the left.
+  expect(d.y).toBeGreaterThan(Math.max(...bases));
+  expect(Math.abs(g.x + g.width - 14 - (d.x + d.width))).toBeLessThan(2);
+});
+
 test('every holiday off at once, and back, keeping the ones switched off one by one', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-31T10:00:00') });
   await writeEntry(page, 'Switches', 'On and off.');
