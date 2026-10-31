@@ -13,6 +13,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { _android as android, type AndroidDevice, type Page } from 'playwright';
+import { ESCAPED, WALL_CHECK, WALLED_OFF } from './wall-check.ts';
 
 const PKG = process.env.LOGBOOK_ANDROID_PACKAGE ?? 'app.logbookjournal.android.preview';
 const ACTIVITY = 'app.logbookjournal.android.MainActivity';
@@ -190,8 +191,14 @@ try {
   if (!notified) {
     // What went wrong: the command itself, then Android's side.
     const direct = await page.evaluate(async () => {
-      const invoke = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke;
-      const tryIt = (cmd: string, args: unknown) => invoke(cmd, args).then((r) => `ok ${JSON.stringify(r)}`, (e: unknown) => `error ${String(e)}`);
+      // As the page calls them: with the secret Rust hands the page (D111).
+      const tauri = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+      const key = await new Promise<string>((resolve) => {
+        (window as unknown as { __logbookSession: (s: string) => void }).__logbookSession = resolve;
+        void tauri.invoke('session_ready');
+      });
+      const command = (cmd: string, args: unknown) => tauri.invoke(cmd, args, { headers: { 'logbook-session': key } });
+      const tryIt = (cmd: string, args: unknown) => command(cmd, args).then((r) => `ok ${JSON.stringify(r)}`, (e: unknown) => `error ${String(e)}`);
       return [await tryIt('clock_permission', { ask: false }), await tryIt('clock_schedule', { rings: [{ id: 4242, at: Date.now() + 3000, title: 'Probe', body: 'probe' }] })];
     });
     console.log(`  clock_permission: ${direct[0]}\n  clock_schedule: ${direct[1]}`);
@@ -220,6 +227,41 @@ try {
   await page.evaluate(() => fetch('https://api.github.com/repos/mikehuntskankhunt422-dev/Logbook/releases/latest').catch(() => undefined));
   const afterCheck = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? []);
   check(afterCheck.length === before, `the update check may reach GitHub (${JSON.stringify(afterCheck.slice(before))})`);
+
+  // ── your own apps (D111) ──
+  // Tauri's command script reaches every frame on Android, so the page's secret is what keeps an
+  // app from Logbook's commands: without it, a command is refused.
+  const refused = await page.evaluate(() =>
+    (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke('journal_folder').then(
+      () => 'ran',
+      (e: unknown) => String(e),
+    ),
+  );
+  check(refused === "Only Logbook's own page can do that.", `a command without the page's secret is refused (${refused})`);
+  await open(page, '#/apps');
+  await page.getByLabel('Code').fill(WALL_CHECK);
+  await page.getByRole('button', { name: 'Add app' }).click();
+  const app = page.frameLocator('iframe.app-frame').locator('#walls');
+  const walls = await until('the app to check', async () => {
+    const text = (await app.textContent({ timeout: 2000 }).catch(() => '')) ?? '';
+    return text && text !== 'checking' ? text : null;
+  }).catch((e: Error) => `never finished (${e.message})`);
+  await screenshot('app');
+  // The file it tried to write, read as the page reads: never there.
+  const escaped = await page.evaluate(async (path) => {
+    const tauri = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    const key = await new Promise<string>((resolve) => {
+      (window as unknown as { __logbookSession: (s: string) => void }).__logbookSession = resolve;
+      void tauri.invoke('session_ready');
+    });
+    return tauri.invoke('journal_read', { path }, { headers: { 'logbook-session': key } }).then(
+      () => 'written',
+      (e: unknown) => (e === 'ENOENT' ? 'not there' : String(e)),
+    );
+  }, ESCAPED);
+  check(WALLED_OFF.test(walls) && escaped === 'not there', `an app can't reach Logbook's commands or page (${walls}; ${ESCAPED}: ${escaped})`);
+  const appBlocked = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? []);
+  check(appBlocked.length === afterCheck.length, `the window lets the app's frame in (${JSON.stringify(appBlocked.slice(afterCheck.length))})`);
 } catch (err) {
   check(false, String(err instanceof Error ? (err.stack ?? err.message) : err));
   await screenshot('failure');

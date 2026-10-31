@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './ipc.ts';
 import { listen } from '@tauri-apps/api/event';
 import type { Journal } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';

@@ -1,5 +1,6 @@
 import { createVault, openVault, rewrapVault, type Cipher, type KdfParams, type Vault } from './crypto.ts';
 import { addDays, today } from './dates.ts';
+import { APP_ID_PREFIX, appDataId, cleanAppName, isAppItems, type AppItems } from './apps.ts';
 import { FONT_ID_PREFIX } from './fonts.ts';
 import { newId } from './ids.ts';
 import {
@@ -545,6 +546,87 @@ export class Journal {
     return metas.filter((m): m is MediaMeta => Boolean(m?.font));
   }
 
+  // ── your own apps (D111) ──────────────────────────────────────────────────────────────────────
+
+  /** Adds an app of your own: its name and its code. */
+  async addApp(name: string, code: string): Promise<MediaMeta> {
+    this.assertUnlocked();
+    const meta = mediaMetaSchema.parse({ id: `${APP_ID_PREFIX}${newId()}`, name: cleanAppName(name), mime: 'text/html', bytes: 0, app: {}, createdAt: new Date().toISOString() });
+    return this.writeApp(meta, code);
+  }
+
+  private async writeApp(meta: MediaMeta, code: string): Promise<MediaMeta> {
+    const blob = new Blob([code], { type: 'text/html' });
+    const next = mediaMetaSchema.parse({ ...meta, bytes: blob.size });
+    await this.writeBlob(next.id, blob);
+    await this.writeMediaMeta(next);
+    this.emit('media');
+    return next;
+  }
+
+  /** Your apps, A to Z, read without reading every photo's details. */
+  async listApps(): Promise<MediaMeta[]> {
+    this.assertUnlocked();
+    const metas = this.store.ids
+      ? await Promise.all((await this.store.ids('media')).filter((id) => id.startsWith(APP_ID_PREFIX)).map((id) => this.getMediaMeta(id).catch(() => undefined)))
+      : await this.listMediaMeta();
+    return metas.filter((m): m is MediaMeta => Boolean(m?.app && !m.app.of)).sort((a, b) => a.name.localeCompare(b.name) || a.createdAt.localeCompare(b.createdAt));
+  }
+
+  /** An app's code. */
+  async appCode(id: string): Promise<string> {
+    const blob = await this.getMediaBlob(id);
+    if (!blob) throw new Error('This app’s code is missing from the journal.');
+    return blob.text();
+  }
+
+  /** Renames an app, or gives it new code; what it saved stays. */
+  async updateApp(meta: MediaMeta, change: { name?: string; code?: string }): Promise<MediaMeta> {
+    this.assertUnlocked();
+    const named = { ...meta, name: change.name === undefined ? meta.name : cleanAppName(change.name) };
+    if (change.code !== undefined) return this.writeApp(named, change.code);
+    const next = mediaMetaSchema.parse(named);
+    await this.writeMediaMeta(next);
+    this.emit('media');
+    return next;
+  }
+
+  /** What an app saved; nothing if it saved nothing (or it can't be read). */
+  async appData(id: string): Promise<AppItems> {
+    this.assertUnlocked();
+    const blob = await this.getMediaBlob(appDataId(id)).catch(() => undefined);
+    if (!blob) return {};
+    try {
+      const items: unknown = JSON.parse(await blob.text());
+      return isAppItems(items) ? items : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Keeps what an app saved, all of it at once; nothing to keep removes it. */
+  async saveAppData(id: string, items: AppItems): Promise<void> {
+    this.assertUnlocked();
+    const dataId = appDataId(id);
+    const before = await this.getMediaMeta(dataId).catch(() => undefined);
+    if (!Object.keys(items).length) {
+      if (before) await this.deleteMedia(dataId);
+      return;
+    }
+    const blob = new Blob([JSON.stringify(items)], { type: 'application/json' });
+    const meta = mediaMetaSchema.parse({ id: dataId, name: 'app data', mime: 'application/json', bytes: blob.size, app: { of: id }, createdAt: before?.createdAt ?? new Date().toISOString() });
+    await this.writeBlob(dataId, blob);
+    await this.writeMediaMeta(meta);
+    // No event: nothing on screen shows it, and the app's frame has it already.
+  }
+
+  /** Deletes an app and what it saved. */
+  async deleteApp(id: string): Promise<void> {
+    this.assertUnlocked();
+    if (await this.getMediaMeta(appDataId(id)).catch(() => undefined)) await this.deleteMedia(appDataId(id));
+    await this.deleteMedia(id);
+  }
+
   /** Every photo and other media item this journal can open; ones sealed with another key are skipped. */
   async listMediaMeta(): Promise<MediaMeta[]> {
     this.assertUnlocked();
@@ -620,8 +702,8 @@ export class Journal {
     let removed = 0;
     for (const m of all) {
       const parentUsed = m.derivedFrom !== undefined && used.has(m.derivedFrom);
-      // A font of your own stays until it's removed in Settings (D107).
-      if (!used.has(m.id) && !parentUsed && !m.font) {
+      // A font of your own stays until it's removed in Settings (D107), an app until it's deleted (D111).
+      if (!used.has(m.id) && !parentUsed && !m.font && !m.app) {
         await this.deleteMedia(m.id);
         removed++;
       }

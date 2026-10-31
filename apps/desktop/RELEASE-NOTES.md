@@ -1,3 +1,7 @@
+**Your own apps.** The new **🧩 Apps** page runs apps of your own in Logbook: a calculator, a tracker, a game. Paste an app's code, or open its file: a web page written in HTML, CSS and JavaScript, like the apps Claude or Grok write. Each app runs walled off from your journal: it can't see your entries, your files or Logbook's settings. It can use the internet, and what it saves is kept in your journal, so it goes with it to your other computers and into backups. **Edit code**, **Rename** and **Delete** are beside each app.
+
+What came in 0.9.6:
+
 **Open Logbook when you sign in.** On a computer, **Settings → Starting Logbook** can open Logbook by itself each time you sign in, ready to write in. It's off until you switch it on.
 
 **Preview the holidays.** **Settings → Appearance → Holidays** now has a **Preview** button beside each holiday: see how Logbook looks on Christmas Day or your birthday, whatever today's date, then **Stop preview**.

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './ipc.ts';
 import { listen } from '@tauri-apps/api/event';
 import { announce } from '../app/toasts.tsx';
 import { workDone, workInProgress } from '../lib/pending-saves.ts';

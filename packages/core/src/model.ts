@@ -129,6 +129,8 @@ export const mediaMetaSchema = z.object({
       style: z.enum(['normal', 'italic']),
     })
     .optional(),
+  /** Set on an app of your own (D111): its code, or (with `of`, the app's id) what it saved. Kept until the app is deleted. */
+  app: z.object({ of: id.optional() }).optional(),
   createdAt: z.string(),
 });
 export type MediaMeta = z.infer<typeof mediaMetaSchema>;

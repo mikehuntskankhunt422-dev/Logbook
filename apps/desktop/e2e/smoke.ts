@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
+import { ESCAPED, WALL_CHECK, WALLED_OFF } from './wall-check.ts';
 
 const APP = resolve(process.argv[2] ?? new URL('../src-tauri/target/debug/logbook', import.meta.url).pathname);
 const DRIVER = 'http://127.0.0.1:4444';
@@ -71,6 +72,14 @@ const run = (s: string, script: string, args: unknown[] = []) => wd('POST', `/se
 const bodyText = (s: string): Promise<string> => run(s, 'return document.body.innerText');
 /** What the window's security policy (D104) has blocked since the app started (boot.tsx). */
 const blocked = (s: string): Promise<string[]> => run(s, 'return window.logbookBlocked ?? null');
+/** One of Logbook's commands, as its page calls them: with the secret Rust hands the page (D111). */
+const command = (s: string, cmd: string, args: unknown = {}) =>
+  run(
+    s,
+    `return new Promise((r) => { window.__logbookSession = r; window.__TAURI_INTERNALS__.invoke('session_ready'); })
+       .then((key) => window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1], { headers: { 'logbook-session': key } }))`,
+    [cmd, args],
+  );
 /** Keys for WebDriver's element/value: End. */
 const END = '';
 
@@ -331,6 +340,29 @@ try {
   const reported = (await blocked(s)) ?? [];
   check(reported.some((b) => b.startsWith('script-src')) && reported.some((b) => b.startsWith('connect-src')), `the policy says what it blocked (${JSON.stringify(reported)})`);
 
+  // ── your own apps (D111): walled off from Logbook's page and commands ──
+  const refused = await run(s, "return window.__TAURI_INTERNALS__.invoke('journal_folder').then(() => 'ran', (e) => String(e))");
+  check(refused === "Only Logbook's own page can do that.", `a command without the page's secret is refused (${refused})`);
+  const emitted = await run(s, "return window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'logbook://save-before-close', payload: null }).then(() => 'sent', (e) => String(e))");
+  check(/not allowed/i.test(emitted), `nothing in the window can send Logbook's own events (${emitted})`);
+  await run(s, "location.hash = '#/apps'");
+  await type(s, await until('the code box', () => find(s, 'css selector', 'textarea.app-code')), WALL_CHECK);
+  await click(s, await find(s, 'xpath', "//button[normalize-space(.)='Add app']"));
+  const appFrame = await until('the app', () => find(s, 'css selector', 'iframe.app-frame[src]'));
+  const src: string = await run(s, "return document.querySelector('iframe.app-frame').src");
+  await wd('POST', `/session/${s}/frame`, { id: { [ELEMENT]: appFrame } });
+  const walls = await until('the app to check', async () => {
+    const text: string = await run(s, "return document.getElementById('walls')?.textContent ?? ''");
+    return text && text !== 'checking' ? text : null;
+  }).catch((e: Error) => `never finished (${e.message})`);
+  await wd('POST', `/session/${s}/frame/parent`, {});
+  check(src.startsWith('appbox:'), `an app opens from an origin of its own (${src.slice(0, 20)}…)`);
+  check(WALLED_OFF.test(walls) && !(await readFile(join(folder, ESCAPED)).then(() => true, () => false)), `an app can't reach Logbook's commands or page (${walls})`);
+  const appData = await until('what the app saved', async () => (await filesUnder(join(folder, 'media'))).find((f) => /app[0-9a-z]+data\./.test(f)) ?? null).catch(() => null);
+  check(Boolean(appData), 'what an app saves is kept in the journal folder');
+  const appsBlocked = await blocked(s);
+  check(Array.isArray(appsBlocked) && appsBlocked.length === reported.length, `the window lets the app's frame in (${JSON.stringify(appsBlocked?.slice(reported.length))})`);
+
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");
   const quick = await until('the title field', () => find(s, 'css selector', '#entry-title'));
@@ -352,7 +384,7 @@ try {
   const bad = join(home, 'NotAJournal');
   await mkdir(bad, { recursive: true });
   await writeFile(join(bad, 'logbook.json'), JSON.stringify({ format: 'something-else' }));
-  await run(s, `return window.__TAURI_INTERNALS__.invoke('use_journal_folder', { path: arguments[0] })`, [bad]);
+  await command(s, 'use_journal_folder', { path: bad });
   await run(s, 'location.reload()');
   await until('the folder screen with the reason', async () => (await bodyText(s)).includes("couldn't open"));
   check(true, 'a folder that won\'t open shows the folder screen with the reason');

@@ -8,6 +8,8 @@ export interface TauriFsOptions {
    * never has to cross over as one string.
    */
   textOnly?: boolean;
+  /** How the commands are called: the page's own way, with its secret (D111); Tauri's by default. */
+  invoke?: typeof invoke;
 }
 
 /** The most bytes sent in one call when sending text. */
@@ -20,12 +22,16 @@ export const PIECE = 4 * 1024 * 1024;
  * inflated on the way; on Android as base64 (`textOnly`).
  */
 export class TauriFsBackend implements FsBackend {
-  constructor(private readonly options: TauriFsOptions = {}) {}
+  private readonly call: typeof invoke;
+
+  constructor(private readonly options: TauriFsOptions = {}) {
+    this.call = options.invoke ?? invoke;
+  }
 
   async read(path: string): Promise<Uint8Array<ArrayBuffer> | undefined> {
     assertRelativePath(path);
     try {
-      return new Uint8Array(await invoke<ArrayBuffer>('journal_read', { path }));
+      return new Uint8Array(await this.call<ArrayBuffer>('journal_read', { path }));
     } catch (err) {
       if (err === 'ENOENT') return undefined;
       throw asError(err);
@@ -36,15 +42,15 @@ export class TauriFsBackend implements FsBackend {
     assertRelativePath(path);
     const headers = { 'x-path': encodeURIComponent(path) };
     if (!this.options.textOnly) {
-      await invoke('journal_write', data, { headers }).catch(rethrow);
+      await this.call('journal_write', data, { headers }).catch(rethrow);
     } else if (data.length <= PIECE) {
-      await invoke('journal_write', { data: toBase64(data) }, { headers }).catch(rethrow);
+      await this.call('journal_write', { data: toBase64(data) }, { headers }).catch(rethrow);
     } else {
       // Pieces of one write, put together in a temporary file and renamed into place at the end.
       const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
       for (let at = 0; at < data.length; at += PIECE) {
         const part = at === 0 ? 'first' : at + PIECE >= data.length ? 'last' : 'more';
-        await invoke('journal_write', { data: toBase64(data.subarray(at, at + PIECE)) }, { headers: { ...headers, 'x-write': id, 'x-part': part } }).catch(rethrow);
+        await this.call('journal_write', { data: toBase64(data.subarray(at, at + PIECE)) }, { headers: { ...headers, 'x-write': id, 'x-part': part } }).catch(rethrow);
       }
     }
   }
@@ -52,17 +58,17 @@ export class TauriFsBackend implements FsBackend {
   async rename(from: string, to: string): Promise<void> {
     assertRelativePath(from);
     assertRelativePath(to);
-    await invoke('journal_rename', { from, to }).catch(rethrow);
+    await this.call('journal_rename', { from, to }).catch(rethrow);
   }
 
   async remove(path: string): Promise<void> {
     assertRelativePath(path);
-    await invoke('journal_remove', { path }).catch(rethrow);
+    await this.call('journal_remove', { path }).catch(rethrow);
   }
 
   async list(dir: string): Promise<string[]> {
     assertRelativePath(dir);
-    return invoke<string[]>('journal_list', { dir }).catch(rethrow);
+    return this.call<string[]>('journal_list', { dir }).catch(rethrow);
   }
 }
 
