@@ -365,13 +365,29 @@ try {
 
   // ── the Library (D112): every entry a book, sized by the page's own inline styles, which the window allows ──
   const blockedBeforeLibrary = (await blocked(s)) ?? [];
-  await run(s, "location.hash = '#/library'");
+  await run(s, "location.hash = '#/library/shelves'");
   const shelved: number = await until('the books', async () => {
     const n: number = await run(s, "return document.querySelectorAll('.library-shelf .book').length");
     return n > 0 ? n : null;
   }).catch(() => 0);
   const thickness: number = await run(s, "const b = document.querySelector('.library-shelf .book'); return b ? b.getBoundingClientRect().width : 0");
   check(shelved > 0 && thickness >= 24 && ((await blocked(s)) ?? []).length === blockedBeforeLibrary.length, `the Library shelves the entries as books (${shelved}, the first ${thickness}px thick)`);
+  // A book read like one (D113): its pages laid out by the page's own styles.
+  await run(s, "document.querySelector('.library-shelf .book').click()");
+  const pages: string = await until('the book to open', async () => {
+    const where: string = await run(s, "return document.querySelector('dialog.reader .reader-where')?.textContent ?? ''");
+    return /of \d+$/.test(where) ? where : null;
+  }).catch(() => '');
+  const words: number = await run(s, "return document.querySelector('dialog.reader .reader-flow')?.textContent.length ?? 0");
+  check(/^Pages? 1(–2)? of \d+$/.test(pages) && words > 0, `a book opens to be read, its pages counted (${pages})`);
+  await run(s, "document.querySelector('dialog.reader').close()");
+  // Walking through it (D113): in 3D where the window can draw it, else the shelves, saying so.
+  await run(s, "localStorage.setItem('logbook.walk.help', 'seen'); location.hash = '#/library'");
+  const walk: string = await until('the Library to open', async () => {
+    const shown: string = await run(s, "return document.querySelector('.walk-place strong')?.textContent || (document.body.innerText.includes(\"can’t show the Library in 3D\") ? 'shelves instead' : '')");
+    return shown || null;
+  }).catch(() => 'nothing');
+  check(walk !== 'nothing' && ((await blocked(s)) ?? []).length === blockedBeforeLibrary.length, `the Library opens to walk through (${walk}), and the window lets it`);
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");

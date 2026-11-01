@@ -32,6 +32,7 @@ for (const theme of ['light', 'dark'] as const) {
       ['/#/garden', 'Garden'],
       ['/#/settings', 'Settings'],
       ['/#/library', 'Library'],
+      ['/#/library/shelves', 'Library'],
       ['/#/apps', 'Apps'],
     ];
     for (const [path, heading] of views) {

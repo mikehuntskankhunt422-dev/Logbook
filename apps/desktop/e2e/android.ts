@@ -262,6 +262,24 @@ try {
   check(WALLED_OFF.test(walls) && escaped === 'not there', `an app can't reach Logbook's commands or page (${walls}; ${ESCAPED}: ${escaped})`);
   const appBlocked = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? []);
   check(appBlocked.length === afterCheck.length, `the window lets the app's frame in (${JSON.stringify(appBlocked.slice(afterCheck.length))})`);
+
+  // ── the Library you walk through (D113): in 3D where the phone can draw it, else the shelves ──
+  await page.evaluate(() => localStorage.setItem('logbook.walk.help', 'seen'));
+  await open(page, '#/library');
+  const walk = await until('the Library to open', async () => {
+    const shown = await page.evaluate(() => document.querySelector('.walk-place strong')?.textContent || (document.body.innerText.includes('can’t show the Library in 3D') ? 'shelves instead' : ''));
+    return shown || null;
+  }).catch(() => 'nothing');
+  await screenshot('library');
+  if (walk !== 'shelves instead' && walk !== 'nothing') {
+    await page.getByRole('button', { name: /^Newest (book|folder)$/ }).click();
+    await page.getByRole('button', { name: 'Read it' }).click();
+    await page.locator('dialog.reader .reader-where').filter({ hasText: /of \d+$/ }).waitFor({ timeout: 15_000 });
+    await screenshot('reader');
+    await page.locator('dialog.reader').getByRole('button', { name: 'Close' }).click();
+  }
+  const libraryBlocked = await page.evaluate(() => (window as unknown as { logbookBlocked?: string[] }).logbookBlocked ?? []);
+  check(walk !== 'nothing' && libraryBlocked.length === appBlocked.length, `the Library opens to walk through (${walk}), a book opens to read, and the window lets it (${JSON.stringify(libraryBlocked.slice(appBlocked.length))})`);
 } catch (err) {
   check(false, String(err instanceof Error ? (err.stack ?? err.message) : err));
   await screenshot('failure');

@@ -1,34 +1,70 @@
-import { memo, useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { MOODS, parseIsoDate, type Book, type LibraryGallery, type LibraryMonth } from '@logbook/core';
 import { href } from '../app/router.ts';
 import { useLibrary } from '../lib/library.ts';
+import { BookReader } from './BookReader.tsx';
+import { WalkView } from './WalkView.tsx';
 
 /**
- * The Library (D112): every entry a book on the shelves, as thick as the entry is long, shelved
- * by month in a gallery for each year. Past the newest book the empty shelves go on as far as
- * anyone scrolls, drawn by one element that grows, so they cost nothing however far it goes.
+ * The Library (D112, D113): walked through in 3D, with the storage room behind it, or browsed as
+ * shelves on the page (and there for anyone whose device can't draw 3D, or who'd rather a list).
+ * Either way, a book (or folder) opens to be read like one.
  */
-export function LibraryView() {
+export function LibraryView({ view }: { view?: 'shelves' | 'storage' }) {
   const library = useLibrary();
+  const [reading, setReading] = useState<{ id: string; kind: 'book' | 'folder' } | null>(null);
+  const close = useCallback(() => setReading(null), []);
+  if (!library) return null;
+  const shelves = (
+    <ShelvesView
+      library={library}
+      onRead={(id) => {
+        lastOpened = id;
+        setReading({ id, kind: 'book' });
+      }}
+    />
+  );
+  return (
+    <>
+      <div className="library-head">
+        <h1>📚 Library</h1>
+        <nav className="library-modes" aria-label="Library views">
+          <a href={href({ name: 'library' })} aria-current={view !== 'shelves' ? 'page' : undefined}>
+            🚶 Walk through
+          </a>
+          <a href={href({ name: 'library', view: 'shelves' })} aria-current={view === 'shelves' ? 'page' : undefined}>
+            📚 Shelves
+          </a>
+        </nav>
+      </div>
+      {view === 'shelves' ? shelves : <WalkView library={library} storage={view === 'storage'} reading={reading !== null} onRead={(t) => setReading({ id: t.book.id, kind: t.kind })} fallback={shelves} />}
+      {reading && <BookReader key={reading.id} id={reading.id} kind={reading.kind} onClose={close} />}
+    </>
+  );
+}
+
+/**
+ * The shelves on the page (D112): every entry a book, as thick as the entry is long, shelved by
+ * month in a gallery for each year. Past the newest book the empty shelves go on as far as anyone
+ * scrolls, drawn by one element that grows, so they cost nothing however far it goes.
+ */
+function ShelvesView({ library, onRead }: { library: LibraryGallery[]; onRead: (id: string) => void }) {
   const id = useId();
   const [month, setMonth] = useState('');
-  // Back from a book: at its place on the shelf, after the page has gone to the top as pages do.
-  const ready = Boolean(library);
+  // Back from a book's entry: at its place on the shelf, after the page has gone to the top as pages do.
   useEffect(() => {
-    if (!ready || !lastOpened) return;
+    if (!lastOpened) return;
     const opened = lastOpened;
     lastOpened = null;
     const frame = requestAnimationFrame(() => goTo(document.querySelector<HTMLElement>(`.library-shelf .book[data-book="${CSS.escape(opened)}"]`), 'center'));
     return () => cancelAnimationFrame(frame);
-  }, [ready]);
-  if (!library) return null;
+  }, []);
   const books = library.reduce((n, g) => n + g.books, 0);
   const words = library.reduce((n, g) => n + g.words, 0);
   const chosen = month && library.some((g) => g.months.some((m) => m.month === month)) ? month : (library.at(-1)?.months.at(-1)?.month ?? '');
 
   return (
-    <>
-      <h1>📚 Library</h1>
+    <ReadBook.Provider value={onRead}>
       <p className="hint">Every entry you write is a book here: the more you wrote, the thicker it is, and a very long one stands taller. Its colour is its mood. The shelves go on for good, with room for everything you’ll write.</p>
       {books > 0 && (
         <div className="library-bar">
@@ -63,13 +99,16 @@ export function LibraryView() {
         <Gallery key={g.year} gallery={g} />
       ))}
       <EmptyShelves empty={books === 0} />
-    </>
+    </ReadBook.Provider>
   );
 }
 
+/** Opens a book from its spine, wherever on the shelves it is. */
+const ReadBook = createContext<(id: string) => void>(() => {});
+
 // One formatter for every book: a library can hold thousands.
 const longDate = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-/** The book last opened from the shelves, to come back to. */
+/** The book last opened from the shelves, to come back to from its entry. */
 let lastOpened: string | null = null;
 
 const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' });
@@ -127,23 +166,21 @@ function Shelf({ month, year }: { month: LibraryMonth; year: string }) {
 }
 
 function BookSpine({ book }: { book: Book }) {
+  const read = useContext(ReadBook);
   const title = book.title.trim() || 'Untitled';
   const label = `${title}, ${longDate.format(parseIsoDate(book.date))}, ${amount(book.words, 'word')}`;
   const mood = book.mood ? MOODS.indexOf(book.mood) : -1;
   return (
-    <a
+    <button
+      type="button"
       className="book"
-      href={href({ name: 'entry', id: book.id })}
       aria-label={label}
       title={label}
       data-book={book.id}
       data-mood={mood >= 0 ? mood : undefined}
       data-tone={mood >= 0 ? undefined : book.tone}
       style={{ '--w': book.thickness, '--h': book.height } as CSSProperties}
-      // Opened here (not in another tab or window): come back to it.
-      onClick={(e) => {
-        if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) lastOpened = book.id;
-      }}
+      onClick={() => read(book.id)}
     >
       <span className="book-title" aria-hidden="true">
         {title}
@@ -151,7 +188,7 @@ function BookSpine({ book }: { book: Book }) {
       <span className="book-day" aria-hidden="true">
         {Number(book.date.slice(8))}
       </span>
-    </a>
+    </button>
   );
 }
 
