@@ -31,7 +31,10 @@ export function TalkDialog({ id, ctx, where, onTake, onClose }: { id: CastId; ct
     const d = dialog.current;
     if (d && !d.open) d.showModal();
   }, []);
-  useEffect(() => end.current?.scrollIntoView({ block: 'nearest' }), [lines]);
+  // (In braces: scrollIntoView returns a promise in newer browsers, which mustn't be taken for a cleanup.)
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest' });
+  }, [lines]);
 
   const asked = (text: string, reply: { text: string; take?: Take }) => {
     setLines((l) => [...l, { who: 'you', text }, { who: 'them', ...reply }]);

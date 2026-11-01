@@ -193,7 +193,9 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => world.current?.setContent(rooms, racks), [rooms, racks]);
+  useEffect(() => {
+    world.current?.setContent(rooms, racks);
+  }, [rooms, racks]);
   // Secrets (D115), far past the last book and the last folder.
   useEffect(() => {
     if (!place) return;
@@ -201,8 +203,12 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     if (place.world === 'storage' && place.at >= Math.ceil(racks.length / 2) + LAST_FOLDER_AISLES - 1) findSecret('lastfolder');
   }, [place, rooms.length, racks.length]);
   const paused = reading || talking !== null || settings || scaring;
-  useEffect(() => world.current?.setPaused(paused), [paused, state]);
-  useEffect(() => world.current?.setMode(prefs), [prefs, state]);
+  useEffect(() => {
+    world.current?.setPaused(paused);
+  }, [paused, state]);
+  useEffect(() => {
+    world.current?.setMode(prefs);
+  }, [prefs, state]);
   // A word about what's happening stays a while; a new one starts it over.
   useEffect(() => {
     if (!cue) return;
