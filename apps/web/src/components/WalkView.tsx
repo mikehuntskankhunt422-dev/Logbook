@@ -40,6 +40,47 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   read.current = onRead;
   const content = useRef({ rooms, racks });
   content.current = { rooms, racks };
+  // The focus ring: only for coming in with Tab, never for a click, a drag or the page's own focusing.
+  const [ring, setRing] = useState(false);
+  const tabbedAt = useRef(-Infinity);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') tabbedAt.current = performance.now();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, []);
+  // Full screen (D114): the view over the whole window, and the window over the whole screen
+  // where the device allows (the desktop app's own window; a browser's full screen elsewhere).
+  const [full, setFull] = useState(false);
+  const fullRef = useRef(false);
+  const leave = useRef<() => void>(() => {});
+  leave.current = () => {
+    if (!fullRef.current) return;
+    fullRef.current = false;
+    setFull(false);
+    if (import.meta.env.VITE_PLATFORM === 'desktop') void import('../desktop/bridge.ts').then((b) => b.setWindowFullscreen(false)).catch(() => {});
+    else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  };
+  const enter = () => {
+    fullRef.current = true;
+    setFull(true);
+    if (import.meta.env.VITE_PLATFORM === 'desktop') void import('../desktop/bridge.ts').then((b) => b.setWindowFullscreen(true)).catch(() => {});
+    else if (document.fullscreenEnabled) void document.documentElement.requestFullscreen().catch(() => {});
+    canvas.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    // The browser's own way out (Escape, a gesture) ends it here too; Escape ends the rest.
+    const onChange = () => !document.fullscreenElement && leave.current();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && fullRef.current && !document.querySelector('dialog[open]') && leave.current();
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('keydown', onKey);
+      leave.current();
+    };
+  }, []);
 
   // Where each month starts, and the newest book and folder, in each world.
   const spots = useMemo(() => {
@@ -123,11 +164,14 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const noun = inStorage ? 'folder' : 'book';
 
   return (
-    <div className="walk">
+    <div className="walk" data-ring={ring || undefined} data-full={full || undefined}>
       <canvas
         ref={canvas}
         className="walk-canvas"
         tabIndex={0}
+        onFocus={() => setRing(performance.now() - tabbedAt.current < 1000)}
+        onBlur={() => setRing(false)}
+        onPointerDown={() => setRing(false)}
         role="application"
         aria-roledescription="3D library"
         aria-label="The Library in 3D. Walk with W, A, S and D or the arrow keys, look around by dragging, and press Enter to read what’s in front of you."
@@ -177,6 +221,9 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
           </button>
           <button type="button" className="btn btn-small walk-help-button" aria-label="How to walk" title="How to walk" aria-expanded={help} onClick={() => setHelp((h) => !h)}>
             ?
+          </button>
+          <button type="button" className="btn btn-small walk-help-button" aria-label={full ? 'Leave full screen' : 'Full screen'} title={full ? 'Leave full screen (Esc)' : 'Full screen'} aria-pressed={full} onClick={() => (full ? leave.current() : enter())}>
+            {full ? '✕' : '⛶'}
           </button>
         </div>
       </div>

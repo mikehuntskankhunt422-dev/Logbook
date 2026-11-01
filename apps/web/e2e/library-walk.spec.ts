@@ -197,3 +197,64 @@ test('a book with a photo reads with its picture, and the reader is accessible, 
   await expect(folder.locator('.reader-flow img')).toHaveCount(1);
   expect(await scan()).toEqual([]);
 });
+
+test('no focus ring from the page’s own focusing, a click or a drag; one when Tab brings you in', async ({ page }) => {
+  await write(page, '2026-06-01', 'Ringless', 10);
+  await open(page);
+  const walk = page.locator('.walk');
+  const shadow = () => walk.evaluate((el) => getComputedStyle(el).boxShadow);
+  await expect(walk).not.toHaveAttribute('data-ring');
+  expect(await shadow()).toBe('none');
+  // Dragging to look around.
+  const b = (await world(page).boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 + 120, b.y + b.height / 2 + 30, { steps: 6 });
+  await page.mouse.up();
+  await expect(walk).not.toHaveAttribute('data-ring');
+  expect(await shadow()).toBe('none');
+  // Coming in from the keyboard, it shows where the focus went; a click puts it away.
+  await page.getByRole('link', { name: '📚 Shelves' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(world(page)).toBeFocused();
+  await expect(walk).toHaveAttribute('data-ring', 'true');
+  expect(await shadow()).not.toBe('none');
+  await world(page).click({ position: { x: 20, y: b.height - 20 } });
+  await expect(walk).not.toHaveAttribute('data-ring');
+});
+
+test('full screen: the Library over the whole window, still to walk and read in, and Escape back', async ({ page }) => {
+  await write(page, '2026-06-01', 'Wide open', 400);
+  await open(page);
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  const walk = page.locator('.walk');
+  await expect(walk).toHaveAttribute('data-full', 'true');
+  const size = page.viewportSize()!;
+  await expect.poll(async () => JSON.stringify(await walk.boundingBox())).toBe(JSON.stringify({ x: 0, y: 0, width: size.width, height: size.height }));
+  await expect(world(page)).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Leave full screen' })).toBeVisible();
+  // Reading in full screen: the book over it, and Escape closes only the book.
+  await page.getByRole('button', { name: 'Newest book' }).click();
+  await page.keyboard.press('Enter');
+  const reader = page.getByRole('dialog', { name: '📖 Wide open' });
+  await expect(reader).toBeInViewport();
+  await page.keyboard.press('Escape');
+  await expect(reader).toHaveCount(0);
+  await expect(walk).toHaveAttribute('data-full', 'true');
+  // Walking on.
+  await page.locator('#walk-goto').selectOption('library');
+  await world(page).focus();
+  await hold(page, ['KeyW'], 3500);
+  await expect(place(page)).toHaveText('Gallery 2027');
+  // Escape: back to the page.
+  await page.keyboard.press('Escape');
+  await expect(walk).not.toHaveAttribute('data-full');
+  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
+  // Leaving the Library leaves full screen too.
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await expect(walk).toHaveAttribute('data-full', 'true');
+  await page.evaluate(() => (location.hash = '#/'));
+  await expect(walk).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+});

@@ -3773,8 +3773,20 @@ dialog.reader-folder {
 .walk-canvas:active {
   cursor: grabbing;
 }
-.walk:has(.walk-canvas:focus-visible) {
+/* Only when Tab brought the focus here (WalkView): never for a click or a drag. */
+.walk[data-ring] {
   box-shadow: 0 0 0 3px var(--focus);
+}
+/* Full screen (D114): over the whole window, the page's bars and buttons beneath. */
+.walk[data-full] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: auto;
+  border-radius: 0;
+}
+.walk[data-full][data-ring] {
+  box-shadow: inset 0 0 0 3px var(--focus);
 }
 .walk-loading {
   position: absolute;

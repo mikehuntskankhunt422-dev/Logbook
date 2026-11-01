@@ -388,6 +388,11 @@ try {
     return shown || null;
   }).catch(() => 'nothing');
   check(walk !== 'nothing' && ((await blocked(s)) ?? []).length === blockedBeforeLibrary.length, `the Library opens to walk through (${walk}), and the window lets it`);
+  // Full screen (D114): the whole window, through Logbook's own command, and back.
+  const fullscreen = async (on: boolean) => command(s, 'window_fullscreen', { on }).then(() => 'done', (e: unknown) => String(e));
+  const fullOn = await fullscreen(true);
+  const fullOff = await fullscreen(false);
+  check(fullOn === 'done' && fullOff === 'done', `the window goes full screen and back (${fullOn}, ${fullOff})`);
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");
