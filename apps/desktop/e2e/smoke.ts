@@ -363,6 +363,16 @@ try {
   const appsBlocked = await blocked(s);
   check(Array.isArray(appsBlocked) && appsBlocked.length === reported.length, `the window lets the app's frame in (${JSON.stringify(appsBlocked?.slice(reported.length))})`);
 
+  // ── the Library (D112): every entry a book, sized by the page's own inline styles, which the window allows ──
+  const blockedBeforeLibrary = (await blocked(s)) ?? [];
+  await run(s, "location.hash = '#/library'");
+  const shelved: number = await until('the books', async () => {
+    const n: number = await run(s, "return document.querySelectorAll('.library-shelf .book').length");
+    return n > 0 ? n : null;
+  }).catch(() => 0);
+  const thickness: number = await run(s, "const b = document.querySelector('.library-shelf .book'); return b ? b.getBoundingClientRect().width : 0");
+  check(shelved > 0 && thickness >= 24 && ((await blocked(s)) ?? []).length === blockedBeforeLibrary.length, `the Library shelves the entries as books (${shelved}, the first ${thickness}px thick)`);
+
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");
   const quick = await until('the title field', () => find(s, 'css selector', '#entry-title'));

@@ -320,7 +320,7 @@ h2 {
     background: var(--bg-elev);
     border-top: 1px solid var(--line);
   }
-  /* Seven items on one row: the layout above (e.g. .fab) assumes a single-row bar about 76px tall. */
+  /* Nine items on one row: the layout above (e.g. .fab) assumes a single-row bar about 76px tall. */
   .nav a {
     display: flex;
     flex-direction: column;
@@ -341,14 +341,14 @@ h2 {
     text-overflow: ellipsis;
   }
 }
-@media (min-width: 1001px) {
+@media (min-width: 1121px) {
   .nav-icon {
     display: none;
   }
 }
-/* Between phone and wide: seven words don't fit beside the logo, so icons (the words stay for
+/* Between phone and wide: nine words don't fit beside the logo, so icons (the words stay for
    screen readers, and show on hover). */
-@media (min-width: 641px) and (max-width: 1000px) {
+@media (min-width: 641px) and (max-width: 1120px) {
   .nav a {
     font-size: 1.15rem;
     padding: 6px 10px;
@@ -3278,4 +3278,219 @@ a.garden-landmark:focus-visible { outline: 3px solid var(--focus); outline-offse
   border-radius: 12px;
   background: #fff;
   color-scheme: light;
+}
+
+/* The Library (D112): wooden bookcases, a shelf board every 150px, books standing on the boards. */
+:root {
+  --lib-wood: #6b4226;
+  --lib-wood-dark: #4a2c17;
+  --lib-back: #2e1d12;
+  --lib-board: #8a5a34;
+  --lib-board-edge: #5e3a1f;
+  --lib-brass: #d9b35b;
+  --lib-brass-ink: #2a1d0e;
+  --lib-cream: #f7efdc;
+  --lib-row: 150px;
+}
+.library-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0 0 18px;
+}
+.library-count {
+  margin: 0;
+  font-weight: 650;
+}
+.library-goto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.library-goto select {
+  width: auto;
+  min-height: 44px;
+}
+.library-gallery {
+  margin: 0 0 28px;
+}
+.library-sign {
+  margin: 0 auto 12px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 28px 8px;
+  border-radius: 10px;
+  text-align: center;
+  background: linear-gradient(var(--lib-wood), var(--lib-wood-dark));
+  color: var(--lib-cream);
+  box-shadow: inset 0 0 0 2px var(--lib-brass), 0 6px 14px rgb(0 0 0 / 0.18);
+}
+.library-sign h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  scroll-margin-top: 90px;
+}
+.library-sign h2:focus-visible,
+.library-plate:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.library-sign-small {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.library-sign p {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+}
+/* A month out of sight isn't laid out or drawn until it's near (and keeps its size once it has been). */
+.library-case {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+  margin: 0 0 10px;
+  border: 10px solid var(--lib-wood);
+  border-top-width: 0;
+  border-radius: 6px 6px 4px 4px;
+  background: var(--lib-wood);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.16);
+}
+.library-plate {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 3px 14px;
+  border-radius: 0 0 6px 6px;
+  background: linear-gradient(#e6c46e, var(--lib-brass));
+  color: var(--lib-brass-ink);
+  font-size: 0.85rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  scroll-margin-top: 90px;
+}
+/* Every row exactly --lib-row tall (each book's place is), so the boards drawn behind line up. */
+.library-shelf {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--lib-back) 0 calc(var(--lib-row) - 12px),
+    var(--lib-board) calc(var(--lib-row) - 12px) calc(var(--lib-row) - 4px),
+    var(--lib-board-edge) calc(var(--lib-row) - 4px) var(--lib-row)
+  );
+}
+.library-shelf li {
+  display: flex;
+  align-items: flex-end;
+  height: var(--lib-row);
+  padding-bottom: 12px;
+}
+.book {
+  --spine: #6b3e26;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(var(--w) * 1px);
+  height: calc(var(--h) * 1px);
+  padding: 12px 0 7px;
+  border-radius: 3px 3px 2px 2px;
+  background-color: var(--spine);
+  /* Light from the left, two gilt bands, the day at the foot. */
+  background-image:
+    linear-gradient(90deg, rgb(255 255 255 / 0.1), transparent 35%, transparent 70%, rgb(0 0 0 / 0.22)),
+    linear-gradient(to bottom, transparent 5px, var(--lib-brass) 5px 7px, transparent 7px calc(100% - 25px), var(--lib-brass) calc(100% - 25px) calc(100% - 23px), transparent calc(100% - 23px));
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.3);
+  color: var(--lib-cream);
+  text-decoration: none;
+  scroll-margin: 110px 0;
+  transition: transform 0.15s ease;
+}
+/* Pulled a little off the shelf: under the pointer, and when found (Newest book) or reached by keyboard. */
+.book:hover,
+.book:focus {
+  transform: translateY(-8px);
+}
+.book:focus-visible {
+  outline: 3px solid #ffd36b;
+  outline-offset: 2px;
+}
+.book-title {
+  flex: 1;
+  min-height: 0;
+  margin: 2px 0 6px;
+  writing-mode: vertical-rl;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: calc(clamp(10, var(--w) * 0.42, 13) * 1px);
+  font-weight: 650;
+  line-height: 1.1;
+}
+.book-day {
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* The mood's colour (the order of MOODS), or for no mood one of four leathers. All take the cream
+   lettering at 5.5:1 or more. */
+.book[data-mood='0'] { --spine: #8f4a12; }
+.book[data-mood='1'] { --spine: #2f6b3a; }
+.book[data-mood='2'] { --spine: #55555f; }
+.book[data-mood='3'] { --spine: #3b4f7a; }
+.book[data-mood='4'] { --spine: #25456c; }
+.book[data-mood='5'] { --spine: #8e1f1f; }
+.book[data-mood='6'] { --spine: #4b3f72; }
+.book[data-mood='7'] { --spine: #74368a; }
+.book[data-mood='8'] { --spine: #952c5a; }
+.book[data-mood='9'] { --spine: #2b5c60; }
+.book[data-tone='0'] { --spine: #6b3e26; }
+.book[data-tone='1'] { --spine: #5b2333; }
+.book[data-tone='2'] { --spine: #2c3e50; }
+.book[data-tone='3'] { --spine: #33472f; }
+.library-beyond-note {
+  margin: 6px 0 10px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+/* The empty shelves: the same bookcase, drawn once however far it reaches. */
+.library-void {
+  position: relative;
+  border: 10px solid var(--lib-wood);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--lib-back) 0 calc(var(--lib-row) - 12px),
+    var(--lib-board) calc(var(--lib-row) - 12px) calc(var(--lib-row) - 4px),
+    var(--lib-board-edge) calc(var(--lib-row) - 4px) var(--lib-row)
+  );
+}
+/* Rides along while the empty shelves are scrolled through. */
+.library-back {
+  position: sticky;
+  top: 84px;
+  display: flex;
+  margin: 12px auto 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .book {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .book {
+    border: 1px solid CanvasText;
+  }
 }

@@ -8,6 +8,7 @@ export * from './holidays.ts';
 export * from './embeds.ts';
 export * from './music-links.ts';
 export * from './garden.ts';
+export * from './library.ts';
 export * from './garden-history.ts';
 export * from './garden-weather.ts';
 export * from './garden-wonders.ts';
