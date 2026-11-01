@@ -411,8 +411,8 @@ try {
   // The other providers go through Logbook's own command (D118): their chat and model lists only.
   const refusedAi = await tryCommand(s, 'ai_request', { method: 'POST', url: 'https://example.com/v1/chat/completions', key: 'k', body: '{}' });
   const elsewhere = refusedAi.error ?? 'sent';
-  const asked = await tryCommand(s, 'ai_request', { method: 'GET', url: 'https://api.openai.com/v1/models', key: 'not-a-key', body: null });
-  const provider = asked.error ?? `reached ${(asked.ok as { status: number }).status}`;
+  const listed = await tryCommand(s, 'ai_request', { method: 'GET', url: 'https://api.openai.com/v1/models', key: 'not-a-key', body: null });
+  const provider = listed.error ?? `reached ${(listed.ok as { status: number }).status}`;
   check(elsewhere.includes('isn’t an AI provider') || elsewhere.includes("isn't an AI provider"), `the AI command refuses anywhere but the providers (${elsewhere})`);
   check(!provider.includes('AI provider Logbook knows'), `the AI command asks a provider (${provider})`);
 
