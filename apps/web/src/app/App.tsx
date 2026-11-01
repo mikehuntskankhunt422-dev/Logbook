@@ -80,7 +80,8 @@ export function App() {
 
   const firstRoute = useRef(true);
   // The garden's own pages (D98) count as pages too, while the garden is shown, and each app (D111).
-  const routeKey = route.name === 'entry' ? route.id : route.name === 'apps' ? (route.id ?? '') : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
+  const routeKey =
+    route.name === 'entry' ? route.id : route.name === 'apps' ? (route.id ?? '') : route.name === 'library' ? (route.view ?? '') : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
   useEffect(() => {
     document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', library: 'Library · Logbook', apps: 'Apps · Logbook', copies: 'Copies to sort out · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
@@ -157,13 +158,13 @@ export function App() {
           {route.name === 'search' && <SearchView tag={route.tag} />}
           {route.name === 'clock' && <ClockView />}
           {route.name === 'garden' && <GardenView garden={garden} view={route.view} />}
-          {route.name === 'library' && <LibraryView />}
+          {route.name === 'library' && <LibraryView view={route.view} />}
           {route.name === 'settings' && <SettingsView />}
           {route.name === 'apps' && <AppsView id={route.id} />}
         </div>
       </main>
-      {/* Not over an app (D111), whose own buttons may be there. */}
-      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && !(route.name === 'apps' && route.id) && (
+      {/* Not over an app (D111) or the Library you walk through (D113), whose own buttons may be there. */}
+      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && !(route.name === 'apps' && route.id) && !(route.name === 'library' && route.view !== 'shelves') && (
         <a className="btn btn-primary fab" href={href({ name: 'new' })}>
           ✍️ New entry
         </a>

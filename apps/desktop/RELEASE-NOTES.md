@@ -1,3 +1,11 @@
+**Walk through your Library.** The **📚 Library** is now a place to walk through in 3D, like the Library of Babel: a hexagonal gallery for each year, your entries as books on its shelves, and past your newest book, empty galleries for the years to come, for good. Walk with W A S D or the arrow keys and look around by dragging; on a phone, touch the lower left for a stick to walk with. Walk up to a book to see what it is, and click or tap it to read it: its pages turn like a real book's.
+
+**The storage room.** Behind you, through the first gallery's back door, a corridor leads to a storage room that goes on for good, every entry in a manila folder on the racks with its title on the label. Open a folder to read the entry.
+
+**Read like a book.** On the flat shelves too (**📚 Shelves**), a book now opens to be read, with **Open in the editor** beside it. If your device can't show 3D, the Library shows your shelves instead.
+
+What came in 0.9.8:
+
 **The Library.** The new **📚 Library** page turns every entry you've written into a book on a shelf: the more you wrote, the thicker the book, and a very long entry stands taller. Its colour is its mood, its title runs down the spine and its day is at the foot. Each month has its own shelf and each year its own gallery, and past your newest book the empty shelves go on for good, with room for everything you'll write. Tap a book to open its entry; **Go to it** and **Newest book** find your way.
 
 What came in 0.9.7:
