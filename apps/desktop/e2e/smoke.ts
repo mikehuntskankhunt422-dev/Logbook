@@ -393,6 +393,12 @@ try {
   const fullOn = await fullscreen(true);
   const fullOff = await fullscreen(false);
   check(fullOn === 'done' && fullOff === 'done', `the window goes full screen and back (${fullOn}, ${fullOff})`);
+  // The Library's characters in your own words (D116): the window lets the page reach Anthropic's
+  // API (whether this machine is online or not, the policy mustn't be what stops it).
+  const blockedBeforeAi = (await blocked(s)) ?? [];
+  const ai: string = await run(s, "return fetch('https://api.anthropic.com/v1/models').then((r) => 'reached ' + r.status, (e) => 'failed: ' + e)");
+  const aiBlocked = ((await blocked(s)) ?? []).slice(blockedBeforeAi.length);
+  check(!aiBlocked.some((b) => b.startsWith('connect-src')), `the window lets the AI characters reach Anthropic (${ai}, ${JSON.stringify(aiBlocked)})`);
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");

@@ -214,7 +214,7 @@ test('no focus ring from the page’s own focusing, a click or a drag; one when 
   await expect(walk).not.toHaveAttribute('data-ring');
   expect(await shadow()).toBe('none');
   // Coming in from the keyboard, it shows where the focus went; a click puts it away.
-  await page.getByRole('link', { name: '📚 Shelves' }).focus();
+  await page.getByRole('link', { name: '📖 Encyclopedia' }).focus();
   await page.keyboard.press('Tab');
   await expect(world(page)).toBeFocused();
   await expect(walk).toHaveAttribute('data-ring', 'true');

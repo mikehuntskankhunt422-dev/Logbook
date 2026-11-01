@@ -10,6 +10,8 @@ export * from './music-links.ts';
 export * from './garden.ts';
 export * from './library.ts';
 export * from './library-world.ts';
+export * from './library-cast.ts';
+export * from './library-haunt.ts';
 export * from './garden-history.ts';
 export * from './garden-weather.ts';
 export * from './garden-wonders.ts';

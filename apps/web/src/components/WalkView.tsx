@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { archiveRacks, entrance, libraryRooms, spotForBook, spotForFolder, today, type LibraryGallery, type Spot } from '@logbook/core';
+import { archiveRacks, CAST, entrance, libraryFacts, libraryRooms, spotForBook, spotForCast, spotForFolder, today, type Book, type CastId, type LibraryGallery, type Spot } from '@logbook/core';
+import { href } from '../app/router.ts';
 import { useReducedMotion } from '../lib/motion.ts';
 import type { Place, Target, World } from '../world/engine.ts';
 import { canWalk } from '../world/support.ts';
-import { BOOK_OF_SAND_GALLERIES, findSecret, LAST_FOLDER_AISLES } from '../lib/secrets.ts';
-import { formatLongDate } from './common.tsx';
+import { BOOK_OF_SAND_GALLERIES, findSecret, LAST_FOLDER_AISLES, SECRETS, useSecrets, type SecretId } from '../lib/secrets.ts';
+import { libraryPrefs, setLibraryPrefs, useLibraryPrefs } from '../lib/library-prefs.ts';
+import type { Take } from '../lib/cast.ts';
+import { Dialog, formatLongDate } from './common.tsx';
+import { Scare } from './Scare.tsx';
+import { TalkDialog } from './TalkDialog.tsx';
 
 /**
  * The Library in 3D (D113): walk the galleries, take a book down and read it; through the first
@@ -27,7 +32,9 @@ const seenHelp = () => {
 
 const MONTH = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
-export function WalkView({ library, storage, reading, onRead, fallback }: { library: LibraryGallery[]; storage: boolean; reading: boolean; onRead: (target: Target) => void; fallback: ReactNode }) {
+const CAST_EMOJI: Record<CastId, string> = { librarian: '🧑‍🏫', clerk: '🗂️' };
+
+export function WalkView({ library, storage, reading, onRead, fallback }: { library: LibraryGallery[]; storage: boolean; reading: boolean; onRead: (target: { kind: 'book' | 'folder'; book: Book }) => void; fallback: ReactNode }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const world = useRef<World | null>(null);
   const reduced = useReducedMotion();
@@ -37,8 +44,15 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const [help, setHelp] = useState(() => !seenHelp());
   const rooms = useMemo(() => libraryRooms(library), [library]);
   const racks = useMemo(() => archiveRacks(library), [library]);
-  const read = useRef(onRead);
-  read.current = onRead;
+  // Someone to talk to (D116), the Library's settings, and The Unwritten's catch.
+  const [talking, setTalking] = useState<CastId | null>(null);
+  const [settings, setSettings] = useState(false);
+  const [scaring, setScaring] = useState(false);
+  const [cue, setCue] = useState('');
+  const prefs = useLibraryPrefs();
+  const secrets = useSecrets();
+  const read = useRef<(t: Target) => void>(() => {});
+  read.current = (t) => (t.kind === 'npc' ? setTalking(t.id) : onRead(t));
   const content = useRef({ rooms, racks });
   content.current = { rooms, racks };
   // The focus ring: only for coming in with Tab, never for a click, a drag or the page's own focusing.
@@ -148,7 +162,14 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
       ({ createWorld }) => {
         if (!alive || !canvas.current) return;
         try {
-          made = createWorld(canvas.current, { place: setPlace, target: setTarget, open: (t) => read.current(t) }, start, reduced, Number(today().slice(0, 4)));
+          made = createWorld(
+            canvas.current,
+            { place: setPlace, target: setTarget, open: (t) => read.current(t), cue: setCue, scare: () => setScaring(true) },
+            start,
+            reduced,
+            Number(today().slice(0, 4)),
+            libraryPrefs(),
+          );
         } catch {
           setState('unsupported');
           return;
@@ -179,7 +200,29 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     if (place.world === 'library' && place.at >= rooms.length + BOOK_OF_SAND_GALLERIES - 1) findSecret('sand');
     if (place.world === 'storage' && place.at >= Math.ceil(racks.length / 2) + LAST_FOLDER_AISLES - 1) findSecret('lastfolder');
   }, [place, rooms.length, racks.length]);
-  useEffect(() => world.current?.setPaused(reading), [reading]);
+  const paused = reading || talking !== null || settings || scaring;
+  useEffect(() => world.current?.setPaused(paused), [paused, state]);
+  useEffect(() => world.current?.setMode(prefs), [prefs, state]);
+  // A word about what's happening stays a while; a new one starts it over.
+  useEffect(() => {
+    if (!cue) return;
+    const timer = setTimeout(() => setCue(''), 6000);
+    return () => clearTimeout(timer);
+  }, [cue]);
+  const found = useMemo(() => new Set(SECRETS.flatMap((x) => (secrets.found[x.id] ? [x.id] : [])) as SecretId[]), [secrets.found]);
+  const facts = useMemo(() => libraryFacts(library, today(), racks.length), [library, racks.length]);
+
+  /** Where a book or folder is, to be taken to it from what someone said. */
+  const spotOf = (take: Take): Spot | null => {
+    if (take.kind === 'book') {
+      for (const [k, room] of rooms.entries())
+        for (const [w, wall] of room.walls.entries())
+          for (const [s, row] of wall.entries()) for (const thing of row) if (thing.kind === 'book' && thing.book.id === take.id) return spotForBook(k, w, s, thing);
+    } else {
+      for (const rack of racks) for (const [s, row] of rack.shelves.entries()) for (const thing of row) if (thing.kind === 'folder' && thing.book.id === take.id) return spotForFolder(rack.index, s, thing);
+    }
+    return null;
+  };
 
   if (state === 'unsupported')
     return (
@@ -195,11 +238,18 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     world.current?.goTo(spot);
     canvas.current?.focus({ preventScroll: true });
   };
+  const wake = () => {
+    // Caught: you wake at the door of where you were.
+    setScaring(false);
+    world.current?.goTo(entrance(inStorage ? 'storage' : 'library'));
+    setCue(inStorage ? 'You wake at the storage room’s door.' : 'You wake at the Library’s door.');
+    canvas.current?.focus({ preventScroll: true });
+  };
   const months = rooms.flatMap((r) => r.walls.flat(2).flatMap((t) => (t.kind === 'divider' ? [t.month] : [])));
   const noun = inStorage ? 'folder' : 'book';
 
   return (
-    <div className="walk" data-ring={ring || undefined} data-full={full || undefined}>
+    <div className="walk" data-ring={ring || undefined} data-full={full || undefined} data-ps1={prefs.ps1 || undefined} data-horror={prefs.horror === 'off' ? undefined : prefs.horror}>
       <canvas
         ref={canvas}
         className="walk-canvas"
@@ -233,6 +283,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
               const v = e.target.value;
               if (v === 'library') go(entrance('library'));
               else if (v === 'storage') go(entrance('storage'));
+              else if (v.startsWith('cast:')) go(spotForCast(v.slice(5) as CastId));
               else go((inStorage ? spots.folders : spots.books).get(v));
             }}
           >
@@ -241,6 +292,11 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
             </option>
             <option value="library">🚪 The Library’s first gallery</option>
             <option value="storage">🗄️ The storage room</option>
+            {CAST.map((c) => (
+              <option key={c.id} value={`cast:${c.id}`}>
+                {CAST_EMOJI[c.id]} {c.name}
+              </option>
+            ))}
             {months.length > 0 && (
               <optgroup label={inStorage ? 'Folders from' : 'Books from'}>
                 {months.map((m) => (
@@ -257,6 +313,9 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
           <button type="button" className="btn btn-small walk-help-button" aria-label="How to walk" title="How to walk" aria-expanded={help} onClick={() => setHelp((h) => !h)}>
             ?
           </button>
+          <button type="button" className="btn btn-small walk-help-button" aria-label="Library settings" title="Library settings: horror, the PS1 look" onClick={() => setSettings(true)}>
+            ⚙️
+          </button>
           <button type="button" className="btn btn-small walk-help-button" aria-label={full ? 'Leave full screen' : 'Full screen'} title={full ? 'Leave full screen (Esc)' : 'Full screen'} aria-pressed={full} onClick={() => (full ? fullscreen.current(false) : enter())}>
             {full ? '✕' : '⛶'}
           </button>
@@ -268,7 +327,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
             <strong>Walk</strong> with W A S D or the arrow keys (Shift to hurry), or the stick that appears where you touch the lower left. <strong>Look around</strong> by dragging. <strong>Read</strong> a{' '}
             {noun}: click or tap it, or face it and press Enter.
           </p>
-          <p>The galleries go on for good, a year in each. The storage room is behind you, through the first gallery’s back door.</p>
+          <p>The galleries go on for good, a year in each. The storage room is behind you, through the first gallery’s back door. The Librarian and the Clerk can be talked to: walk up to one and press Enter, or click them.</p>
           <button
             type="button"
             className="btn btn-small"
@@ -287,7 +346,18 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
         </div>
       )}
       <div className="walk-hud walk-bottom" aria-live="polite">
-        {target ? (
+        {cue ? (
+          <span className="walk-target walk-cue">{cue}</span>
+        ) : target?.kind === 'npc' ? (
+          <>
+            <span className="walk-target">
+              {CAST_EMOJI[target.id]} <strong>{target.name}</strong>
+            </span>
+            <button type="button" className="btn btn-small btn-primary" onClick={() => setTalking(target.id)}>
+              Talk
+            </button>
+          </>
+        ) : target ? (
           <>
             <span className="walk-target">
               {target.kind === 'folder' ? '🗂️' : '📖'} <strong>{target.book.title.trim() || 'Untitled'}</strong> · {formatLongDate(target.book.date)} · {target.book.words.toLocaleString()} {target.book.words === 1 ? 'word' : 'words'}
@@ -301,6 +371,65 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
         )}
       </div>
       <span className="walk-cross" aria-hidden="true" />
+      {talking && (
+        <TalkDialog
+          id={talking}
+          ctx={{ facts, horror: prefs.horror, found }}
+          where={place?.label ?? 'the Library'}
+          onTake={(take) => {
+            setTalking(null);
+            // Once the conversation has gone (taking the focus with it), there, with the focus back.
+            const spot = spotOf(take);
+            requestAnimationFrame(() => go(spot));
+          }}
+          onClose={() => {
+            setTalking(null);
+            canvas.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
+      <Dialog
+        open={settings}
+        title="Library settings"
+        onClose={() => {
+          setSettings(false);
+          canvas.current?.focus({ preventScroll: true });
+        }}
+        actions={
+          <button type="button" className="btn btn-primary" onClick={() => setSettings(false)}>
+            Done
+          </button>
+        }
+      >
+        <fieldset className="walk-horror">
+          <legend>Horror</legend>
+          {(
+            [
+              ['off', 'Off', 'The Library as it always is.'],
+              ['unsettling', 'Unsettling', 'The empty galleries go dark, and something walks them. No jump scares.'],
+              ['intense', 'Intense', 'It’s faster, and if it catches you: a jump scare, with a sudden picture and a loud sound.'],
+            ] as const
+          ).map(([value, label, hint]) => (
+            <label key={value} className="row walk-choice">
+              <input type="radio" name="walk-horror" value={value} checked={prefs.horror === value} onChange={() => setLibraryPrefs({ horror: value })} />
+              <span>
+                <strong>{label}</strong> <span className="hint">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <label className="row">
+          <input type="checkbox" checked={prefs.sounds} disabled={prefs.horror === 'off'} onChange={(e) => setLibraryPrefs({ sounds: e.target.checked })} /> 🔊 Horror sounds
+        </label>
+        <label className="row">
+          <input type="checkbox" checked={prefs.ps1} onChange={(e) => setLibraryPrefs({ ps1: e.target.checked })} /> 🕹️ PS1 look: big pixels, wobbly corners, fewer colours
+        </label>
+        <p className="hint">
+          Who’s who and what can happen: <a href={href({ name: 'library', view: 'encyclopedia' })}>📖 the Encyclopedia</a>. To talk to the Librarian and the Clerk in your own words, add an API key in{' '}
+          <a href={href({ name: 'settings' })}>Settings → AI characters</a>.
+        </p>
+      </Dialog>
+      {scaring && <Scare reduced={reduced} onDone={wake} />}
     </div>
   );
 }
