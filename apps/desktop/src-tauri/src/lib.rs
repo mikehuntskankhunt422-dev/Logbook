@@ -519,6 +519,14 @@ async fn open_url(url: String, app: AppHandle) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// The window full screen, or not (D114): for walking through the Library. The page's own
+/// full-screen request can't do it in every desktop webview (macOS's has it switched off).
+#[cfg(desktop)]
+#[tauri::command]
+fn window_fullscreen(window: WebviewWindow, on: bool) -> Result<(), String> {
+    window.set_fullscreen(on).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -569,6 +577,7 @@ pub fn run() {
         autostart::autostart_status,
         autostart::autostart_set,
         watch::journal_watch,
+        window_fullscreen,
         session::session_ready,
         appbox::app_stage,
     ];

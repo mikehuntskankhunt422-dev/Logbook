@@ -161,3 +161,8 @@ export function resetAppIcon(): Promise<void> {
 export async function appAddress(html: string): Promise<string> {
   return convertFileSrc(await invoke<string>('app_stage', { html }), 'appbox');
 }
+
+/** The window full screen, or back (D114). Desktop only. */
+export function setWindowFullscreen(on: boolean): Promise<void> {
+  return invoke('window_fullscreen', { on });
+}

@@ -1,3 +1,9 @@
+**Full screen in the Library.** The new **⛶** button beside **?** fills your whole screen with the Library, for walking through it without the rest of Logbook around it. Press **Esc** or **✕** to come back.
+
+**Fixed:** a blue outline no longer appears round the Library when you open it, click in it or drag to look around. It shows only when you move to it with the Tab key.
+
+What came in 0.9.9:
+
 **Walk through your Library.** The **📚 Library** is now a place to walk through in 3D, like the Library of Babel: a hexagonal gallery for each year, your entries as books on its shelves, and past your newest book, empty galleries for the years to come, for good. Walk with W A S D or the arrow keys and look around by dragging; on a phone, touch the lower left for a stick to walk with. Walk up to a book to see what it is, and click or tap it to read it: its pages turn like a real book's.
 
 **The storage room.** Behind you, through the first gallery's back door, a corridor leads to a storage room that goes on for good, every entry in a manila folder on the racks with its title on the label. Open a folder to read the entry.
