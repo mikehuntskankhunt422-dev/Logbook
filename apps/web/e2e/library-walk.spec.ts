@@ -249,12 +249,21 @@ test('full screen: the Library over the whole window, still to walk and read in,
   // Escape: back to the page.
   await page.keyboard.press('Escape');
   await expect(walk).not.toHaveAttribute('data-full');
-  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
   await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
+  // Off and straight back on: on, however the browser's own full screen catches up.
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await page.getByRole('button', { name: 'Leave full screen' }).click();
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await expect(walk).toHaveAttribute('data-full', 'true');
+  await page.waitForTimeout(500);
+  await expect(walk).toHaveAttribute('data-full', 'true');
+  await page.getByRole('button', { name: 'Leave full screen' }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
   // Leaving the Library leaves full screen too.
   await page.getByRole('button', { name: 'Full screen' }).click();
   await expect(walk).toHaveAttribute('data-full', 'true');
   await page.evaluate(() => (location.hash = '#/'));
   await expect(walk).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
 });

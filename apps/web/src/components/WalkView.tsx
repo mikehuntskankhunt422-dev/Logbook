@@ -52,34 +52,62 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   }, []);
   // Full screen (D114): the view over the whole window, and the window over the whole screen
   // where the device allows (the desktop app's own window; a browser's full screen elsewhere).
+  // The browser's comes and goes a moment after it's asked, so what's under way is kept: turned
+  // off and straight back on, it ends on; leaving the page, off.
   const [full, setFull] = useState(false);
   const fullRef = useRef(false);
-  const leave = useRef<() => void>(() => {});
-  leave.current = () => {
-    if (!fullRef.current) return;
-    fullRef.current = false;
-    setFull(false);
-    if (import.meta.env.VITE_PLATFORM === 'desktop') void import('../desktop/bridge.ts').then((b) => b.setWindowFullscreen(false)).catch(() => {});
-    else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  const asked = useRef({ on: false, off: false });
+  const screenTo = (on: boolean) => {
+    if (import.meta.env.VITE_PLATFORM === 'desktop') {
+      void import('../desktop/bridge.ts').then((b) => b.setWindowFullscreen(on)).catch(() => {});
+      return;
+    }
+    if (on) {
+      if (!document.fullscreenEnabled || document.fullscreenElement || asked.current.on || asked.current.off) return;
+      asked.current.on = true;
+      document.documentElement.requestFullscreen().then(
+        () => {
+          asked.current.on = false;
+          // Left again while it was coming.
+          if (!fullRef.current) screenTo(false);
+        },
+        () => (asked.current.on = false),
+      );
+    } else if (document.fullscreenElement && !asked.current.off) {
+      asked.current.off = true;
+      document.exitFullscreen().catch(() => (asked.current.off = false));
+    }
   };
+  const fullscreen = useRef((on: boolean) => {
+    if (fullRef.current === on) return;
+    fullRef.current = on;
+    setFull(on);
+    screenTo(on);
+  });
   const enter = () => {
-    fullRef.current = true;
-    setFull(true);
-    if (import.meta.env.VITE_PLATFORM === 'desktop') void import('../desktop/bridge.ts').then((b) => b.setWindowFullscreen(true)).catch(() => {});
-    else if (document.fullscreenEnabled) void document.documentElement.requestFullscreen().catch(() => {});
+    fullscreen.current(true);
     canvas.current?.focus({ preventScroll: true });
   };
   useEffect(() => {
-    // The browser's own way out (Escape, a gesture) ends it here too; Escape ends the rest.
-    const onChange = () => !document.fullscreenElement && leave.current();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && fullRef.current && !document.querySelector('dialog[open]') && leave.current();
+    const to = fullscreen.current;
+    const onChange = () => {
+      if (document.fullscreenElement) return;
+      if (asked.current.off) {
+        // Our own way out; asked back in meanwhile, back in.
+        asked.current.off = false;
+        if (fullRef.current) screenTo(true);
+      } else if (!asked.current.on) to(false);
+    };
+    // Escape ends it (unless it closes a book first); the browser's own way out does too.
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && fullRef.current && !document.querySelector('dialog[open]') && to(false);
     document.addEventListener('fullscreenchange', onChange);
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('fullscreenchange', onChange);
       document.removeEventListener('keydown', onKey);
-      leave.current();
+      to(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Where each month starts, and the newest book and folder, in each world.
@@ -222,7 +250,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
           <button type="button" className="btn btn-small walk-help-button" aria-label="How to walk" title="How to walk" aria-expanded={help} onClick={() => setHelp((h) => !h)}>
             ?
           </button>
-          <button type="button" className="btn btn-small walk-help-button" aria-label={full ? 'Leave full screen' : 'Full screen'} title={full ? 'Leave full screen (Esc)' : 'Full screen'} aria-pressed={full} onClick={() => (full ? leave.current() : enter())}>
+          <button type="button" className="btn btn-small walk-help-button" aria-label={full ? 'Leave full screen' : 'Full screen'} title={full ? 'Leave full screen (Esc)' : 'Full screen'} aria-pressed={full} onClick={() => (full ? fullscreen.current(false) : enter())}>
             {full ? '✕' : '⛶'}
           </button>
         </div>
