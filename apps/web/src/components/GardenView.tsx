@@ -15,6 +15,7 @@ import { EGG_COUNT, useEggs, useHoliday, useToday } from '../lib/holidays.ts';
 import { celebrate } from '../lib/motion.ts';
 import { useToast } from '../app/toasts.tsx';
 import { EasterEgg, HolidayDecor } from './garden/Holidays.tsx';
+import { findSecret, useSecrets } from '../lib/secrets.ts';
 
 /** The garden (D97): a plant for every entry, in a bed for each month, newest first. */
 
@@ -39,6 +40,7 @@ const TABS: { view?: GardenTab; label: string }[] = [{ label: 'Garden' }, { view
 
 export function GardenView({ garden, view }: { garden: Garden | null; view?: GardenTab }) {
   const prefs = useGardenPrefs();
+  const secrets = useSecrets();
   const [shown, setShown] = useState(BEDS_AT_ONCE);
   const [postcard, setPostcard] = useState<string | null>(null);
   const scene = useRef<HTMLDivElement>(null);
@@ -113,6 +115,7 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
   // Not on the page it would open: a link to where you are would only take focus away.
   const tryIt = fresh.find((f) => f.view && f.view !== view);
   const postcardBed = postcard ? beds.find((b) => b.month === postcard) : undefined;
+  const gnome = secrets.gnome;
 
   return (
     <div className="garden-page">
@@ -200,10 +203,11 @@ export function GardenView({ garden, view }: { garden: Garden | null; view?: Gar
           >
             {rainbow && <div className="garden-rainbow" aria-hidden="true" />}
             {!reduced && !forced && <WeatherLayer weather={weather} night={night} scene={scene} />}
-            <div className="garden-gate" aria-hidden="true">
-              <span>🚪</span>
-              {has(8) && prefs.ornament && <span>{ORNAMENTS[prefs.ornament]}</span>}
-              {biome && <span>{biome.scenery}</span>}
+            <div className="garden-gate">
+              <GardenDoor />
+              {has(8) && prefs.ornament && <span aria-hidden="true">{ORNAMENTS[prefs.ornament]}</span>}
+              {biome && <span aria-hidden="true">{biome.scenery}</span>}
+              {gnome && <Gnome />}
             </div>
             {on(2, 'visitors') && (
               <div className="garden-visitors" aria-hidden="true">
@@ -418,3 +422,49 @@ const Bed = memo(function Bed({
     </section>
   );
 });
+
+/** Knocks on the gate in a row: no more than this long apart. */
+const KNOCK_GAP = 1200;
+
+/** The garden gate: knock three times and someone answers (a secret, D115). */
+function GardenDoor() {
+  const [knocks, setKnocks] = useState(0);
+  const last = useRef(0);
+  return (
+    <button
+      type="button"
+      className="garden-door"
+      aria-label="The garden gate"
+      // Two names for the same rattle, so it plays again on each knock (and the focus stays put).
+      data-knock={knocks ? (knocks % 2 ? 'a' : 'b') : undefined}
+      onClick={() => {
+        const now = performance.now();
+        const n = now - last.current < KNOCK_GAP ? knocks + 1 : 1;
+        last.current = now;
+        if (n >= 3) {
+          setKnocks(0);
+          findSecret('knock');
+        } else setKnocks(n);
+      }}
+    >
+      <span aria-hidden="true">🚪</span>
+    </button>
+  );
+}
+
+/** A garden gnome (a secret's perk, D115): red hat, white beard, blue coat, by the gate. */
+function Gnome() {
+  return (
+    <svg className="garden-gnome" viewBox="0 0 26 36" role="img" aria-label="A garden gnome">
+      <path d="M13 1 4.5 15h17z" fill="#d62f2f" stroke="#8f1b1b" strokeWidth={0.8} strokeLinejoin="round" />
+      <ellipse cx={13} cy={17} rx={6} ry={4.4} fill="#f2c7a5" />
+      <circle cx={13} cy={18.2} r={1.5} fill="#e8957a" />
+      <circle cx={10.6} cy={16.2} r={0.8} fill="#2b2118" />
+      <circle cx={15.4} cy={16.2} r={0.8} fill="#2b2118" />
+      <path d="M7 18.5c0 6 3 9.5 6 9.5s6-3.5 6-9.5c-1.6 1.5-3.6 2.2-6 2.2s-4.4-.7-6-2.2z" fill="#f7f4ee" stroke="#cfc8bb" strokeWidth={0.6} />
+      <path d="M6 25c0 4 1 8 2 9h10c1-1 2-5 2-9-2 2-4.5 3-7 3s-5-1-7-3z" fill="#2f63b8" />
+      <rect x={7} y={33} width={5} height={3} rx={1.2} fill="#5a3b22" />
+      <rect x={14} y={33} width={5} height={3} rx={1.2} fill="#5a3b22" />
+    </svg>
+  );
+}

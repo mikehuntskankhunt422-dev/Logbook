@@ -1,6 +1,7 @@
 import confetti from 'canvas-confetti';
 import { useEffect, useState } from 'react';
 import { gardenPrefs } from './garden-prefs.ts';
+import { secrets } from './secrets.ts';
 
 const QUERY = '(prefers-reduced-motion: reduce)';
 
@@ -39,15 +40,19 @@ export function spring(reduced: boolean) {
 
 const COLORS = ['#ff5f6d', '#ffc371', '#00c6ff', '#8e2de2', '#43e97b', '#f5576c'];
 const PETALS = ['#ffb7c5', '#ff8fab', '#fbcfe8', '#fff0f5', '#f9a8d4', '#fde68a'];
+const GOLD = ['#ffd75e', '#f7c948', '#fff1b8', '#e8a317', '#ffe9a0'];
 
 /** Confetti for real milestones only. Silent when reduced motion is requested. */
 export function celebrate(kind: 'entry' | 'streak' | 'backup' = 'entry'): void {
   if (prefersReducedMotion()) return;
-  // The garden's Petal celebrations perk (D97): soft petals instead of confetti.
+  // A secret's Star celebrations (D115): gold stars; or the garden's Petal celebrations perk (D97):
+  // soft petals instead of confetti.
   const { petals, hidden } = gardenPrefs();
-  const base = petals && !hidden
-    ? { colors: PETALS, shapes: ['circle' as const], scalar: 1.4, gravity: 0.6, drift: 0.4, ticks: 260, disableForReducedMotion: true, zIndex: 80 }
-    : { colors: COLORS, disableForReducedMotion: true, zIndex: 80 };
+  const base = secrets().stars
+    ? { colors: GOLD, shapes: ['star' as const], scalar: 1.3, ticks: 240, disableForReducedMotion: true, zIndex: 80 }
+    : petals && !hidden
+      ? { colors: PETALS, shapes: ['circle' as const], scalar: 1.4, gravity: 0.6, drift: 0.4, ticks: 260, disableForReducedMotion: true, zIndex: 80 }
+      : { colors: COLORS, disableForReducedMotion: true, zIndex: 80 };
   if (kind === 'streak') {
     void confetti({ ...base, particleCount: 140, spread: 90, startVelocity: 45, origin: { y: 0.3 } });
     setTimeout(() => void confetti({ ...base, particleCount: 80, angle: 60, spread: 70, origin: { x: 0, y: 0.6 } }), 180);

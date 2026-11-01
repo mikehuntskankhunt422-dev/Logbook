@@ -4,6 +4,7 @@ import { useJournal } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { useReducedMotion } from '../lib/motion.ts';
 import { readableEntry } from '../lib/reader.ts';
+import { findSecret } from '../lib/secrets.ts';
 import { formatLongDate } from './common.tsx';
 
 /**
@@ -118,6 +119,11 @@ export function BookReader({ id, kind, onClose }: { id: string; kind: 'book' | '
     },
     [at, last, layout.perView, reduced, kind],
   );
+  // A secret (D115): a book (or a folder) of four pages or more read to its last.
+  const ready = opened !== null && opened !== 'missing';
+  useEffect(() => {
+    if (ready && layout.pages >= 4 && at >= last) findSecret('bookworm');
+  }, [ready, layout.pages, at, last]);
   const next = () => turn((going.current ?? at) + layout.perView, 'next');
   const back = () => turn((going.current ?? at) - layout.perView, 'back');
 

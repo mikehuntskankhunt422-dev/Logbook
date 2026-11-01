@@ -34,6 +34,8 @@ export interface Place {
   world: 'library' | 'storage';
   label: string;
   detail: string;
+  /** The gallery's number (0 the first), or in the storage room the aisle's (-1 the corridor). */
+  at: number;
 }
 export interface WorldEvents {
   place(place: Place): void;
@@ -305,8 +307,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       const pair = [racks[2 * place.aisle], racks[2 * place.aisle + 1]];
       const first = pair.map((r) => r?.first).find(Boolean);
       const lastDay = [...pair].reverse().map((r) => r?.last).find(Boolean);
-      events.place({ world: 'storage', label, detail: pos.z > HALL_START ? 'Storage room ahead, the Library behind' : first ? span(first, lastDay) : 'Empty racks, for what’s to come' });
-    } else events.place({ world: 'library', label: roomName(place.room), detail: roomSub(place.room) });
+      events.place({ world: 'storage', label, detail: pos.z > HALL_START ? 'Storage room ahead, the Library behind' : first ? span(first, lastDay) : 'Empty racks, for what’s to come', at: pos.z > HALL_START ? -1 : place.aisle });
+    } else events.place({ world: 'library', label: roomName(place.room), detail: roomSub(place.room), at: place.room });
   }
 
   // ── what you're looking at ──

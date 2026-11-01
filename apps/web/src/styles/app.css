@@ -219,6 +219,21 @@ textarea {
   display: grid;
   place-items: center;
   font-size: 0.9375rem;
+  /* Secrets (D115): each tap in a row turns it an eighth and makes it a little bigger. */
+  transform: rotate(calc(var(--taps, 0) * 45deg)) scale(calc(1 + var(--taps, 0) * 0.05));
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Every secret found: gold, with a glow. */
+.brand-mark[data-gold] {
+  background: linear-gradient(135deg, #f7d774, #c8941a 55%, #fff1b8);
+  color: #3a2700;
+  box-shadow: 0 0 0 2px rgba(247, 215, 116, 0.45), 0 0 14px rgba(247, 200, 80, 0.55);
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark {
+    transform: none;
+    transition: none;
+  }
 }
 
 .nav {
@@ -2760,6 +2775,12 @@ dialog[open]::backdrop {
 :root[data-accent='midnight'] { --accent: #3a3f9e; --accent-ink: #ffffff; --accent-soft: #e3e5ff; }
 :root[data-accent='sakura'] { --accent: #b0476f; --accent-ink: #ffffff; --accent-soft: #fde4ee; }
 :root[data-accent='gold'] { --accent: #8a6200; --accent-ink: #ffffff; --accent-soft: #fbf0d0; }
+/* Arcade colours (a secret's perk, D115): neon magenta with a cyan glow. */
+:root[data-accent='arcade'] { --accent: #a3127a; --accent-ink: #ffffff; --accent-soft: #d9f8ff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-accent='arcade'] { --accent: #ff6ad5; --accent-ink: #2b0420; --accent-soft: #0f3340; }
+}
+:root[data-theme='dark'][data-accent='arcade'] { --accent: #ff6ad5; --accent-ink: #2b0420; --accent-soft: #0f3340; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light'])[data-accent='rose'] { --accent: #ff8fb8; --accent-ink: #2a0c18; --accent-soft: #3b1a27; }
   :root:not([data-theme='light'])[data-accent='lavender'] { --accent: #b9a2ff; --accent-ink: #160d33; --accent-soft: #2a2245; }
@@ -3929,5 +3950,105 @@ dialog.reader-folder {
   }
   .walk-target {
     font-size: 0.8rem;
+  }
+}
+
+/* ── Secrets (D115) ─────────────────────────────────────────────────────────────────────────── */
+.secrets-count {
+  font-size: 1.05rem;
+}
+.secrets-meter {
+  max-width: 420px;
+}
+.secret-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.secret {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-elev);
+}
+.secret[data-found] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.secret-emoji {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  border-radius: 12px;
+  background: var(--bg-sunk);
+  border: 1px dashed var(--ink-faint);
+}
+.secret[data-found] .secret-emoji {
+  border-style: solid;
+  border-color: var(--accent);
+}
+.secret-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.secret-body p {
+  margin: 0;
+}
+.secret-name {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.secret-prize {
+  font-weight: 600;
+}
+.shield-count {
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+/* The garden gate, to knock on (D115), and the gnome who answers. */
+.garden-door {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.garden-door[data-knock='a'] {
+  animation: garden-knock-a 0.28s ease-out;
+}
+.garden-door[data-knock='b'] {
+  animation: garden-knock-b 0.28s ease-out;
+}
+@keyframes garden-knock-a {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(-7deg) translateX(-1px); }
+  65% { transform: rotate(5deg) translateX(1px); }
+}
+@keyframes garden-knock-b {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(-7deg) translateX(-1px); }
+  65% { transform: rotate(5deg) translateX(1px); }
+}
+.garden-gnome {
+  width: 26px;
+  height: 36px;
+  align-self: flex-end;
+}
+@media (prefers-reduced-motion: reduce) {
+  .garden-door[data-knock] {
+    animation: none;
   }
 }

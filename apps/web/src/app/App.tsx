@@ -12,6 +12,8 @@ import { LibraryView } from '../components/LibraryView.tsx';
 import { ClockView } from '../components/ClockView.tsx';
 import { Ringer } from './clock.tsx';
 import { useGarden, useGardenEffects } from './garden.tsx';
+import { Brand, useSecretWatch } from './secrets.tsx';
+import { SecretsView } from '../components/SecretsView.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
 import { useFontLoader } from '../lib/custom-fonts.ts';
@@ -55,6 +57,7 @@ export function App() {
   const gardenHidden = useGardenPrefs().hidden;
   const garden = useGarden(!gardenHidden);
   useGardenEffects(garden);
+  useSecretWatch();
 
   useEffect(() => {
     // Tidy up once per launch: purge 30-day-old trash and media nothing references, and the book
@@ -83,7 +86,7 @@ export function App() {
   const routeKey =
     route.name === 'entry' ? route.id : route.name === 'apps' ? (route.id ?? '') : route.name === 'library' ? (route.view ?? '') : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', library: 'Library · Logbook', apps: 'Apps · Logbook', copies: 'Copies to sort out · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', library: 'Library · Logbook', apps: 'Apps · Logbook', copies: 'Copies to sort out · Logbook', secrets: 'Secrets · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -103,19 +106,15 @@ export function App() {
       </>
     );
 
-  const section = route.name === 'entry' || route.name === 'new' ? 'home' : route.name;
+  // The Secrets page is reached from Settings.
+  const section = route.name === 'entry' || route.name === 'new' ? 'home' : route.name === 'secrets' ? 'settings' : route.name;
   return (
     <div className="app">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <header className="topbar">
-        <a className="brand" href={href({ name: 'home' })}>
-          <span className="brand-mark" aria-hidden="true">
-            ✦
-          </span>
-          Logbook
-        </a>
+        <Brand />
         <StreakBadge />
         {holiday && (
           <span className="holiday-badge" role="img" aria-label={holiday.greeting} title={holiday.greeting}>
@@ -161,6 +160,7 @@ export function App() {
           {route.name === 'library' && <LibraryView view={route.view} />}
           {route.name === 'settings' && <SettingsView />}
           {route.name === 'apps' && <AppsView id={route.id} />}
+          {route.name === 'secrets' && <SecretsView />}
         </div>
       </main>
       {/* Not over an app (D111) or the Library you walk through (D113), whose own buttons may be there. */}

@@ -3,6 +3,8 @@ import { FONTS, HOLIDAYS, fontFor, fontStackFor, BackupError, MIN_PASSCODE_LENGT
 import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb';
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
+import { foundCount, SECRETS, useSecrets } from '../lib/secrets.ts';
+import { href } from '../app/router.ts';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { BACKUP_DONE, backupToFolder, downloadBackup, forgetFolder, pickFile, rememberedFolderName, supportsFolderBackup } from '../lib/backup-io.ts';
@@ -40,6 +42,7 @@ export function SettingsView() {
     <>
       <h1>Settings</h1>
       <AppearancePanel />
+      <SecretsPanel />
       {AppIconPanel && (
         <Suspense fallback={null}>
           <AppIconPanel />
@@ -70,6 +73,24 @@ export function SettingsView() {
       <TrashPanel />
       <DangerPanel />
     </>
+  );
+}
+
+/** The secrets hidden around Logbook (D115): how many are found, and the way to their page. */
+function SecretsPanel() {
+  const state = useSecrets();
+  const n = foundCount(state);
+  return (
+    <section className="panel" aria-labelledby="secrets-h">
+      <h2 id="secrets-h">🥚 Secrets</h2>
+      <p>
+        {n === 0 ? `There are ${SECRETS.length} secrets hidden around Logbook, each with a new perk or a reward.` : `You’ve found ${n} of the ${SECRETS.length} secrets hidden around Logbook.`}{' '}
+        {state.shields > 0 && `🛡️ ${state.shields} streak ${state.shields === 1 ? 'shield' : 'shields'}.`}
+      </p>
+      <a className="btn" href={href({ name: 'secrets' })}>
+        {n === 0 ? 'See where to look' : 'See your secrets'}
+      </a>
+    </section>
   );
 }
 

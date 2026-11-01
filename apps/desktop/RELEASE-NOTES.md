@@ -1,3 +1,7 @@
+**Secrets.** Logbook now has eight secrets hidden around it, to find by poking about: in the Library, the garden, the clock, search and a few other places. Each one gives you either a **new perk** (star celebrations, arcade colours, a garden gnome or stranger writing prompts) or a **reward**: **streak shields**. If you miss a day, a shield keeps your writing streak going by itself, one shield for each day missed. Find all eight and the ✦ by Logbook's name turns gold, with three more shields. **Settings → Secrets** has a hint for each one, and lets you switch perks on and off.
+
+What came in 0.9.10:
+
 **Full screen in the Library.** The new **⛶** button beside **?** fills your whole screen with the Library, for walking through it without the rest of Logbook around it. Press **Esc** or **✕** to come back.
 
 **Fixed:** a blue outline no longer appears round the Library when you open it, click in it or drag to look around. It shows only when you move to it with the Tab key.

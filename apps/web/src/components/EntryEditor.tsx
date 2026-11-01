@@ -25,6 +25,7 @@ import { useJournal } from '../app/journal-context.tsx';
 import { navigate, parseHash } from '../app/router.ts';
 import { useToast } from '../app/toasts.tsx';
 import { canCompressVideo, compressVideo, importFile } from '../lib/media-import.ts';
+import { secrets } from '../lib/secrets.ts';
 import { onFlush, trackWork } from '../lib/pending-saves.ts';
 import { celebrate, useReducedMotion } from '../lib/motion.ts';
 import { isDesktop } from '../lib/platform.ts';
@@ -215,8 +216,10 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
 
   function celebrateFirstSave(datesBefore: string[], date: string) {
     if (date !== today()) return;
-    const before = computeStreak(datesBefore, today());
-    const after = computeStreak([...datesBefore, date], today());
+    // Over days streak shields covered too (D115).
+    const { shielded } = secrets();
+    const before = computeStreak(datesBefore, today(), shielded);
+    const after = computeStreak([...datesBefore, date], today(), shielded);
     if (after.current > before.current && STREAK_MILESTONES.includes(after.current)) {
       celebrate('streak');
       toast(`🔥 ${after.current}-day streak! Keep it going.`);

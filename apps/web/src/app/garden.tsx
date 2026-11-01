@@ -4,6 +4,7 @@ import { useJournal } from './journal-context.tsx';
 import { useToast } from './toasts.tsx';
 import { celebrate } from '../lib/motion.ts';
 import { gardenPrefs, listed, noteUpdate, rankUpNews, setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
+import { useSecrets } from '../lib/secrets.ts';
 
 /** Each entry's words, worked out once per saved version, so a save only re-reads that entry. */
 const cache: GardenCache = new Map();
@@ -39,19 +40,21 @@ export function useGarden(enabled: boolean): Garden | null {
 }
 
 /**
- * App-wide: the chosen garden colour, and a word when the garden reaches a new tier or ring
+ * App-wide: the chosen garden colour (or a secret's Arcade colours, D115), and a word when the garden reaches a new tier or ring
  * ("your garden reached Rare"), with its perk.
  */
 export function useGardenEffects(garden: Garden | null): void {
   const prefs = useGardenPrefs();
+  const arcade = useSecrets().arcade;
   const toast = useToast();
 
   useEffect(() => {
     const root = document.documentElement;
-    // Hiding the garden puts its colour away too.
-    if (prefs.accent && !prefs.hidden) root.setAttribute('data-accent', prefs.accent);
+    // Hiding the garden puts its colour away too; a secret's colours aren't the garden's.
+    const accent = arcade ? 'arcade' : !prefs.hidden && prefs.accent;
+    if (accent) root.setAttribute('data-accent', accent);
     else root.removeAttribute('data-accent');
-  }, [prefs.accent, prefs.hidden]);
+  }, [prefs.accent, prefs.hidden, arcade]);
 
   const level = garden ? garden.rank.tier * 1000 + garden.rank.ring : -1;
   useEffect(() => {

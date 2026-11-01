@@ -5,6 +5,7 @@ import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
 import { expiresIn } from '../lib/expiry.ts';
+import { useSecrets } from '../lib/secrets.ts';
 
 export function formatLongDate(iso: string, opts: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }): string {
   return parseIsoDate(iso).toLocaleDateString(undefined, opts);
@@ -70,13 +71,17 @@ export function Highlight({ text, terms }: { text: string; terms: string[] }) {
   return <>{parts.map((p, i) => (i % 2 ? <mark key={i}>{p}</mark> : p))}</>;
 }
 
+/** The writing streak, carried over days streak shields covered (D115). */
 export function useStreak() {
   const { entries } = useJournal();
-  return useMemo(() => computeStreak(entries.map((e) => e.date), today()), [entries]);
+  const { shielded } = useSecrets();
+  return useMemo(() => computeStreak(entries.map((e) => e.date), today(), shielded), [entries, shielded]);
 }
 
 export function StreakBadge() {
   const streak = useStreak();
+  const { shields } = useSecrets();
+  const kept = shields ? ` ${shields === 1 ? '1 streak shield' : `${shields} streak shields`}.` : '';
   const reduced = useReducedMotion();
   const label = streak.current === 1 ? '1 day writing streak' : `${streak.current} day writing streak`;
   return (
@@ -87,11 +92,11 @@ export function StreakBadge() {
       initial={reduced ? false : { scale: 0.6 }}
       animate={{ scale: 1 }}
       transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 600, damping: 12 }}
-      title={`Longest streak: ${streak.longest} days`}
+      title={`Longest streak: ${streak.longest} days${shields ? ` · 🛡️ ${shields}` : ''}`}
     >
       <span aria-hidden="true">{streak.current > 0 ? '🔥' : '🪵'}</span>
       <span aria-hidden="true">{streak.current}</span>
-      <span className="sr-only">{`${label}. Longest: ${streak.longest} days.`}</span>
+      <span className="sr-only">{`${label}. Longest: ${streak.longest} days.${kept}`}</span>
     </motion.span>
   );
 }
