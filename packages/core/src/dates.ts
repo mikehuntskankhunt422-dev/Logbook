@@ -31,28 +31,49 @@ export interface Streak {
 /**
  * A streak is a run of consecutive days with at least one entry. The current streak stays alive
  * until the end of today: if you wrote yesterday but not yet today, it still counts.
+ *
+ * `shielded` days (D115) are days a streak shield covered: they carry a streak over a day with
+ * nothing written without adding to it.
  */
-export function computeStreak(dates: Iterable<string>, todayIso: string): Streak {
+export function computeStreak(dates: Iterable<string>, todayIso: string, shielded: Iterable<string> = []): Streak {
   const days = new Set(dates);
+  const covered = new Set([...shielded].filter((d) => !days.has(d)));
+  const kept = (d: string) => days.has(d) || covered.has(d);
   const wroteToday = days.has(todayIso);
   let current = 0;
   let cursor = wroteToday ? todayIso : addDays(todayIso, -1);
-  while (days.has(cursor)) {
-    current++;
+  while (kept(cursor)) {
+    if (days.has(cursor)) current++;
     cursor = addDays(cursor, -1);
   }
   let longest = 0;
-  for (const d of days) {
-    if (days.has(addDays(d, -1))) continue; // not the start of a run
+  for (const d of [...days, ...covered]) {
+    if (kept(addDays(d, -1))) continue; // not the start of a run
     let len = 0;
-    let c = d;
-    while (days.has(c)) {
-      len++;
-      c = addDays(c, 1);
-    }
+    for (let c = d; kept(c); c = addDays(c, 1)) if (days.has(c)) len++;
     longest = Math.max(longest, len);
   }
   return { current, longest, wroteToday };
+}
+
+/**
+ * The days streak shields would have to cover to keep a streak going (D115): with nothing written
+ * today or yesterday, every day missed since the last one kept, when that day ended a streak of at
+ * least `least` days. Empty while the streak is alive, or with none worth keeping.
+ */
+export function missedDays(dates: Iterable<string>, todayIso: string, shielded: Iterable<string> = [], least = 2): string[] {
+  const days = new Set(dates);
+  const covered = new Set(shielded);
+  const yesterday = addDays(todayIso, -1);
+  if (days.has(todayIso) || days.has(yesterday) || covered.has(yesterday)) return [];
+  let last: string | undefined;
+  for (const d of [...days, ...covered]) if (d < yesterday && (!last || d > last)) last = d;
+  if (!last) return [];
+  // The streak as it stood the day after its last day.
+  if (computeStreak(days, addDays(last, 1), covered).current < least) return [];
+  const out: string[] = [];
+  for (let d = addDays(last, 1); d <= yesterday; d = addDays(d, 1)) out.push(d);
+  return out;
 }
 
 export const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 200, 365, 500, 1000];

@@ -3,6 +3,7 @@ import { archiveRacks, entrance, libraryRooms, spotForBook, spotForFolder, today
 import { useReducedMotion } from '../lib/motion.ts';
 import type { Place, Target, World } from '../world/engine.ts';
 import { canWalk } from '../world/support.ts';
+import { BOOK_OF_SAND_GALLERIES, findSecret, LAST_FOLDER_AISLES } from '../lib/secrets.ts';
 import { formatLongDate } from './common.tsx';
 
 /**
@@ -172,6 +173,12 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   }, []);
 
   useEffect(() => world.current?.setContent(rooms, racks), [rooms, racks]);
+  // Secrets (D115), far past the last book and the last folder.
+  useEffect(() => {
+    if (!place) return;
+    if (place.world === 'library' && place.at >= rooms.length + BOOK_OF_SAND_GALLERIES - 1) findSecret('sand');
+    if (place.world === 'storage' && place.at >= Math.ceil(racks.length / 2) + LAST_FOLDER_AISLES - 1) findSecret('lastfolder');
+  }, [place, rooms.length, racks.length]);
   useEffect(() => world.current?.setPaused(reading), [reading]);
 
   if (state === 'unsupported')

@@ -18,7 +18,9 @@ export type Route =
   /** Your own apps (D111), or one of them open. */
   | { name: 'apps'; id?: string }
   /** Copies a sync service left in the desktop app's journal folder, to sort out (D102). */
-  | { name: 'copies' };
+  | { name: 'copies' }
+  /** The secrets hidden around Logbook (D115): what's found, where to look, and the perks and shields they gave. */
+  | { name: 'secrets' };
 
 export function parseHash(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
@@ -47,6 +49,8 @@ export function parseHash(hash: string): Route {
       return seg[1] ? { name: 'apps', id: decodeURIComponent(seg[1]) } : { name: 'apps' };
     case 'copies':
       return { name: 'copies' };
+    case 'secrets':
+      return { name: 'secrets' };
     default:
       return { name: 'home' };
   }
@@ -78,6 +82,8 @@ export function href(route: Route): string {
       return route.id ? `#/apps/${encodeURIComponent(route.id)}` : '#/apps';
     case 'copies':
       return '#/copies';
+    case 'secrets':
+      return '#/secrets';
   }
 }
 

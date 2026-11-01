@@ -47,15 +47,32 @@ export const PROMPTS: readonly string[] = [
   'What’s the weather like, outside and inside you?',
 ];
 
+/** Curious prompts (D115), a secret's perk: stranger questions, among the usual ones once it's on. */
+export const CURIOUS_PROMPTS: readonly string[] = [
+  'If today were a weather forecast, what would tomorrow’s say?',
+  'What would you put in a time capsule to open in ten years?',
+  'Describe the room you’re in as a detective arriving at the scene would.',
+  'Write today’s story in exactly six words.',
+  'What would a houseplant, a pet or your phone write about you today?',
+  'If you could ask your future self one question, what would it be?',
+  'What rule would you add to the world, and why?',
+  'Which smell takes you straight back somewhere? Where?',
+  'Invent a holiday. What do people do on it?',
+  'What would you do with a free, empty day and no phone?',
+  'Write a thank-you note to something that isn’t a person.',
+  'What tiny thing would you be in charge of, if you were in charge of one tiny thing?',
+];
+
 /**
  * Today's prompt, or another (`turn` steps through the list). On a holiday's day itself (D108), its
- * own prompts come first.
+ * own prompts come first; `curious` adds the Curious prompts.
  */
-export function promptFor(date: string, turn = 0, special: readonly string[] = []): string {
+export function promptFor(date: string, turn = 0, special: readonly string[] = [], curious = false): string {
   if (turn < special.length) return special[turn]!;
+  const pool = curious ? [...PROMPTS, ...CURIOUS_PROMPTS] : PROMPTS;
   let h = 0;
   for (const c of date) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return PROMPTS[(h + (turn - special.length) * 7) % PROMPTS.length]!;
+  return pool[(h + (turn - special.length) * 7) % pool.length]!;
 }
 
 const KEY = 'logbook.prompts';

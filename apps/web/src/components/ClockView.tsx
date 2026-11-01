@@ -6,6 +6,7 @@ import { primeSound } from '../lib/chime.ts';
 import { notifyPermission, type NotifyPermission } from '../lib/clock-native.ts';
 import { isAndroid, isApp } from '../lib/platform.ts';
 import { useHoliday } from '../lib/holidays.ts';
+import { findSecret } from '../lib/secrets.ts';
 
 /** The clock (D92): alarms, a timer and a stopwatch, like a phone's clock app. */
 
@@ -340,7 +341,12 @@ function Stopwatch() {
   const elapsed = running ? now - sw.startedAt! : sw.elapsedMs;
 
   const start = () => update((c) => ({ ...c, stopwatch: { ...c.stopwatch, startedAt: Date.now() - c.stopwatch.elapsedMs } }));
-  const stop = () => update((c) => ({ ...c, stopwatch: { ...c.stopwatch, elapsedMs: Date.now() - (c.stopwatch.startedAt ?? Date.now()), startedAt: null } }));
+  const stop = () => {
+    const at = Date.now();
+    update((c) => ({ ...c, stopwatch: { ...c.stopwatch, elapsedMs: at - (c.stopwatch.startedAt ?? at), startedAt: null } }));
+    // A secret (D115): stopped showing exactly 0:10.00.
+    if (sw.startedAt !== null && Math.floor((at - sw.startedAt) / 10) === 1000) findSecret('spoton');
+  };
   const lap = () => update((c) => ({ ...c, stopwatch: { ...c.stopwatch, laps: [...c.stopwatch.laps, Date.now() - (c.stopwatch.startedAt ?? Date.now())] } }));
   const reset = () => update((c) => ({ ...c, stopwatch: { startedAt: null, elapsedMs: 0, laps: [] } }));
 

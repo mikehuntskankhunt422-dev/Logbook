@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, computeStreak, heatLevel, monthGrid, onThisDayDates, toIsoDate } from '../src/dates.ts';
+import { addDays, computeStreak, heatLevel, missedDays, monthGrid, onThisDayDates, toIsoDate } from '../src/dates.ts';
 
 describe('computeStreak', () => {
   it('is zero with no entries', () => {
@@ -27,6 +27,44 @@ describe('computeStreak', () => {
 
   it('crosses month and year boundaries', () => {
     expect(computeStreak(['2025-12-31', '2026-01-01'], '2026-01-01').current).toBe(2);
+  });
+});
+
+describe('streak shields (D115)', () => {
+  const run = ['2026-10-01', '2026-10-02', '2026-10-03'];
+
+  it('carry a streak over a missed day without adding to it', () => {
+    expect(computeStreak(run, '2026-10-05').current).toBe(0);
+    expect(computeStreak(run, '2026-10-05', ['2026-10-04'])).toEqual({ current: 3, longest: 3, wroteToday: false });
+    // Writing again carries on from there.
+    expect(computeStreak([...run, '2026-10-05'], '2026-10-05', ['2026-10-04'])).toEqual({ current: 4, longest: 4, wroteToday: true });
+    // Two missed days need two shields.
+    expect(computeStreak(run, '2026-10-06', ['2026-10-04']).current).toBe(0);
+    expect(computeStreak(run, '2026-10-06', ['2026-10-04', '2026-10-05']).current).toBe(3);
+  });
+
+  it('join runs for the longest streak, and count for nothing on their own or on a day with an entry', () => {
+    expect(computeStreak(['2026-09-01', '2026-09-02', '2026-09-04'], '2026-10-07', ['2026-09-03']).longest).toBe(3);
+    expect(computeStreak([], '2026-10-07', ['2026-10-05', '2026-10-06'])).toEqual({ current: 0, longest: 0, wroteToday: false });
+    expect(computeStreak(run, '2026-10-03', ['2026-10-02'])).toEqual({ current: 3, longest: 3, wroteToday: true });
+  });
+
+  it('are needed only once yesterday has nothing, for every day missed since the streak’s last day', () => {
+    expect(missedDays(run, '2026-10-04')).toEqual([]);
+    expect(missedDays([...run, '2026-10-04'], '2026-10-04')).toEqual([]);
+    expect(missedDays(run, '2026-10-05')).toEqual(['2026-10-04']);
+    expect(missedDays(run, '2026-10-07')).toEqual(['2026-10-04', '2026-10-05', '2026-10-06']);
+    // Already covered: a day further on needs one more.
+    expect(missedDays(run, '2026-10-05', ['2026-10-04'])).toEqual([]);
+    expect(missedDays(run, '2026-10-06', ['2026-10-04'])).toEqual(['2026-10-05']);
+  });
+
+  it('aren’t spent on a streak of a single day, on none at all, or across months for an entry dated ahead', () => {
+    expect(missedDays(['2026-10-03'], '2026-10-05')).toEqual([]);
+    expect(missedDays(['2026-10-03'], '2026-10-05', [], 1)).toEqual(['2026-10-04']);
+    expect(missedDays([], '2026-10-05')).toEqual([]);
+    expect(missedDays([...run, '2026-12-25'], '2026-10-05')).toEqual(['2026-10-04']);
+    expect(missedDays(['2026-09-30', '2026-10-01'], '2026-10-03')).toEqual(['2026-10-02']);
   });
 });
 

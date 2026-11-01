@@ -6,6 +6,7 @@ import { importFile } from '../lib/media-import.ts';
 import { trackWork } from '../lib/pending-saves.ts';
 import { formatExpiry } from '../lib/expiry.ts';
 import { promptFor } from '../lib/prompts.ts';
+import { useSecrets } from '../lib/secrets.ts';
 import { useHolidayFor } from '../lib/holidays.ts';
 import { useMediaMeta } from './blocks.tsx';
 
@@ -377,8 +378,9 @@ export function PromptCard({ date, onUse }: { date: string; onUse: (prompt: stri
   const [turn, setTurn] = useState(0);
   const [hidden, setHidden] = useState(false);
   const holiday = useHolidayFor(date);
+  const curious = useSecrets().curious;
   if (hidden) return null;
-  const prompt = promptFor(date, turn, holiday?.prompts);
+  const prompt = promptFor(date, turn, holiday?.prompts, curious);
   return (
     <div className="prompt-card" role="group" aria-label="Writing prompt">
       <p className="prompt-text" key={prompt} aria-live="polite">

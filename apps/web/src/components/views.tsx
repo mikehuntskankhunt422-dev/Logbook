@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { addDays, entryWordCount, heatLevel, monthGrid, onThisDayDates, parseIsoDate, tagCounts, toIsoDate, today, yearsAgo, type Entry } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { href, navigate } from '../app/router.ts';
 import { EntryCard, formatLongDate, useStreak } from './common.tsx';
 import { ExportDialog } from './ExportPanel.tsx';
+import { findSecret, isTheAnswer } from '../lib/secrets.ts';
 
 // ── timeline ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -305,6 +306,12 @@ export function SearchView({ tag }: { tag?: string }) {
   }, [q, activeTag, entries, search]);
   const filtering = q.trim() || activeTag;
   const [exporting, setExporting] = useState(false);
+  // A secret (D115): searching for the answer to life, the universe and everything, once it's typed.
+  useEffect(() => {
+    if (!isTheAnswer(q)) return;
+    const timer = setTimeout(() => findSecret('panic'), 600);
+    return () => clearTimeout(timer);
+  }, [q]);
 
   return (
     <>
