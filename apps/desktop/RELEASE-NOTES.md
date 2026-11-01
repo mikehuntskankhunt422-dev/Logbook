@@ -1,3 +1,9 @@
+**Look around with the mouse in full screen.** In the Library's full screen, moving the mouse now turns the view, like a game, without holding a button. The circle in the middle is your cursor: click to read the book or talk to the person it's on. **Esc** gives you your cursor back, and a click on the view takes it again. Outside full screen, nothing changes.
+
+**Fixed:** surfaces in the Library no longer flicker through each other: the storage room's doorway, the hall's walls, floor and ceiling, the rug, and the backs of the bookcases and racks.
+
+What came in 0.9.12:
+
 **People in the Library.** The **Librarian** stands in the first gallery and the **Clerk** in the storage room. Walk up to one and press Enter, or click or tap them, to talk. Ask how much you've written, about your longest book or what you were writing a year ago, and they'll take you to it. It's free and stays on your device. With an **Anthropic API key** of your own (**Settings → AI characters**), you can also type anything to them and Claude answers in character. Only what you type, and your library's numbers (titles too if you allow it), are sent. Your entries' words never are.
 
 **Horror, if you want it.** **⚙️** in the Library has a **Horror** setting: **Off** (as it starts), **Unsettling** or **Intense**. With it on, **The Unwritten** walks the empty galleries past your newest book and the far end of the storage room: too tall, in a long black coat, with a blank page for a face. It only moves while you aren't looking at it, and it never comes where your writing is. On Intense, if it reaches you, there's a jump scare. Read about everyone first in the new **📖 Encyclopedia** tab.

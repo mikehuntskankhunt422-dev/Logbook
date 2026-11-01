@@ -23,7 +23,7 @@ export interface CastMember {
 const facing = (x: number, z: number, tx: number, tz: number) => Math.atan2(-(tx - x), -(tz - z));
 
 export const CAST: readonly CastMember[] = [
-  // In the first gallery, to the left of the way through, looking at the door you come in by.
+  // In the first gallery, to the right of the way through as you come in, looking at that door.
   { id: 'librarian', name: 'The Librarian', x: -1.4, z: 0.6, yaw: facing(-1.4, 0.6, 0, -2.9) },
   // A little way into the storage room, on the left, looking at its door.
   { id: 'clerk', name: 'The Clerk', x: -2.4, z: HALL_START - 3.2, yaw: facing(-2.4, HALL_START - 3.2, 0, HALL_START - 0.8) },
