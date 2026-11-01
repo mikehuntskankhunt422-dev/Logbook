@@ -12,6 +12,8 @@ export type Route =
   | { name: 'search'; tag?: string }
   | { name: 'clock' }
   | { name: 'garden'; view?: GardenTab }
+  /** Every entry a book (D112). */
+  | { name: 'library' }
   | { name: 'settings' }
   /** Your own apps (D111), or one of them open. */
   | { name: 'apps'; id?: string }
@@ -37,6 +39,8 @@ export function parseHash(hash: string): Route {
       return { name: 'clock' };
     case 'garden':
       return seg[1] === 'herbarium' || seg[1] === 'almanac' ? { name: 'garden', view: seg[1] } : { name: 'garden' };
+    case 'library':
+      return { name: 'library' };
     case 'settings':
       return { name: 'settings' };
     case 'apps':
@@ -66,6 +70,8 @@ export function href(route: Route): string {
       return '#/clock';
     case 'garden':
       return route.view ? `#/garden/${route.view}` : '#/garden';
+    case 'library':
+      return '#/library';
     case 'settings':
       return '#/settings';
     case 'apps':

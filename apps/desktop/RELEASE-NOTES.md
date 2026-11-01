@@ -1,3 +1,7 @@
+**The Library.** The new **📚 Library** page turns every entry you've written into a book on a shelf: the more you wrote, the thicker the book, and a very long entry stands taller. Its colour is its mood, its title runs down the spine and its day is at the foot. Each month has its own shelf and each year its own gallery, and past your newest book the empty shelves go on for good, with room for everything you'll write. Tap a book to open its entry; **Go to it** and **Newest book** find your way.
+
+What came in 0.9.7:
+
 **Your own apps.** The new **🧩 Apps** page runs apps of your own in Logbook: a calculator, a tracker, a game. Paste an app's code, or open its file: a web page written in HTML, CSS and JavaScript, like the apps Claude or Grok write. Each app runs walled off from your journal: it can't see your entries, your files or Logbook's settings. It can use the internet, and what it saves is kept in your journal, so it goes with it to your other computers and into backups. **Edit code**, **Rename** and **Delete** are beside each app.
 
 What came in 0.9.6:
