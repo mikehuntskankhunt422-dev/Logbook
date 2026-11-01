@@ -3,7 +3,6 @@ import {
   BOOK_DEPTH,
   CASE_HEIGHT,
   CASE_WIDTH,
-  CORRIDOR,
   DOOR_HEIGHT,
   DOOR_WIDTH,
   FOLDER_DEPTH,
@@ -48,6 +47,9 @@ const neg = (a: V): V => [-a[0], -a[1], -a[2]];
 /** (up × t) · n: positive when facing along n, t is to your right, as every box needs. */
 const rightHanded = (t: V, n: V) => t[2] * n[0] - t[0] * n[2] > 0;
 
+/** A box's sides, as `Boxes.add` names them: its front faces -n, its back n, its top up. */
+export type Side = 'front' | 'back' | 'right' | 'left' | 'top' | 'bottom';
+
 /** Boxes, batched: 24 corners and 12 triangles each, in the order added (so a triangle says its box). */
 export class Boxes {
   private pos: number[] = [];
@@ -59,11 +61,15 @@ export class Boxes {
   /**
    * A box centred at `c`, `w` wide along `t`, `h` tall, `d` deep along `n` (into the wall). Its
    * front (facing -n, what you see) shows `front` of the texture; every other side shows `rest`.
+   * `only` draws just those sides (D117): a long run of walls, floors or ceilings made of boxes end
+   * to end, each drawing only the side you see, has no ends lying in its neighbours' surfaces to
+   * flicker through them. (Every side is still counted, so a triangle still says its box.)
    */
-  add(c: V, t: V, n: V, w: number, h: number, d: number, front: Rect = NONE, rest: Rect = NONE): void {
+  add(c: V, t: V, n: V, w: number, h: number, d: number, front: Rect = NONE, rest: Rect = NONE, only?: readonly Side[]): void {
     // A box is the same box either way round; turned so every face winds (and is lit) outwards.
     if (!rightHanded(t, n)) t = neg(t);
-    const face = (normal: V, a: V, b: V, ha: number, hb: number, half: number, r: Rect) => {
+    const face = (normal: V, a: V, b: V, ha: number, hb: number, half: number, r: Rect, side: Side) => {
+      if (only && !only.includes(side)) return;
       const base = this.pos.length / 3;
       const centre = add(c, normal, half);
       const corners: [number, number, number, number][] = [
@@ -81,12 +87,12 @@ export class Boxes {
       this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     };
     // (a × b = normal for each, so every face winds outwards.)
-    face(neg(n), t, UP, w / 2, h / 2, d / 2, front);
-    face(n, neg(t), UP, w / 2, h / 2, d / 2, rest);
-    face(t, n, UP, d / 2, h / 2, w / 2, rest);
-    face(neg(t), neg(n), UP, d / 2, h / 2, w / 2, rest);
-    face(UP, t, n, w / 2, d / 2, h / 2, rest);
-    face(neg(UP), t, neg(n), w / 2, d / 2, h / 2, rest);
+    face(neg(n), t, UP, w / 2, h / 2, d / 2, front, 'front');
+    face(n, neg(t), UP, w / 2, h / 2, d / 2, rest, 'back');
+    face(t, n, UP, d / 2, h / 2, w / 2, rest, 'right');
+    face(neg(t), neg(n), UP, d / 2, h / 2, w / 2, rest, 'left');
+    face(UP, t, n, w / 2, d / 2, h / 2, rest, 'top');
+    face(neg(UP), t, neg(n), w / 2, d / 2, h / 2, rest, 'bottom');
     this.count++;
   }
 
@@ -132,9 +138,12 @@ export function galleryShell(): GalleryShell {
   const walls = new Boxes();
   const cases = new Boxes();
   const shelves = new Boxes();
-  const thick = 0.2;
+  // Each wall reaches a centimetre into the room, so where two galleries' doorway walls meet
+  // back to back their jambs overlap (the same wood, the same plane) instead of meeting edge to
+  // edge, where a crack can open (D117).
+  const thick = 0.21;
   for (let side = 0; side < 6; side++) {
-    const s = gallerySide(0, side, -thick / 2);
+    const s = gallerySide(0, side, -(thick / 2 - 0.01));
     const n: V = [s.nx, 0, s.nz];
     const t: V = [s.tx, 0, s.tz];
     const mid: V = [s.x, 0, s.z];
@@ -156,8 +165,9 @@ export function galleryShell(): GalleryShell {
     const t: V = [s.tx, 0, s.tz];
     const back: V = add([s.x, 0, s.z], n, SHELF_DEPTH);
     const front: V = [s.x, 0, s.z];
-    // Back board, sides, top, plinth, and a shelf under each row of books.
-    cases.add([back[0] - n[0] * 0.01, CASE_HEIGHT / 2, back[2] - n[2] * 0.01], t, n, CASE_WIDTH, CASE_HEIGHT, 0.02);
+    // Back board, sides, top, plinth, and a shelf under each row of books. (The back board stands
+    // a few centimetres off the wall, so the two never fight over the same depth.)
+    cases.add([back[0] - n[0] * 0.05, CASE_HEIGHT / 2, back[2] - n[2] * 0.05], t, n, CASE_WIDTH, CASE_HEIGHT, 0.02);
     for (const k of [-1, 1]) {
       const at = add(add(front, n, SHELF_DEPTH / 2), t, k * (CASE_WIDTH / 2 - 0.02));
       cases.add([at[0], CASE_HEIGHT / 2, at[2]], t, n, 0.04, CASE_HEIGHT, SHELF_DEPTH);
@@ -176,7 +186,8 @@ export function galleryShell(): GalleryShell {
     cases: cases.geometry(),
     shelves: shelves.geometry(),
     floor: hexagon(ROOM_SIDE + 0.2, 0, 'up'),
-    rug: hexagon(ROOM_APOTHEM - 1.2, 0.005, 'up'),
+    // A centimetre up, and drawn as if nearer still (engine), so it never flickers into the floor.
+    rug: hexagon(ROOM_APOTHEM - 1.2, 0.01, 'up'),
     ceiling: hexagon(ROOM_SIDE + 0.2, WALL_HEIGHT, 'down'),
     lamp,
     chain: chain.geometry(),
@@ -232,12 +243,15 @@ export interface AisleShell {
 
 /** One length of the hall with a rack either side, the same for every pair, centred on z = 0. */
 export function aisleShell(): AisleShell {
+  // Only the sides you see, each a little longer than its length so the next one overlaps it in
+  // the same plane, the floor and ceiling running under and over the walls, and the walls into
+  // them: no ends to flicker, no edges to crack (D117).
   const floor = new Boxes();
-  floor.add([0, -0.05, 0], [1, 0, 0], [0, 0, 1], HALL_WIDTH, 0.1, RACK_LENGTH + 0.01);
+  floor.add([0, -0.05, 0], [1, 0, 0], [0, 0, 1], HALL_WIDTH + 0.4, 0.1, RACK_LENGTH + 0.01, NONE, NONE, ['top']);
   const ceiling = new Boxes();
-  ceiling.add([0, HALL_HEIGHT + 0.05, 0], [1, 0, 0], [0, 0, 1], HALL_WIDTH, 0.1, RACK_LENGTH + 0.01);
+  ceiling.add([0, HALL_HEIGHT + 0.05, 0], [1, 0, 0], [0, 0, 1], HALL_WIDTH + 0.4, 0.1, RACK_LENGTH + 0.01, NONE, NONE, ['bottom']);
   const walls = new Boxes();
-  for (const k of [-1, 1]) walls.add([k * (HALL_WIDTH / 2 + 0.1), HALL_HEIGHT / 2, 0], [0, 0, 1], [k, 0, 0], RACK_LENGTH + 0.01, HALL_HEIGHT, 0.2);
+  for (const k of [-1, 1]) walls.add([k * (HALL_WIDTH / 2 + 0.1), HALL_HEIGHT / 2, 0], [0, 0, 1], [k, 0, 0], RACK_LENGTH + 0.01, HALL_HEIGHT + 0.2, 0.2, NONE, NONE, ['front']);
   const racks = new Boxes();
   for (const index of [0, 1]) {
     const f = rackFront(index);
@@ -245,7 +259,8 @@ export function aisleShell(): AisleShell {
     const t: V = [0, 0, f.tz];
     const mid: V = [f.x + f.nx * (RACK_DEPTH / 2), 0, 0];
     for (const k of [-1, 1]) racks.add([mid[0], RACK_HEIGHT / 2, k * (RACK_LENGTH / 2 - 0.03)], t, n, 0.05, RACK_HEIGHT, RACK_DEPTH);
-    racks.add([mid[0] + f.nx * (RACK_DEPTH / 2 - 0.01), RACK_HEIGHT / 2, 0], t, n, RACK_LENGTH - 0.06, RACK_HEIGHT, 0.015);
+    // The back panel, a few centimetres off the wall (never the same depth as it).
+    racks.add([mid[0] + f.nx * (RACK_DEPTH / 2 - 0.04), RACK_HEIGHT / 2, 0], t, n, RACK_LENGTH - 0.06, RACK_HEIGHT, 0.015);
     for (const y of RACK_SHELVES) racks.add([mid[0], y - 0.01, 0], t, n, RACK_LENGTH - 0.06, 0.02, RACK_DEPTH);
     racks.add([mid[0], RACK_HEIGHT, 0], t, n, RACK_LENGTH, 0.03, RACK_DEPTH);
   }
@@ -277,22 +292,37 @@ export function folderRack(shelves: RackThing[][], index: number): Shelved | nul
   return { geometry: boxes.geometry(), items, n };
 }
 
-/** The corridor from the first gallery's back door to the storage room, and the hall inside its door. */
-export function corridorShell(): { walls: THREE.BufferGeometry; floor: THREE.BufferGeometry; hall: THREE.BufferGeometry } {
-  const zMid = -ROOM_APOTHEM - CORRIDOR / 2;
+/**
+ * The corridor from the first gallery's back door to the storage room, and the hall inside its door.
+ * Where two materials meet, they meet edge to edge rather than overlapping in one plane (D117): the
+ * corridor's walls and ceiling stop at the gallery's wall and at the hall's, and its floor at the
+ * hall's door, whose floor is the racks' concrete.
+ */
+export function corridorShell(): { walls: THREE.BufferGeometry; floor: THREE.BufferGeometry; hall: THREE.BufferGeometry; hallFloor: THREE.BufferGeometry } {
+  // Into the gallery's wall at one end and the hall's at the other (hidden there), a little wider
+  // than the doors, so its walls and ceiling never share a plane with a door's frame.
+  const near = -ROOM_APOTHEM - 0.15;
+  const far = HALL_START + 0.15;
+  const half = DOOR_WIDTH / 2 + 0.02;
   const walls = new Boxes();
-  for (const k of [-1, 1]) walls.add([k * (DOOR_WIDTH / 2 + 0.1), DOOR_HEIGHT / 2, zMid], [0, 0, 1], [k, 0, 0], CORRIDOR + 0.4, DOOR_HEIGHT, 0.2);
-  walls.add([0, DOOR_HEIGHT + 0.1, zMid], [1, 0, 0], [0, 0, 1], DOOR_WIDTH + 0.4, 0.2, CORRIDOR + 0.4);
+  for (const k of [-1, 1]) walls.add([k * (half + 0.1), (DOOR_HEIGHT + 0.1) / 2, (near + far) / 2], [0, 0, 1], [k, 0, 0], near - far, DOOR_HEIGHT + 0.1, 0.2, NONE, NONE, ['front']);
+  walls.add([0, DOOR_HEIGHT + 0.12, (near + far) / 2], [1, 0, 0], [0, 0, 1], 2 * half + 0.4, 0.2, near - far, NONE, NONE, ['bottom']);
+  // Under the gallery's floor (the same boards) at one end; to the hall's door at the other.
+  const floorFrom = -ROOM_APOTHEM + 0.3;
   const floor = new Boxes();
-  floor.add([0, -0.05, zMid], [1, 0, 0], [0, 0, 1], DOOR_WIDTH + 0.4, 0.1, CORRIDOR + 0.6);
+  floor.add([0, -0.05, (floorFrom + HALL_START) / 2], [1, 0, 0], [0, 0, 1], DOOR_WIDTH + 0.4, 0.1, floorFrom - HALL_START, NONE, NONE, ['top']);
   // The hall's front wall with its door, and the bare floor and ceiling before the first racks.
   const hall = new Boxes();
   const part = (HALL_WIDTH - DOOR_WIDTH) / 2;
-  for (const k of [-1, 1]) hall.add([k * (DOOR_WIDTH / 2 + part / 2), HALL_HEIGHT / 2, HALL_START + 0.1], [1, 0, 0], [0, 0, -1], part, HALL_HEIGHT, 0.2);
-  hall.add([0, DOOR_HEIGHT + (HALL_HEIGHT - DOOR_HEIGHT) / 2, HALL_START + 0.1], [1, 0, 0], [0, 0, -1], DOOR_WIDTH, HALL_HEIGHT - DOOR_HEIGHT, 0.2);
+  // (Into the side walls, the ceiling and the floor, so its corners never crack.)
+  for (const k of [-1, 1]) hall.add([k * (DOOR_WIDTH / 2 + part / 2 + 0.1), HALL_HEIGHT / 2, HALL_START + 0.1], [1, 0, 0], [0, 0, -1], part + 0.2, HALL_HEIGHT + 0.2, 0.2);
+  hall.add([0, DOOR_HEIGHT + (HALL_HEIGHT + 0.1 - DOOR_HEIGHT) / 2, HALL_START + 0.1], [1, 0, 0], [0, 0, -1], DOOR_WIDTH, HALL_HEIGHT + 0.1 - DOOR_HEIGHT, 0.2);
   const z = HALL_START - HALL_ENTRY / 2;
-  hall.add([0, -0.05, z], [1, 0, 0], [0, 0, 1], HALL_WIDTH, 0.1, HALL_ENTRY + 0.01);
-  hall.add([0, HALL_HEIGHT + 0.05, z], [1, 0, 0], [0, 0, 1], HALL_WIDTH, 0.1, HALL_ENTRY + 0.01);
-  for (const k of [-1, 1]) hall.add([k * (HALL_WIDTH / 2 + 0.1), HALL_HEIGHT / 2, z], [0, 0, 1], [k, 0, 0], HALL_ENTRY + 0.01, HALL_HEIGHT, 0.2);
-  return { walls: walls.geometry(), floor: floor.geometry(), hall: hall.geometry() };
+  hall.add([0, HALL_HEIGHT + 0.05, z], [1, 0, 0], [0, 0, 1], HALL_WIDTH + 0.4, 0.1, HALL_ENTRY + 0.01, NONE, NONE, ['bottom']);
+  for (const k of [-1, 1]) hall.add([k * (HALL_WIDTH / 2 + 0.1), HALL_HEIGHT / 2, z], [0, 0, 1], [k, 0, 0], HALL_ENTRY + 0.01, HALL_HEIGHT + 0.2, 0.2, NONE, NONE, ['front']);
+  // From the door in, the racks' concrete (where it meets the first aisle's, it's the same floor),
+  // reaching a little under the corridor's boards, which are drawn over it there (engine).
+  const hallFloor = new Boxes();
+  hallFloor.add([0, -0.05, z + 0.145], [1, 0, 0], [0, 0, 1], HALL_WIDTH + 0.4, 0.1, HALL_ENTRY + 0.31, NONE, NONE, ['top']);
+  return { walls: walls.geometry(), floor: floor.geometry(), hall: hall.geometry(), hallFloor: hallFloor.geometry() };
 }

@@ -34,6 +34,9 @@ const MONTH = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateSt
 
 const CAST_EMOJI: Record<CastId, string> = { librarian: '🧑‍🏫', clerk: '🗂️' };
 
+/** Whether this device has a mouse to capture for looking around (D117): not on a touch screen. */
+const mouseLook = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: fine)').matches && typeof HTMLCanvasElement.prototype.requestPointerLock === 'function';
+
 export function WalkView({ library, storage, reading, onRead, fallback }: { library: LibraryGallery[]; storage: boolean; reading: boolean; onRead: (target: { kind: 'book' | 'folder'; book: Book }) => void; fallback: ReactNode }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const world = useRef<World | null>(null);
@@ -49,6 +52,13 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const [settings, setSettings] = useState(false);
   const [scaring, setScaring] = useState(false);
   const [cue, setCue] = useState('');
+  // The mouse captured in full screen (D117): the crosshair is the cursor; Esc lets it go.
+  const [locked, setLocked] = useState(false);
+  const unlockedAt = useRef(-Infinity);
+  const onLock = useRef((on: boolean) => {
+    if (!on) unlockedAt.current = performance.now();
+    setLocked(on);
+  });
   const prefs = useLibraryPrefs();
   const secrets = useSecrets();
   const read = useRef<(t: Target) => void>(() => {});
@@ -98,6 +108,8 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     fullRef.current = on;
     setFull(on);
     screenTo(on);
+    // With a mouse, it becomes the view's: moving it looks around (D117).
+    world.current?.capture(on && mouseLook());
   });
   const enter = () => {
     fullscreen.current(true);
@@ -113,8 +125,10 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
         if (fullRef.current) screenTo(true);
       } else if (!asked.current.on) to(false);
     };
-    // Escape ends it (unless it closes a book first); the browser's own way out does too.
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && fullRef.current && !document.querySelector('dialog[open]') && to(false);
+    // Escape ends it (unless it closes a book first, or gives the captured mouse back: the
+    // browser's own Escape for that may or may not reach the page); the browser's own way out does too.
+    const onKey = (e: KeyboardEvent) =>
+      e.key === 'Escape' && fullRef.current && !document.querySelector('dialog[open]') && !document.pointerLockElement && performance.now() - unlockedAt.current > 500 && to(false);
     document.addEventListener('fullscreenchange', onChange);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -164,7 +178,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
         try {
           made = createWorld(
             canvas.current,
-            { place: setPlace, target: setTarget, open: (t) => read.current(t), cue: setCue, scare: () => setScaring(true) },
+            { place: setPlace, target: setTarget, open: (t) => read.current(t), cue: setCue, scare: () => setScaring(true), lock: (on) => onLock.current(on) },
             start,
             reduced,
             Number(today().slice(0, 4)),
@@ -205,6 +219,8 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const paused = reading || talking !== null || settings || scaring;
   useEffect(() => {
     world.current?.setPaused(paused);
+    // Back from a book, a conversation or the settings in full screen: the mouse is the view's again.
+    if (!paused && fullRef.current) world.current?.capture(mouseLook());
   }, [paused, state]);
   useEffect(() => {
     world.current?.setMode(prefs);
@@ -255,7 +271,15 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const noun = inStorage ? 'folder' : 'book';
 
   return (
-    <div className="walk" data-ring={ring || undefined} data-full={full || undefined} data-ps1={prefs.ps1 || undefined} data-horror={prefs.horror === 'off' ? undefined : prefs.horror}>
+    <div
+      className="walk"
+      data-ring={ring || undefined}
+      data-full={full || undefined}
+      data-locked={locked || undefined}
+      data-aim={target ? true : undefined}
+      data-ps1={prefs.ps1 || undefined}
+      data-horror={prefs.horror === 'off' ? undefined : prefs.horror}
+    >
       <canvas
         ref={canvas}
         className="walk-canvas"
@@ -377,6 +401,11 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
         )}
       </div>
       <span className="walk-cross" aria-hidden="true" />
+      {full && mouseLook() && (
+        <p className="walk-hud walk-lock" aria-live="polite">
+          {locked ? 'The mouse looks around; click what the circle is on · Esc for your cursor' : 'Click the view to look around with the mouse'}
+        </p>
+      )}
       {talking && (
         <TalkDialog
           id={talking}

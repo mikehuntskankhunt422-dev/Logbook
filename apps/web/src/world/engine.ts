@@ -62,6 +62,8 @@ export interface WorldEvents {
   cue(text: string): void;
   /** The Unwritten caught you (Intense). */
   scare(): void;
+  /** The mouse was captured for looking around (the crosshair is the cursor), or let go (D117). */
+  lock(locked: boolean): void;
 }
 export interface World {
   setContent(rooms: LibraryRoom[], racks: ArchiveRack[]): void;
@@ -70,12 +72,19 @@ export interface World {
   openTarget(): void;
   setPaused(paused: boolean): void;
   setMode(mode: Mode): void;
+  /**
+   * In full screen (D117), the mouse is the view's: captured now if it can be, and by a click
+   * while it isn't, so moving it looks around and the crosshair is the cursor. Off: let go.
+   */
+  capture(on: boolean): void;
   /** Sound is allowed from now on (after a tap or a key elsewhere on the page). */
   wakeSound(): void;
   dispose(): void;
 }
 
 const WALK = 2.2;
+/** Radians a pixel, looking around with a captured mouse. */
+const MOUSE_LOOK = 0.0025;
 const RUN = 4.4;
 const TURN = 1.9;
 const LOOK = 0.0042;
@@ -116,7 +125,9 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const anisotropy = Math.min(2, renderer.capabilities.getMaxAnisotropy());
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 40);
+  // (Nothing comes nearer the eye than 0.3 m, so the near plane can sit at 0.1 m, which keeps the
+  // depth fine enough that surfaces a centimetre apart never fight, even on a 16-bit depth buffer.)
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 40);
   camera.rotation.order = 'YXZ';
   const sky = new THREE.Color();
   scene.background = sky;
@@ -134,8 +145,11 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     wall: lambert(0x3e4b40),
     case: lambert(0x5a3820),
     shelf: lambert(0x8a5d36),
-    floor: lambert(0x4a2f1b),
-    rug: lambert(0x7a2228),
+    // The boards are drawn as if a hair nearer than what they lie over (the hall's concrete at its
+    // door), and the rug nearer still, so neither ever flickers (D117).
+    floor: Object.assign(lambert(0x4a2f1b), { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+    // Drawn as if a little nearer than it is, so it never flickers into the floor beneath it.
+    rug: Object.assign(lambert(0x7a2228), { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     ceiling: lambert(0x2c2018),
     lamp: retroable(new THREE.MeshBasicMaterial({ color: 0xffe2a8 })),
     chain: lambert(0x2a2a2a),
@@ -271,11 +285,12 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
 
   function buildCorridor(): Chunk {
     const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [] };
-    chunk.group.add(new THREE.Mesh(corridor.walls, mats.wall), new THREE.Mesh(corridor.floor, mats.floor), new THREE.Mesh(corridor.hall, mats.hall));
+    chunk.group.add(new THREE.Mesh(corridor.walls, mats.wall), new THREE.Mesh(corridor.floor, mats.floor), new THREE.Mesh(corridor.hall, mats.hall), new THREE.Mesh(corridor.hallFloor, mats.concrete));
+    // The signs either side of the hall's door, standing a little off it.
     const toStorage = sign('Storage room', 'Every entry in a folder', 'storage', chunk.owned);
-    toStorage.position.set(0, DOOR_HEIGHT + 0.4, HALL_START + 0.22);
+    toStorage.position.set(0, DOOR_HEIGHT + 0.4, HALL_START + 0.26);
     const toLibrary = sign('The Library', 'Every entry a book', 'library', chunk.owned);
-    toLibrary.position.set(0, DOOR_HEIGHT + 0.4, HALL_START - 0.02);
+    toLibrary.position.set(0, DOOR_HEIGHT + 0.4, HALL_START - 0.06);
     toLibrary.rotation.y = Math.PI;
     chunk.group.add(toStorage, toLibrary);
     return chunk;
@@ -415,6 +430,32 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     target = next;
     events.target(next ? next.t : null);
   }
+
+  // ── the mouse, captured in full screen (D117): it turns the view, and the crosshair is the cursor ──
+  let capturing = false;
+  const locked = () => document.pointerLockElement === canvas;
+  /** Asks for the mouse (only allowed straight after a click or a key; else the next click asks). */
+  const lock = () => {
+    if (!capturing || locked() || typeof canvas.requestPointerLock !== 'function') return;
+    try {
+      void (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch(() => {});
+    } catch {
+      // Not now: a click on the view asks again.
+    }
+  };
+  const onLockChange = () => {
+    look = null;
+    if (locked()) aimWithPointer = false;
+    events.lock(locked());
+    aim();
+    if (!paused) renderer.render(scene, camera);
+  };
+  const onMouseLook = (e: MouseEvent) => {
+    if (!locked() || paused) return;
+    yaw -= e.movementX * MOUSE_LOOK;
+    pitch = Math.max(-1.2, Math.min(1.2, pitch - e.movementY * MOUSE_LOOK));
+    kick();
+  };
 
   // ── moving ──
   const keys = new Set<string>();
@@ -566,6 +607,18 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   const onPointerDown = (e: PointerEvent) => {
     sounds.wake();
     canvas.focus({ preventScroll: true });
+    // Captured: a click is on whatever's under the crosshair. Not yet: a click captures the mouse.
+    if (locked()) {
+      if (e.button === 0) {
+        aim();
+        world.openTarget();
+      }
+      return;
+    }
+    if (capturing && e.pointerType === 'mouse' && e.button === 0 && typeof canvas.requestPointerLock === 'function') {
+      lock();
+      return;
+    }
     const { box } = ndcOf(e);
     const lx = e.clientX - box.left;
     const ly = e.clientY - box.top;
@@ -584,6 +637,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     kick();
   };
   const onPointerMove = (e: PointerEvent) => {
+    if (locked()) return;
     if (e.pointerId === stick.id) {
       stick.x = Math.max(-1, Math.min(1, (e.clientX - stick.ox) / 50));
       stick.y = Math.max(-1, Math.min(1, (e.clientY - stick.oy) / 50));
@@ -611,6 +665,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     }
   };
   const onPointerUp = (e: PointerEvent) => {
+    if (locked()) return;
     if (e.pointerId === stick.id) {
       Object.assign(stick, { id: -1, x: 0, y: 0 });
       knob.hidden = true;
@@ -660,6 +715,9 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   canvas.addEventListener('pointerleave', onPointerLeave);
   const onHidden = () => document.hidden && keys.clear();
   document.addEventListener('visibilitychange', onHidden);
+  document.addEventListener('pointerlockchange', onLockChange);
+  // (On the document: a captured mouse's moves go to the canvas and come up to it.)
+  document.addEventListener('mousemove', onMouseLook);
 
   const world: World = {
     setContent(nextRooms, nextRacks) {
@@ -686,7 +744,10 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     },
     where: () => ({ x: pos.x, z: pos.z, yaw, pitch }),
     openTarget() {
-      if (target) events.open(target.t);
+      if (!target) return;
+      // A book or a conversation needs the mouse back.
+      if (locked()) document.exitPointerLock();
+      events.open(target.t);
     },
     setPaused(next) {
       paused = next;
@@ -724,6 +785,11 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       if (!paused) renderer.render(scene, camera);
       kick();
     },
+    capture(on) {
+      capturing = on;
+      if (on) lock();
+      else if (locked()) document.exitPointerLock();
+    },
     wakeSound: () => sounds.wake(),
     dispose() {
       disposed = true;
@@ -741,6 +807,9 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       canvas.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('pointerleave', onPointerLeave);
       document.removeEventListener('visibilitychange', onHidden);
+      document.removeEventListener('pointerlockchange', onLockChange);
+      document.removeEventListener('mousemove', onMouseLook);
+      if (locked()) document.exitPointerLock();
       knob.remove();
       for (const k of [...chunks.keys()]) dropChunk(k);
       for (const s of shared) s.dispose();

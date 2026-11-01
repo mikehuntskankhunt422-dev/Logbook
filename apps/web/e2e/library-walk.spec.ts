@@ -18,11 +18,21 @@ async function write(page: Page, date: string, title: string, words: number) {
 
 const place = (page: Page) => page.locator('.walk-place strong');
 const world = (page: Page) => page.getByRole('application', { name: /The Library in 3D/ });
+const below = (page: Page) => page.locator('.walk-bottom');
 /** Holds keys down for a while, as someone walking would. */
 async function hold(page: Page, keys: string[], ms: number) {
   for (const k of keys) await page.keyboard.down(k);
   await page.waitForTimeout(ms);
   for (const k of [...keys].reverse()) await page.keyboard.up(k);
+}
+
+/**
+ * Gives the mouse back, as Escape does in a real browser when it's captured in full screen (D117);
+ * a headless browser has no such Escape of its own. Nothing to do on a touch screen.
+ */
+async function letGo(page: Page) {
+  await page.evaluate(() => document.pointerLockElement && document.exitPointerLock());
+  await expect(page.locator('.walk')).not.toHaveAttribute('data-locked');
 }
 
 async function open(page: Page, path = '/#/library') {
@@ -233,7 +243,9 @@ test('full screen: the Library over the whole window, still to walk and read in,
   await expect.poll(async () => JSON.stringify(await walk.boundingBox())).toBe(JSON.stringify({ x: 0, y: 0, width: size.width, height: size.height }));
   await expect(world(page)).toBeFocused();
   await expect(page.getByRole('button', { name: 'Leave full screen' })).toBeVisible();
-  // Reading in full screen: the book over it, and Escape closes only the book.
+  // Reading in full screen: the book over it, and Escape closes only the book. (With a mouse, the
+  // mouse is the view's: Escape first gives it back to click with.)
+  await letGo(page);
   await page.getByRole('button', { name: 'Newest book' }).click();
   await page.keyboard.press('Enter');
   const reader = page.getByRole('dialog', { name: '📖 Wide open' });
@@ -246,18 +258,22 @@ test('full screen: the Library over the whole window, still to walk and read in,
   await world(page).focus();
   await hold(page, ['KeyW'], 3500);
   await expect(place(page)).toHaveText('Gallery 2027');
-  // Escape: back to the page.
+  // Escape: the mouse back (if it was the view's), then back to the page.
+  await letGo(page);
+  await page.waitForTimeout(600);
   await page.keyboard.press('Escape');
   await expect(walk).not.toHaveAttribute('data-full');
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
   await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
   // Off and straight back on: on, however the browser's own full screen catches up.
   await page.getByRole('button', { name: 'Full screen' }).click();
+  await letGo(page);
   await page.getByRole('button', { name: 'Leave full screen' }).click();
   await page.getByRole('button', { name: 'Full screen' }).click();
   await expect(walk).toHaveAttribute('data-full', 'true');
   await page.waitForTimeout(500);
   await expect(walk).toHaveAttribute('data-full', 'true');
+  await letGo(page);
   await page.getByRole('button', { name: 'Leave full screen' }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
   // Leaving the Library leaves full screen too.
@@ -266,4 +282,76 @@ test('full screen: the Library over the whole window, still to walk and read in,
   await page.evaluate(() => (location.hash = '#/'));
   await expect(walk).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+});
+
+/**
+ * The Pointer Lock API as a browser gives it (D117), stood in for: a headless browser may not grant
+ * it at all, and has no Escape of its own to end it. Asked for, the canvas has the mouse; let go
+ * (as Escape would), it hasn't; each change is told, as the browser tells it.
+ */
+async function standInPointerLock(page: Page) {
+  await page.addInitScript(() => {
+    let locked: Element | null = null;
+    const told = () => document.dispatchEvent(new Event('pointerlockchange'));
+    Object.defineProperty(Document.prototype, 'pointerLockElement', { configurable: true, get: () => locked });
+    Element.prototype.requestPointerLock = function (this: Element) {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- the element asking is the one that then has the mouse
+      locked = this;
+      setTimeout(told);
+      return Promise.resolve();
+    } as Element['requestPointerLock'];
+    Document.prototype.exitPointerLock = function () {
+      if (!locked) return;
+      locked = null;
+      setTimeout(told);
+    };
+  });
+}
+/** Moving a captured mouse: only how far it moved counts, wherever the pointer is. */
+const moveMouse = (page: Page, dx: number) => page.evaluate((dx) => document.querySelector('.walk-canvas')!.dispatchEvent(new MouseEvent('mousemove', { movementX: dx, bubbles: true })), dx);
+/** A click with the mouse captured: on the canvas, whatever is under the pointer. */
+const clickCaptured = (page: Page) =>
+  page.evaluate(() => {
+    const canvas = document.querySelector('.walk-canvas')!;
+    for (const type of ['pointerdown', 'pointerup'] as const) canvas.dispatchEvent(new PointerEvent(type, { button: 0, pointerType: 'mouse', bubbles: true }));
+  });
+
+test('in full screen with a mouse, the mouse looks around and the circle is the cursor; Escape gives it back', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'A touch screen has no mouse to capture: dragging and the stick, as before.');
+  await standInPointerLock(page);
+  await write(page, '2026-06-01', 'Under the circle', 30);
+  await open(page);
+  const walk = page.locator('.walk');
+  // Not in full screen: the mouse is the page's, as it was.
+  await expect(walk).not.toHaveAttribute('data-locked');
+  await expect(page.locator('.walk-lock')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await expect(walk).toHaveAttribute('data-locked', 'true');
+  expect(await page.evaluate(() => document.pointerLockElement?.classList.contains('walk-canvas'))).toBe(true);
+  await expect(page.locator('.walk-lock')).toHaveText('The mouse looks around; click what the circle is on · Esc for your cursor');
+  // Moving the mouse right turns the view right, onto the Librarian, without any button held.
+  for (let i = 0; i < 5; i++) await moveMouse(page, 30);
+  await expect(below(page)).toContainText('The Librarian');
+  await expect(walk).toHaveAttribute('data-aim', 'true');
+  // A click is on what the circle's on: she talks, and the mouse is free for the conversation.
+  await clickCaptured(page);
+  const talk = page.getByRole('dialog', { name: 'The Librarian' });
+  await expect(talk).toBeVisible();
+  await expect(walk).not.toHaveAttribute('data-locked');
+  await talk.getByRole('button', { name: 'Goodbye' }).click();
+  // Back in the view: the mouse is its again.
+  await expect(walk).toHaveAttribute('data-locked', 'true');
+  // Escape gives the mouse back without leaving full screen; a click takes it again; Escape twice leaves.
+  await letGo(page);
+  await page.keyboard.press('Escape');
+  await expect(walk).toHaveAttribute('data-full', 'true');
+  await expect(page.locator('.walk-lock')).toHaveText('Click the view to look around with the mouse');
+  const c = (await world(page).boundingBox())!;
+  await page.mouse.click(c.x + c.width / 2, c.y + c.height / 2);
+  await expect(walk).toHaveAttribute('data-locked', 'true');
+  await letGo(page);
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Escape');
+  await expect(walk).not.toHaveAttribute('data-full');
+  await expect(walk).not.toHaveAttribute('data-locked');
 });

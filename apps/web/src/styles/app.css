@@ -3918,6 +3918,31 @@ dialog.reader-folder {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
   pointer-events: none;
 }
+/* The mouse captured in full screen (D117): the circle is the cursor, a ring that fills when it's on
+   something to open or talk to. */
+.walk[data-locked] .walk-cross {
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  background: transparent;
+  border: 2px solid rgb(255 255 255 / 0.9);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55), inset 0 0 0 1px rgb(0 0 0 / 0.55);
+}
+.walk[data-locked][data-aim] .walk-cross {
+  background: rgb(255 255 255 / 0.85);
+}
+.walk-lock {
+  top: 64px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
 .walk-stick {
   position: absolute;
   width: 56px;

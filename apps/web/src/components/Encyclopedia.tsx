@@ -27,7 +27,7 @@ export function Encyclopedia() {
         </span>
         <div>
           <h3 id="ency-librarian">The Librarian</h3>
-          <p className="ency-where">In the first gallery, a little to the left of the way through, by the door you come in by.</p>
+          <p className="ency-where">In the first gallery, a little to the right of the way through as you come in, looking at the door.</p>
           <p>
             Keeps the Library: every entry you write comes to her as a book, and she shelves it by its day. Ask her how much you’ve written, about your longest book, what you were writing a year ago, where it all began or when you wrote the most;
             when an answer is a book, <strong>Take me there</strong> walks you to it. She knows a hint for the next of Logbook’s secrets.
