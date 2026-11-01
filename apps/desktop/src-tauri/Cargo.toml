@@ -34,6 +34,10 @@ tauri-plugin-single-instance = "=2.5.0"
 tauri-plugin-autostart = "=2.7.0"
 # Phones update from the store or a new APK (D90).
 tauri-plugin-updater = "=2.13.1"
+# The Library's characters through OpenAI, Gemini, xAI or OpenRouter (D118): the HTTP client and
+# TLS the updater already brings, at its versions.
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["ring"] }
 # Another computer's changes to the journal folder (D102).
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
 # The person's own picture as the app's icon (D101): an .ico for Windows, and PNGs read for Linux

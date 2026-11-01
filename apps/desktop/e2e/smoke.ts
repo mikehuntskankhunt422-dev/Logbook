@@ -80,6 +80,15 @@ const command = (s: string, cmd: string, args: unknown = {}) =>
        .then((key) => window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1], { headers: { 'logbook-session': key } }))`,
     [cmd, args],
   );
+/** A command, its refusal (if refused) as its words: WebDriver can't read back a promise that fails. */
+const tryCommand = (s: string, cmd: string, args: unknown = {}): Promise<{ ok?: unknown; error?: string }> =>
+  run(
+    s,
+    `return new Promise((r) => { window.__logbookSession = r; window.__TAURI_INTERNALS__.invoke('session_ready'); })
+       .then((key) => window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1], { headers: { 'logbook-session': key } }))
+       .then((ok) => ({ ok }), (e) => ({ error: String(e) }))`,
+    [cmd, args],
+  );
 /** Keys for WebDriver's element/value: End. */
 const END = '';
 
@@ -399,6 +408,13 @@ try {
   const ai: string = await run(s, "return fetch('https://api.anthropic.com/v1/models').then((r) => 'reached ' + r.status, (e) => 'failed: ' + e)");
   const aiBlocked = ((await blocked(s)) ?? []).slice(blockedBeforeAi.length);
   check(!aiBlocked.some((b) => b.startsWith('connect-src')), `the window lets the AI characters reach Anthropic (${ai}, ${JSON.stringify(aiBlocked)})`);
+  // The other providers go through Logbook's own command (D118): their chat and model lists only.
+  const refusedAi = await tryCommand(s, 'ai_request', { method: 'POST', url: 'https://example.com/v1/chat/completions', key: 'k', body: '{}' });
+  const elsewhere = refusedAi.error ?? 'sent';
+  const listed = await tryCommand(s, 'ai_request', { method: 'GET', url: 'https://api.openai.com/v1/models', key: 'not-a-key', body: null });
+  const provider = listed.error ?? `reached ${(listed.ok as { status: number }).status}`;
+  check(elsewhere.includes('isn’t an AI provider') || elsewhere.includes("isn't an AI provider"), `the AI command refuses anywhere but the providers (${elsewhere})`);
+  check(!provider.includes('AI provider Logbook knows'), `the AI command asks a provider (${provider})`);
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");

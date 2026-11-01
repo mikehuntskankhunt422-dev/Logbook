@@ -83,6 +83,22 @@ describe('The Unwritten (D116)', () => {
     expect(run(after, 'intense', at(deep), 10).events).toEqual([]);
   });
 
+  it('on a day you’ve written, fresh ink slows him (D118)', () => {
+    const h = run(QUIET, 'intense', at(deep), HAUNT.appearAfter + 0.1).h;
+    const away = at(deep, 0);
+    const time = (HAUNT.distance - HAUNT.reach) / HAUNT.speed.intense + 0.5;
+    expect(run(h, 'intense', away, time).events).toContain('scare');
+    let inked = h;
+    const events: HauntEvent[] = [];
+    for (let t = 0; t < time; t += 0.05) {
+      const out = hauntStep(inked, 'intense', away, 0.05, zone, true);
+      inked = out.haunt;
+      events.push(...out.events);
+    }
+    expect(events).not.toContain('scare');
+    expect(Math.hypot(inked.x - away.x, inked.z - away.z)).toBeGreaterThan(HAUNT.reach);
+  });
+
   it('on Unsettling it only passes through you, more slowly', () => {
     const h = run(QUIET, 'unsettling', at(deep), HAUNT.appearAfter + 0.1).h;
     const slow = run(h, 'unsettling', at(deep, 0), (HAUNT.distance - HAUNT.reach) / HAUNT.speed.intense + 0.5);

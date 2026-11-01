@@ -106,9 +106,10 @@ test('with an API key: talk in your own words; numbers only unless titles are al
   await write(page, '2026-06-01', 'Secret garden diary', 30);
   await page.goto('/#/settings');
   const panel = page.getByRole('region', { name: '🤖 AI characters' });
-  await panel.getByLabel('Anthropic API key').fill('sk-ant-test-1234');
+  await expect(panel.getByLabel('Provider')).toHaveValue('anthropic');
+  await panel.getByLabel('Anthropic (Claude) API key').fill('sk-ant-test-1234');
   await panel.getByRole('button', { name: 'Save key' }).click();
-  await expect(panel).toContainText('A key ending …1234 is saved on this device.');
+  await expect(panel).toContainText('Your Anthropic (Claude) key ending …1234 is saved on this device.');
   await expect(panel.getByLabel('Model')).toHaveValue('claude-opus-5-5');
   await expect(panel.getByRole('radio', { name: /Numbers only/ })).toBeChecked();
   const sent = await fakeClaude(page, () => ({ status: 200, json: message('Ah, a reader. Your one book waits in Gallery 2026.') }));
@@ -158,8 +159,90 @@ test('a key that doesn’t work says so, in the conversation; removed, the list 
   await page.goto('/#/settings');
   const panel = page.getByRole('region', { name: '🤖 AI characters' });
   await panel.getByRole('button', { name: 'Remove the key' }).click();
-  await expect(panel.getByLabel('Anthropic API key')).toBeVisible();
+  await expect(panel.getByLabel('Anthropic (Claude) API key')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('logbook.ai'))).toBeNull();
+});
+
+/** Answers one OpenAI-style provider's model list and chat (D118), and keeps what was sent. */
+async function fakeProvider(page: Page, base: string, reply: { models?: () => { status: number; json: unknown }; chat?: (body: Record<string, unknown>) => { status: number; json: unknown } }) {
+  const sent: { url: string; headers: Record<string, string>; body: Record<string, unknown> | null }[] = [];
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' };
+  await page.route(`${base}/**`, async (route: Route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const body = req.method() === 'POST' ? (req.postDataJSON() as Record<string, unknown>) : null;
+    sent.push({ url: req.url(), headers: await req.allHeaders(), body });
+    const answer = req.url() === `${base}/models` && req.method() === 'GET' ? reply.models?.() : req.url() === `${base}/chat/completions` && body ? reply.chat?.(body) : undefined;
+    const { status, json } = answer ?? { status: 404, json: { error: { message: 'not here' } } };
+    return route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify(json) });
+  });
+  return sent;
+}
+const chat = (content: string) => ({ id: 'chatcmpl-test', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }] });
+
+test('other providers (D118): a key, a model from its list, and the characters talk through it, never with the words', async ({ page }) => {
+  await write(page, '2026-06-01', 'Private title', 30);
+  const sent = await fakeProvider(page, 'https://api.openai.com/v1', {
+    models: () => ({ status: 200, json: { object: 'list', data: [{ id: 'gpt-b' }, { id: 'gpt-a' }] } }),
+    chat: () => ({ status: 200, json: chat('Welcome, reader. One book so far.') }),
+  });
+  await page.goto('/#/settings');
+  const panel = page.getByRole('region', { name: '🤖 AI characters' });
+  await panel.getByLabel('Provider').selectOption({ label: 'OpenAI (ChatGPT)' });
+  await expect(panel.getByRole('button', { name: 'Load the list' })).toBeDisabled();
+  await panel.getByLabel('OpenAI (ChatGPT) API key').fill('sk-openai-test-5678');
+  await panel.getByRole('button', { name: 'Save key' }).click();
+  await expect(panel).toContainText('Your OpenAI (ChatGPT) key ending …5678 is saved on this device.');
+  // A key but no model yet: the Librarian says what's missing.
+  await open(page);
+  let talk = await talkTo(page, 'librarian');
+  await expect(talk).toContainText('To talk in your own words, pick a model for OpenAI (ChatGPT) in Settings → AI characters.');
+  await expect(talk.getByRole('textbox')).toHaveCount(0);
+  await talk.getByRole('button', { name: 'Goodbye' }).click();
+  await page.goto('/#/settings');
+  await panel.getByRole('button', { name: 'Load the list' }).click();
+  await expect(page.getByText('2 models from OpenAI (ChatGPT): pick one in Model.')).toBeVisible();
+  await expect(panel.locator('datalist option')).toHaveCount(2);
+  expect(await panel.locator('datalist option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value))).toEqual(['gpt-a', 'gpt-b']);
+  await panel.getByLabel('Model').fill('gpt-a');
+  expect(sent[0]!.headers.authorization).toBe('Bearer sk-openai-test-5678');
+  await open(page);
+  talk = await talkTo(page, 'librarian');
+  await talk.getByRole('textbox', { name: 'Say something to The Librarian' }).fill('Hello there');
+  await talk.getByRole('button', { name: 'Say it' }).click();
+  await expect(talk.getByRole('log')).toContainText('Welcome, reader. One book so far.');
+  const asked = sent.filter((s) => s.url.endsWith('/chat/completions'));
+  expect(asked).toHaveLength(1);
+  expect(asked[0]!.headers.authorization).toBe('Bearer sk-openai-test-5678');
+  const body = asked[0]!.body!;
+  expect(body.model).toBe('gpt-a');
+  const said = body.messages as { role: string; content: string }[];
+  expect(said.map((m) => m.role)).toEqual(['system', 'user']);
+  expect(said[0]!.content).toContain('Books (entries): 1');
+  expect(said[1]!.content).toBe('Hello there');
+  expect(JSON.stringify(body)).not.toContain('Private title');
+  expect(JSON.stringify(body)).not.toContain('word17');
+});
+
+test('other providers (D118): a key or a model that doesn’t work says why', async ({ page }) => {
+  await write(page, '2026-06-01', 'Anything', 10);
+  await fakeProvider(page, 'https://generativelanguage.googleapis.com/v1beta/openai', {
+    models: () => ({ status: 401, json: [{ error: { code: 401, message: 'API key not valid.' } }] }),
+    chat: () => ({ status: 404, json: [{ error: { code: 404, message: 'models/gemini-nope is not found.' } }] }),
+  });
+  await page.evaluate(() => localStorage.setItem('logbook.ai', JSON.stringify({ provider: 'gemini', keys: { gemini: 'AIza-bad' }, models: { gemini: 'gemini-nope' } })));
+  await page.goto('/#/settings');
+  await page.reload();
+  const panel = page.getByRole('region', { name: '🤖 AI characters' });
+  await expect(panel.getByLabel('Provider')).toHaveValue('gemini');
+  await expect(panel.getByLabel('Model')).toHaveValue('gemini-nope');
+  await panel.getByRole('button', { name: 'Load the list' }).click();
+  await expect(panel.getByRole('alert')).toHaveText('That Google (Gemini) key didn’t work. Check it in Settings → AI characters.');
+  await open(page);
+  const talk = await talkTo(page, 'clerk');
+  await talk.getByRole('textbox').fill('Hello?');
+  await talk.getByRole('button', { name: 'Say it' }).click();
+  await expect(talk.getByRole('log')).toContainText('Google (Gemini) doesn’t know that model (“models/gemini-nope is not found.”). Pick another in Settings → AI characters.');
 });
 
 /** Into the empty galleries (past the first empty one after the books), and stopped there. */
@@ -257,7 +340,14 @@ test('the Encyclopedia: who’s who and what happens, for anyone who’d rather 
   await page.getByRole('navigation', { name: 'Library views' }).getByRole('link', { name: '📖 Encyclopedia' }).click();
   await expect(page).toHaveTitle('Encyclopedia · Library · Logbook');
   for (const who of ['The Librarian', 'The Clerk', 'The Unwritten']) await expect(page.getByRole('heading', { level: 3, name: who })).toBeVisible();
-  await expect(page.getByRole('article', { name: 'The Unwritten' })).toContainText('It only moves while you aren’t looking at it.');
+  await expect(page.getByRole('article', { name: 'The Unwritten' })).toContainText('He only moves while you aren’t looking at him.');
+  // Who he was, how to stop him, and how to get by him (D118).
+  await expect(page.getByRole('article', { name: 'The Unwritten' })).toContainText('Once a man called Silas Quire.');
+  for (const part of ['His story', 'How to stop him', 'Strategies']) await expect(page.getByRole('heading', { level: 2, name: part })).toBeVisible();
+  for (const part of ['Who he was', 'How he was lost', 'What he wants']) await expect(page.getByRole('heading', { level: 3, name: part })).toBeVisible();
+  await expect(page.getByRole('term').filter({ hasText: 'Write today' })).toBeVisible();
+  await expect(page.getByRole('definition').filter({ hasText: 'on a day you’ve written an entry, he’s slower' })).toBeVisible();
+  await expect(page.getByText('Hurry (Shift). You run at 4.4 m/s; he never walks faster than 1.6.')).toBeVisible();
   await expect(page.getByText('On this device horror is Off')).toBeVisible();
   await expect(page.getByRole('link', { name: '✍️ New entry' })).toBeVisible();
 });

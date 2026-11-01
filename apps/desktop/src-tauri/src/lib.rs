@@ -2,6 +2,8 @@
 //! browser version, built with `LOGBOOK_PLATFORM=desktop`; this side gives it a journal folder on
 //! disk and a few things a web page can't do (save dialogs, opening the browser for payment).
 
+#[cfg(desktop)]
+mod ai;
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(desktop)]
@@ -578,6 +580,7 @@ pub fn run() {
         autostart::autostart_set,
         watch::journal_watch,
         window_fullscreen,
+        ai::ai_request,
         session::session_ready,
         appbox::app_stage,
     ];

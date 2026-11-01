@@ -64,6 +64,8 @@ export const HAUNT = {
   near: 6,
   /** Metres a second while unseen. */
   speed: { unsettling: 1.1, intense: 1.6 } as Record<Exclude<HorrorLevel, 'off'>, number>,
+  /** On a day you've written, fresh ink slows him to this much of his pace (D118). */
+  inked: 0.7,
   /** Seconds out of its reach before it gives up. */
   leaveAfter: 4,
   /** Seconds before it comes again, after each way it goes. */
@@ -93,8 +95,8 @@ export function sees(me: Watcher, x: number, z: number): boolean {
 
 const rest = (seconds: number): Haunt => ({ ...QUIET, cooldown: seconds });
 
-/** A moment (`dt` seconds) of it: where it is next, and what happened. */
-export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number, zone: (x: number, z: number) => boolean): { haunt: Haunt; events: HauntEvent[] } {
+/** A moment (`dt` seconds) of it: where it is next, and what happened. `inked`: you've written today, which slows him. */
+export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number, zone: (x: number, z: number) => boolean, inked = false): { haunt: Haunt; events: HauntEvent[] } {
   if (level === 'off') return { haunt: QUIET, events: [] };
   const s: Haunt = { ...h, cooldown: Math.max(0, h.cooldown - dt) };
   const inside = zone(me.x, me.z);
@@ -110,7 +112,7 @@ export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number,
   const dist = Math.hypot(me.x - s.x, me.z - s.z);
   if (sees(me, s.x, s.z)) return dist <= HAUNT.vanishAt ? { haunt: rest(HAUNT.rest.vanish), events: ['vanish'] } : { haunt: s, events: [] };
   // Unseen: it comes on, on the floor, and no further than where it walks.
-  const by = Math.min(HAUNT.speed[level] * dt, dist);
+  const by = Math.min(HAUNT.speed[level] * (inked ? HAUNT.inked : 1) * dt, dist);
   if (by > 0) {
     const steps = Math.max(1, Math.ceil(by / 0.08));
     for (let i = 0; i < steps; i++) {

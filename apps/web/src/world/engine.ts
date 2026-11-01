@@ -79,6 +79,8 @@ export interface World {
   capture(on: boolean): void;
   /** Sound is allowed from now on (after a tap or a key elsewhere on the page). */
   wakeSound(): void;
+  /** Whether you've written today: fresh ink slows The Unwritten (D118). */
+  setInked(inked: boolean): void;
   dispose(): void;
 }
 
@@ -186,6 +188,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   scene.add(shadow.group);
   const sounds = createSounds();
   let haunt: Haunt = QUIET;
+  let inked = false;
   let stepClock = 0;
   let lampBase = 26;
   let clock = 0;
@@ -508,7 +511,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     clock += dt;
     const half = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     const was = haunt;
-    const out = hauntStep(haunt, mode.horror, { x: pos.x, z: pos.z, yaw, half }, dt, zone);
+    const out = hauntStep(haunt, mode.horror, { x: pos.x, z: pos.z, yaw, half }, dt, zone, inked);
     haunt = out.haunt;
     for (const e of out.events) {
       const said = CUES[e];
@@ -791,6 +794,9 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       else if (locked()) document.exitPointerLock();
     },
     wakeSound: () => sounds.wake(),
+    setInked(next) {
+      inked = next;
+    },
     dispose() {
       disposed = true;
       sounds.dispose();
