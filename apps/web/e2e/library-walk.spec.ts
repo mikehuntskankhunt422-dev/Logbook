@@ -284,27 +284,57 @@ test('full screen: the Library over the whole window, still to walk and read in,
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
 });
 
+/**
+ * The Pointer Lock API as a browser gives it (D117), stood in for: a headless browser may not grant
+ * it at all, and has no Escape of its own to end it. Asked for, the canvas has the mouse; let go
+ * (as Escape would), it hasn't; each change is told, as the browser tells it.
+ */
+async function standInPointerLock(page: Page) {
+  await page.addInitScript(() => {
+    let locked: Element | null = null;
+    const told = () => document.dispatchEvent(new Event('pointerlockchange'));
+    Object.defineProperty(Document.prototype, 'pointerLockElement', { configurable: true, get: () => locked });
+    Element.prototype.requestPointerLock = function (this: Element) {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- the element asking is the one that then has the mouse
+      locked = this;
+      setTimeout(told);
+      return Promise.resolve();
+    } as Element['requestPointerLock'];
+    Document.prototype.exitPointerLock = function () {
+      if (!locked) return;
+      locked = null;
+      setTimeout(told);
+    };
+  });
+}
+/** Moving a captured mouse: only how far it moved counts, wherever the pointer is. */
+const moveMouse = (page: Page, dx: number) => page.evaluate((dx) => document.querySelector('.walk-canvas')!.dispatchEvent(new MouseEvent('mousemove', { movementX: dx, bubbles: true })), dx);
+/** A click with the mouse captured: on the canvas, whatever is under the pointer. */
+const clickCaptured = (page: Page) =>
+  page.evaluate(() => {
+    const canvas = document.querySelector('.walk-canvas')!;
+    for (const type of ['pointerdown', 'pointerup'] as const) canvas.dispatchEvent(new PointerEvent(type, { button: 0, pointerType: 'mouse', bubbles: true }));
+  });
+
 test('in full screen with a mouse, the mouse looks around and the circle is the cursor; Escape gives it back', async ({ page, isMobile }) => {
   test.skip(isMobile, 'A touch screen has no mouse to capture: dragging and the stick, as before.');
+  await standInPointerLock(page);
   await write(page, '2026-06-01', 'Under the circle', 30);
   await open(page);
   const walk = page.locator('.walk');
   // Not in full screen: the mouse is the page's, as it was.
   await expect(walk).not.toHaveAttribute('data-locked');
   await expect(page.locator('.walk-lock')).toHaveCount(0);
-  const button = page.getByRole('button', { name: 'Full screen' });
-  const b = (await button.boundingBox())!;
-  await button.click();
+  await page.getByRole('button', { name: 'Full screen' }).click();
   await expect(walk).toHaveAttribute('data-locked', 'true');
   expect(await page.evaluate(() => document.pointerLockElement?.classList.contains('walk-canvas'))).toBe(true);
   await expect(page.locator('.walk-lock')).toHaveText('The mouse looks around; click what the circle is on · Esc for your cursor');
   // Moving the mouse right turns the view right, onto the Librarian, without any button held.
-  await page.mouse.move(b.x + b.width / 2 + 150, b.y + b.height / 2, { steps: 5 });
+  for (let i = 0; i < 5; i++) await moveMouse(page, 30);
   await expect(below(page)).toContainText('The Librarian');
   await expect(walk).toHaveAttribute('data-aim', 'true');
   // A click is on what the circle's on: she talks, and the mouse is free for the conversation.
-  await page.mouse.down();
-  await page.mouse.up();
+  await clickCaptured(page);
   const talk = page.getByRole('dialog', { name: 'The Librarian' });
   await expect(talk).toBeVisible();
   await expect(walk).not.toHaveAttribute('data-locked');

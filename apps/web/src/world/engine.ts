@@ -716,7 +716,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   const onHidden = () => document.hidden && keys.clear();
   document.addEventListener('visibilitychange', onHidden);
   document.addEventListener('pointerlockchange', onLockChange);
-  canvas.addEventListener('mousemove', onMouseLook);
+  // (On the document: a captured mouse's moves go to the canvas and come up to it.)
+  document.addEventListener('mousemove', onMouseLook);
 
   const world: World = {
     setContent(nextRooms, nextRacks) {
@@ -807,7 +808,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       canvas.removeEventListener('pointerleave', onPointerLeave);
       document.removeEventListener('visibilitychange', onHidden);
       document.removeEventListener('pointerlockchange', onLockChange);
-      canvas.removeEventListener('mousemove', onMouseLook);
+      document.removeEventListener('mousemove', onMouseLook);
       if (locked()) document.exitPointerLock();
       knob.remove();
       for (const k of [...chunks.keys()]) dropChunk(k);
