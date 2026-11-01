@@ -1,5 +1,6 @@
 import { castMember, type Book, type CastId, type HorrorLevel, type LibraryFacts } from '@logbook/core';
 import { SECRETS, type SecretId } from './secrets.ts';
+import { BRIEF } from './lore.ts';
 
 /**
  * What the Librarian and the Clerk say (D116). Free and on the device: each has a list of things
@@ -110,10 +111,27 @@ function librarian({ facts, horror, found }: CastContext): Topic[] {
       reply: {
         text:
           horror === 'intense'
-            ? 'The Unwritten. Tall, a long coat, a blank page where its face should be. It walks the years nobody has written, and it only moves when you aren’t looking. Never turn your back on it. If it reaches you, you’ll wake at my door.'
-            : 'The Unwritten walks out there, in the years nobody has written. It only moves when you aren’t looking at it, and it can’t come where your books are. Walk up to it and it goes.',
+            ? 'The Unwritten. Tall, a long coat, a blank page where his face should be. He walks the years nobody has written, and he only moves when you aren’t looking. Never turn your back on him. If he reaches you, you’ll wake at my door.'
+            : 'The Unwritten walks out there, in the years nobody has written. He only moves when you aren’t looking at him, and he can’t come where your books are. Walk up to him and he goes.',
       },
     });
+  if (horror !== 'off')
+    out.push(
+      {
+        id: 'who-was-he',
+        ask: 'Who was he?',
+        reply: {
+          text: 'Mr Quire. Silas Quire, my first reader, long before you. He meant to write, every night, and never did; he’d walk out to see what his books would look like on the shelves, one gallery further each time. One night he didn’t come back. The Library kept what it could of him, which was a blank page.',
+        },
+      },
+      {
+        id: 'stop-him',
+        ask: 'How do I stop him?',
+        reply: {
+          text: 'Look at him: he can’t move while he’s watched. Walk straight at him, watching, and he folds away. Come back to your books, because ink is a wall to him. And write something today: fresh ink slows him. If all else fails, the switch in ⚙️ sends him away for good.',
+        },
+      },
+    );
   return out;
 }
 
@@ -163,6 +181,14 @@ function clerk({ facts, horror, found }: CastContext): Topic[] {
             : 'Nobody works the far aisles. If you see someone down there, it isn’t staff. Don’t worry, it never comes where the folders are.',
       },
     });
+  if (horror !== 'off')
+    out.push({
+      id: 'knew-him',
+      ask: 'Did you know him?',
+      reply: {
+        text: 'The tall gentleman? Came down for empty folders, a dozen at a time, and filed them himself. Said he’d fill them. I’ve still got the last one he took, in my drawer. Never a word in it. Don’t you end up like that.',
+      },
+    });
   return out;
 }
 
@@ -176,7 +202,7 @@ export function persona(id: CastId, ctx: CastContext, facts: string, where: stri
   const horror =
     ctx.horror === 'off'
       ? ''
-      : ` Horror is switched on (${ctx.horror === 'intense' ? 'Intense: it can catch the reader and they wake at the Library’s door' : 'Unsettling: it never catches anyone'}). Something called The Unwritten walks the empty galleries past the newest book and the aisles past the last folder: tall, a long coat, a blank page where its face should be. It only moves when it isn’t being looked at, it never goes where the person’s writing is, and walking up to it makes it vanish. You are uneasy about it and may warn about it, but you never describe anything gory.`;
+      : ` Horror is switched on (${ctx.horror === 'intense' ? 'Intense: it can catch the reader and they wake at the Library’s door' : 'Unsettling: it never catches anyone'}). Something called The Unwritten walks the empty galleries past the newest book and the aisles past the last folder: tall, a long coat, a blank page where his face should be. ${BRIEF} You are uneasy about him and may warn about him, tell his story and say how to stop him, but you never describe anything gory.`;
   const secret = nextSecret(ctx.found);
   return `${who}${horror}
 

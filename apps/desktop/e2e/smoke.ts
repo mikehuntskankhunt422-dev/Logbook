@@ -399,6 +399,14 @@ try {
   const ai: string = await run(s, "return fetch('https://api.anthropic.com/v1/models').then((r) => 'reached ' + r.status, (e) => 'failed: ' + e)");
   const aiBlocked = ((await blocked(s)) ?? []).slice(blockedBeforeAi.length);
   check(!aiBlocked.some((b) => b.startsWith('connect-src')), `the window lets the AI characters reach Anthropic (${ai}, ${JSON.stringify(aiBlocked)})`);
+  // The other providers go through Logbook's own command (D118): their chat and model lists only.
+  const elsewhere = await command(s, 'ai_request', { method: 'POST', url: 'https://example.com/v1/chat/completions', key: 'k', body: '{}' }).then(() => 'sent', (e: unknown) => String(e));
+  const provider = await command(s, 'ai_request', { method: 'GET', url: 'https://api.openai.com/v1/models', key: 'not-a-key', body: null }).then(
+    (r: unknown) => `reached ${(r as { status: number }).status}`,
+    (e: unknown) => String(e),
+  );
+  check(elsewhere.includes('isn’t an AI provider') || elsewhere.includes("isn't an AI provider"), `the AI command refuses anywhere but the providers (${elsewhere})`);
+  check(!provider.includes('AI provider Logbook knows'), `the AI command asks a provider (${provider})`);
 
   // ── closing the window straight after typing (D86) ──
   await run(s, "location.hash = '#/new'");

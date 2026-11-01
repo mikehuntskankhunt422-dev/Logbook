@@ -4286,6 +4286,13 @@ p.talk-them {
 .ency-unwritten .ency-portrait {
   background: #120d0b;
 }
+.ency-story h3 {
+  margin: 14px 0 4px;
+  font-size: 1.05rem;
+}
+.ency-story p {
+  margin: 0;
+}
 .ency-settings dt {
   font-weight: 700;
   margin-top: 10px;

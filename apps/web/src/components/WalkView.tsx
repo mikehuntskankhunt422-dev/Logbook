@@ -233,6 +233,14 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   }, [cue]);
   const found = useMemo(() => new Set(SECRETS.flatMap((x) => (secrets.found[x.id] ? [x.id] : [])) as SecretId[]), [secrets.found]);
   const facts = useMemo(() => libraryFacts(library, today(), racks.length), [library, racks.length]);
+  // Written today: fresh ink slows The Unwritten (D118).
+  const inked = useMemo(() => {
+    const day = today();
+    return library.some((g) => g.year === day.slice(0, 4) && g.months.some((m) => m.month === day.slice(0, 7) && m.books.some((b) => b.date === day)));
+  }, [library]);
+  useEffect(() => {
+    world.current?.setInked(inked);
+  }, [inked, state]);
 
   /** Where a book or folder is, to be taken to it from what someone said. */
   const spotOf = (take: Take): Spot | null => {

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { castMember, type CastId } from '@logbook/core';
 import { href } from '../app/router.ts';
-import { ask, useAiPrefs, type Said } from '../lib/ai.ts';
+import { aiReady, ask, provider, useAiPrefs, type Said } from '../lib/ai.ts';
 import { factsFor, greeting, persona, topics, type CastContext, type Take } from '../lib/cast.ts';
 
 /**
@@ -110,7 +110,7 @@ export function TalkDialog({ id, ctx, where, onTake, onClose }: { id: CastId; ct
           </button>
         ))}
       </div>
-      {ai.key ? (
+      {aiReady(ai) ? (
         <form
           className="talk-say"
           onSubmit={(e) => {
@@ -128,7 +128,9 @@ export function TalkDialog({ id, ctx, where, onTake, onClose }: { id: CastId; ct
         </form>
       ) : (
         <p className="hint talk-free">
-          Answers from the list are free and stay on this device. To talk in your own words, add an Anthropic API key in <a href={href({ name: 'settings' })}>Settings → AI characters</a>.
+          Answers from the list are free and stay on this device.{' '}
+          {ai.keys[ai.provider] ? `To talk in your own words, pick a model for ${provider(ai.provider).name} in` : 'To talk in your own words, add an API key (Anthropic, OpenAI, Google, xAI or OpenRouter) in'}{' '}
+          <a href={href({ name: 'settings' })}>Settings → AI characters</a>.
         </p>
       )}
     </dialog>

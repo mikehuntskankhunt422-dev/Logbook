@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { libraryFacts, type LibraryGallery } from '@logbook/core';
 import { factsFor, greeting, persona, topics, type CastContext } from './cast.ts';
-import { aiPrefs, setAiPrefs } from './ai.ts';
+import { aiPrefs, aiReady, modelOf, setAiKey, setAiModel, setAiPrefs } from './ai.ts';
 
 const book = (id: string, date: string, words: number, title = id) => ({ id, title, date, words, mood: null, thickness: 24, height: 96, tone: 0 });
 const galleries: LibraryGallery[] = [
@@ -47,6 +47,17 @@ describe('what the Librarian and the Clerk say (D116)', () => {
     expect(topics('librarian', ctx({ horror: 'intense' })).find((t) => t.id === 'unwritten')!.reply.text).toMatch(/you’ll wake at my door/);
     expect(greeting('librarian', ctx({ horror: 'intense' }))).toMatch(/near your books/);
   });
+
+  it('with horror on, tell his story and how to stop him (D118)', () => {
+    expect(ids(ctx())).not.toContain('who-was-he');
+    expect(ids(ctx())).not.toContain('stop-him');
+    expect(ids(ctx(), 'clerk')).not.toContain('knew-him');
+    const t = Object.fromEntries(topics('librarian', ctx({ horror: 'unsettling' })).map((x) => [x.id, x.reply.text]));
+    expect(t['who-was-he']).toMatch(/Silas Quire/);
+    expect(t['stop-him']).toMatch(/Look at him/);
+    expect(t['stop-him']).toMatch(/fresh ink slows him/);
+    expect(topics('clerk', ctx({ horror: 'intense' })).find((x) => x.id === 'knew-him')!.reply.text).toMatch(/empty folders/);
+  });
 });
 
 describe('who they are to an AI (D116)', () => {
@@ -64,20 +75,45 @@ describe('who they are to an AI (D116)', () => {
     const p = persona('clerk', ctx({ horror: 'unsettling' }), factsFor(facts, 'numbers'), 'Storage room · Aisle 1');
     expect(p).toMatch(/^You are the Clerk/);
     expect(p).toContain('The Unwritten');
+    expect(p).toContain('Silas Quire');
     expect(p).toContain('one to three short sentences');
     expect(p).toContain('never invent entries');
     expect(persona('librarian', ctx(), 'x', 'Gallery 2026')).not.toContain('The Unwritten');
   });
 });
 
-describe('the AI settings (D116)', () => {
-  it('keep a key, a model and what may be shared, cleaned when read, and nothing once the key goes', () => {
+describe('the AI settings (D116, D118)', () => {
+  it('read 0.9.12’s Claude-only settings as Claude’s, cleaned', () => {
     localStorage.setItem('logbook.ai', JSON.stringify({ key: '  sk-ant-1  ', model: 'gpt-x', share: 'everything' }));
     setAiPrefs({});
-    expect(aiPrefs()).toEqual({ key: 'sk-ant-1', model: 'claude-opus-5-5', share: 'numbers' });
-    setAiPrefs({ model: 'claude-haiku-5-5', share: 'titles' });
-    expect(JSON.parse(localStorage.getItem('logbook.ai')!)).toEqual({ key: 'sk-ant-1', model: 'claude-haiku-5-5', share: 'titles' });
-    setAiPrefs({ key: '', model: 'claude-opus-5-5', share: 'numbers' });
+    expect(aiPrefs()).toEqual({ provider: 'anthropic', keys: { anthropic: 'sk-ant-1' }, models: {}, share: 'numbers' });
+    expect(modelOf(aiPrefs())).toBe('claude-opus-5-5');
+    expect(aiReady(aiPrefs())).toBe(true);
+    localStorage.setItem('logbook.ai', JSON.stringify({ key: 'sk-ant-2', model: 'claude-haiku-5-5', share: 'titles' }));
+    setAiPrefs({});
+    expect(aiPrefs()).toEqual({ provider: 'anthropic', keys: { anthropic: 'sk-ant-2' }, models: { anthropic: 'claude-haiku-5-5' }, share: 'titles' });
+  });
+
+  it('keep each provider’s key and model, need both for the one chosen, and nothing once they all go', () => {
+    localStorage.removeItem('logbook.ai');
+    setAiPrefs({});
+    setAiKey('anthropic', ' sk-ant-1 ');
+    setAiPrefs({ provider: 'openai' });
+    expect(aiReady(aiPrefs())).toBe(false);
+    setAiKey('openai', 'sk-1');
+    // A key, but no model yet: the other providers' models must be picked.
+    expect(modelOf(aiPrefs())).toBe('');
+    expect(aiReady(aiPrefs())).toBe(false);
+    setAiModel('openai', '  gpt-x  ');
+    expect(aiReady(aiPrefs())).toBe(true);
+    expect(JSON.parse(localStorage.getItem('logbook.ai')!)).toEqual({ provider: 'openai', keys: { anthropic: 'sk-ant-1', openai: 'sk-1' }, models: { openai: 'gpt-x' }, share: 'numbers' });
+    // An unknown provider or a model Claude doesn't have reads as nothing.
+    localStorage.setItem('logbook.ai', JSON.stringify({ provider: 'acme', keys: { acme: 'x', openai: 7 }, models: { anthropic: 'gpt-x' } }));
+    setAiPrefs({});
+    expect(aiPrefs()).toEqual({ provider: 'anthropic', keys: {}, models: {}, share: 'numbers' });
+    expect(localStorage.getItem('logbook.ai')).toBeNull();
+    setAiKey('gemini', 'AIza1');
+    setAiKey('gemini', '');
     expect(localStorage.getItem('logbook.ai')).toBeNull();
   });
 });

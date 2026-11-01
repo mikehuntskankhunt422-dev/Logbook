@@ -4,7 +4,7 @@ import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb'
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
 import { foundCount, SECRETS, useSecrets } from '../lib/secrets.ts';
-import { AI_MODELS, setAiPrefs, useAiPrefs, type AiModel } from '../lib/ai.ts';
+import { AI_MODELS, PROVIDERS, listModels, modelOf, provider, setAiKey, setAiModel, setAiPrefs, useAiPrefs, type AiModel, type ProviderId } from '../lib/ai.ts';
 import { href } from '../app/router.ts';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
@@ -79,31 +79,59 @@ export function SettingsView() {
 }
 
 /**
- * The Library's characters in your own words (D116): an Anthropic API key of the person's own,
- * which model, and what the characters may know. Kept on this device only.
+ * The Library's characters in your own words (D116, D118): whose AI (Anthropic, OpenAI, Google,
+ * xAI or OpenRouter), that provider's API key of the person's own, which model, and what the
+ * characters may know. Kept on this device only.
  */
 function AiPanel() {
   const ai = useAiPrefs();
   const [draft, setDraft] = useState('');
+  const [list, setList] = useState<{ provider: ProviderId; models: string[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [problem, setProblem] = useState('');
   const id = useId();
   const toast = useToast();
+  const chosen = provider(ai.provider);
+  const key = ai.keys[ai.provider];
+  const model = ai.models[ai.provider] ?? '';
+  const models = list?.provider === ai.provider ? list.models : [];
   return (
     <section className="panel" aria-labelledby="ai-h">
       <h2 id="ai-h">🤖 AI characters</h2>
       <p>
-        The Librarian and the Clerk in the walking Library answer from a list of questions, free and on this device. With an <strong>Anthropic API key</strong> of your own, you can also type anything to them, and Claude answers in character.
+        The Librarian and the Clerk in the walking Library answer from a list of questions, free and on this device. With an <strong>API key</strong> of your own from one of these AI providers, you can also type anything to them, and its AI answers in
+        character.
       </p>
-      {ai.key ? (
+      <label className="row" htmlFor={`${id}-provider`}>
+        Provider
+        <select
+          id={`${id}-provider`}
+          className="text-input"
+          value={ai.provider}
+          onChange={(e) => {
+            setAiPrefs({ provider: e.target.value as ProviderId });
+            setDraft('');
+            setProblem('');
+          }}
+        >
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {key ? (
         <p className="row">
           <span>
-            🔑 A key ending <code>…{ai.key.slice(-4)}</code> is saved on this device.
+            🔑 Your {chosen.name} key ending <code>…{key.slice(-4)}</code> is saved on this device.
           </span>
           <button
             type="button"
             className="btn btn-small"
             onClick={() => {
-              setAiPrefs({ key: '' });
-              toast('The API key is removed from this device. The characters answer from their list again.');
+              setAiKey(ai.provider, '');
+              toast(`The ${chosen.name} key is removed from this device.`);
             }}
           >
             Remove the key
@@ -114,30 +142,73 @@ function AiPanel() {
           className="row"
           onSubmit={(e) => {
             e.preventDefault();
-            const key = draft.trim();
-            if (!key) return;
-            setAiPrefs({ key });
+            if (!draft.trim()) return;
+            setAiKey(ai.provider, draft);
             setDraft('');
-            toast('Saved. Talk to the Librarian or the Clerk in the Library to try it.');
+            toast(ai.provider === 'anthropic' ? 'Saved. Talk to the Librarian or the Clerk in the Library to try it.' : 'Saved. Now pick a model below.');
           }}
         >
-          <label htmlFor={`${id}-key`}>Anthropic API key</label>
-          <input id={`${id}-key`} className="text-input" type="password" autoComplete="off" spellCheck={false} placeholder="sk-ant-…" value={draft} onChange={(e) => setDraft(e.target.value)} />
+          <label htmlFor={`${id}-key`}>{chosen.name} API key</label>
+          <input id={`${id}-key`} className="text-input" type="password" autoComplete="off" spellCheck={false} placeholder={chosen.keyLooks} value={draft} onChange={(e) => setDraft(e.target.value)} />
           <button type="submit" className="btn btn-small btn-primary" disabled={!draft.trim()}>
             Save key
           </button>
         </form>
       )}
-      <label className="row" htmlFor={`${id}-model`}>
-        Model
-        <select id={`${id}-model`} className="text-input" value={ai.model} onChange={(e) => setAiPrefs({ model: e.target.value as AiModel })}>
-          {AI_MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {ai.provider === 'anthropic' ? (
+        <label className="row" htmlFor={`${id}-model`}>
+          Model
+          <select id={`${id}-model`} className="text-input" value={modelOf(ai)} onChange={(e) => setAiModel('anthropic', e.target.value as AiModel)}>
+            {AI_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <div className="row">
+          <label htmlFor={`${id}-model`}>Model</label>
+          <input
+            id={`${id}-model`}
+            className="text-input"
+            list={`${id}-models`}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={models.length ? 'Pick or type one' : 'Its name, as the provider lists it'}
+            value={model}
+            onChange={(e) => setAiModel(ai.provider, e.target.value)}
+          />
+          <datalist id={`${id}-models`}>
+            {models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={!key || loading}
+            onClick={async () => {
+              const which = ai.provider as Exclude<ProviderId, 'anthropic'>;
+              setLoading(true);
+              setProblem('');
+              const got = await listModels(which, ai.keys[which] ?? '');
+              setLoading(false);
+              if (got.ok) {
+                setList({ provider: which, models: got.models });
+                toast(`${got.models.length.toLocaleString()} models from ${provider(which).name}: pick one in Model.`);
+              } else setProblem(got.why);
+            }}
+          >
+            {loading ? 'Loading…' : 'Load the list'}
+          </button>
+        </div>
+      )}
+      {problem && (
+        <p className="error" role="alert">
+          {problem}
+        </p>
+      )}
       <fieldset>
         <legend>What the characters may know about your library</legend>
         <label className="row">
@@ -148,8 +219,8 @@ function AiPanel() {
         </label>
       </fieldset>
       <p className="hint">
-        Your key stays on this device, outside your journal and its backups. When you talk to a character, what you type and what they may know goes straight to Anthropic with your key, and costs a little on your Anthropic account. Your entries’
-        words never leave the device.
+        Each provider’s key stays on this device, outside your journal and its backups. When you talk to a character, what you type and what they may know goes straight to the provider you chose, with your key, and costs a little on your
+        account with them. Your entries’ words never leave the device.
       </p>
     </section>
   );

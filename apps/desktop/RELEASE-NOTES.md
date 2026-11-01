@@ -1,3 +1,11 @@
+**More AIs for the Library's people.** The Librarian and the Clerk can now talk through **OpenAI (ChatGPT)**, **Google (Gemini)**, **xAI (Grok)** or **OpenRouter** as well as Claude. In **Settings → AI characters**, pick a provider, paste your API key from it, and choose a model (**Load the list** shows the ones your key can use). Each provider's key stays on your device. As before, only what you type and your library's numbers (titles too if you allow it) are sent, never your entries' words. Without a key, they still answer from their list, for free.
+
+**The Unwritten has a story.** With horror on, ask the Librarian **Who was he?** and **How do I stop him?**, or ask the Clerk **Did you know him?**. The **📖 Encyclopedia** now tells who he was (**Silas Quire**, the Library's first reader, who meant to write and never did), how to stop him, and how to get past him. **New:** fresh ink slows him down. On a day you've written an entry, he walks slower.
+
+**Fixed:** AI characters now work in the Android app.
+
+What came in 0.9.13:
+
 **Look around with the mouse in full screen.** In the Library's full screen, moving the mouse now turns the view, like a game, without holding a button. The circle in the middle is your cursor: click to read the book or talk to the person it's on. **Esc** gives you your cursor back, and a click on the view takes it again. Outside full screen, nothing changes.
 
 **Fixed:** surfaces in the Library no longer flicker through each other: the storage room's doorway, the hall's walls, floor and ceiling, the rug, and the backs of the bookcases and racks.
