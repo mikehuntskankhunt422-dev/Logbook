@@ -35,6 +35,7 @@ for (const theme of ['light', 'dark'] as const) {
       ['/#/library/shelves', 'Library'],
       ['/#/apps', 'Apps'],
       ['/#/secrets', 'Secrets'],
+      ['/#/library/encyclopedia', 'Library'],
     ];
     for (const [path, heading] of views) {
       await page.goto(path);

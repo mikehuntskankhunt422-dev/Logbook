@@ -3,6 +3,7 @@ import { MOODS, parseIsoDate, type Book, type LibraryGallery, type LibraryMonth 
 import { href } from '../app/router.ts';
 import { useLibrary } from '../lib/library.ts';
 import { BookReader } from './BookReader.tsx';
+import { Encyclopedia } from './Encyclopedia.tsx';
 import { WalkView } from './WalkView.tsx';
 
 /**
@@ -10,7 +11,7 @@ import { WalkView } from './WalkView.tsx';
  * shelves on the page (and there for anyone whose device can't draw 3D, or who'd rather a list).
  * Either way, a book (or folder) opens to be read like one.
  */
-export function LibraryView({ view }: { view?: 'shelves' | 'storage' }) {
+export function LibraryView({ view }: { view?: 'shelves' | 'storage' | 'encyclopedia' }) {
   const library = useLibrary();
   const [reading, setReading] = useState<{ id: string; kind: 'book' | 'folder' } | null>(null);
   const close = useCallback(() => setReading(null), []);
@@ -29,15 +30,24 @@ export function LibraryView({ view }: { view?: 'shelves' | 'storage' }) {
       <div className="library-head">
         <h1>📚 Library</h1>
         <nav className="library-modes" aria-label="Library views">
-          <a href={href({ name: 'library' })} aria-current={view !== 'shelves' ? 'page' : undefined}>
+          <a href={href({ name: 'library' })} aria-current={view === undefined || view === 'storage' ? 'page' : undefined}>
             🚶 Walk through
           </a>
           <a href={href({ name: 'library', view: 'shelves' })} aria-current={view === 'shelves' ? 'page' : undefined}>
             📚 Shelves
           </a>
+          <a href={href({ name: 'library', view: 'encyclopedia' })} aria-current={view === 'encyclopedia' ? 'page' : undefined}>
+            📖 Encyclopedia
+          </a>
         </nav>
       </div>
-      {view === 'shelves' ? shelves : <WalkView library={library} storage={view === 'storage'} reading={reading !== null} onRead={(t) => setReading({ id: t.book.id, kind: t.kind })} fallback={shelves} />}
+      {view === 'shelves' ? (
+        shelves
+      ) : view === 'encyclopedia' ? (
+        <Encyclopedia />
+      ) : (
+        <WalkView library={library} storage={view === 'storage'} reading={reading !== null} onRead={(t) => setReading({ id: t.book.id, kind: t.kind })} fallback={shelves} />
+      )}
       {reading && <BookReader key={reading.id} id={reading.id} kind={reading.kind} onClose={close} />}
     </>
   );

@@ -4,6 +4,7 @@ import { requestPersistentStorage, storageEstimate } from '@logbook/storage-idb'
 import { promptsOn, setPromptsOn } from '../lib/prompts.ts';
 import { setGardenPrefs, useGardenPrefs } from '../lib/garden-prefs.ts';
 import { foundCount, SECRETS, useSecrets } from '../lib/secrets.ts';
+import { AI_MODELS, setAiPrefs, useAiPrefs, type AiModel } from '../lib/ai.ts';
 import { href } from '../app/router.ts';
 import { clearMediaUrlCache, useJournal } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
@@ -43,6 +44,7 @@ export function SettingsView() {
       <h1>Settings</h1>
       <AppearancePanel />
       <SecretsPanel />
+      <AiPanel />
       {AppIconPanel && (
         <Suspense fallback={null}>
           <AppIconPanel />
@@ -73,6 +75,83 @@ export function SettingsView() {
       <TrashPanel />
       <DangerPanel />
     </>
+  );
+}
+
+/**
+ * The Library's characters in your own words (D116): an Anthropic API key of the person's own,
+ * which model, and what the characters may know. Kept on this device only.
+ */
+function AiPanel() {
+  const ai = useAiPrefs();
+  const [draft, setDraft] = useState('');
+  const id = useId();
+  const toast = useToast();
+  return (
+    <section className="panel" aria-labelledby="ai-h">
+      <h2 id="ai-h">🤖 AI characters</h2>
+      <p>
+        The Librarian and the Clerk in the walking Library answer from a list of questions, free and on this device. With an <strong>Anthropic API key</strong> of your own, you can also type anything to them, and Claude answers in character.
+      </p>
+      {ai.key ? (
+        <p className="row">
+          <span>
+            🔑 A key ending <code>…{ai.key.slice(-4)}</code> is saved on this device.
+          </span>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => {
+              setAiPrefs({ key: '' });
+              toast('The API key is removed from this device. The characters answer from their list again.');
+            }}
+          >
+            Remove the key
+          </button>
+        </p>
+      ) : (
+        <form
+          className="row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const key = draft.trim();
+            if (!key) return;
+            setAiPrefs({ key });
+            setDraft('');
+            toast('Saved. Talk to the Librarian or the Clerk in the Library to try it.');
+          }}
+        >
+          <label htmlFor={`${id}-key`}>Anthropic API key</label>
+          <input id={`${id}-key`} className="text-input" type="password" autoComplete="off" spellCheck={false} placeholder="sk-ant-…" value={draft} onChange={(e) => setDraft(e.target.value)} />
+          <button type="submit" className="btn btn-small btn-primary" disabled={!draft.trim()}>
+            Save key
+          </button>
+        </form>
+      )}
+      <label className="row" htmlFor={`${id}-model`}>
+        Model
+        <select id={`${id}-model`} className="text-input" value={ai.model} onChange={(e) => setAiPrefs({ model: e.target.value as AiModel })}>
+          {AI_MODELS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <fieldset>
+        <legend>What the characters may know about your library</legend>
+        <label className="row">
+          <input type="radio" name={`${id}-share`} checked={ai.share === 'numbers'} onChange={() => setAiPrefs({ share: 'numbers' })} /> Numbers only: how many books, how long, which days
+        </label>
+        <label className="row">
+          <input type="radio" name={`${id}-share`} checked={ai.share === 'titles'} onChange={() => setAiPrefs({ share: 'titles' })} /> Numbers and titles
+        </label>
+      </fieldset>
+      <p className="hint">
+        Your key stays on this device, outside your journal and its backups. When you talk to a character, what you type and what they may know goes straight to Anthropic with your key, and costs a little on your Anthropic account. Your entries’
+        words never leave the device.
+      </p>
+    </section>
   );
 }
 

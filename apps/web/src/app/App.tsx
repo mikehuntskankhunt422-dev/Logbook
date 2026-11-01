@@ -86,7 +86,7 @@ export function App() {
   const routeKey =
     route.name === 'entry' ? route.id : route.name === 'apps' ? (route.id ?? '') : route.name === 'library' ? (route.view ?? '') : route.name === 'garden' && !gardenHidden ? (route.view ?? '') : '';
   useEffect(() => {
-    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', library: 'Library · Logbook', apps: 'Apps · Logbook', copies: 'Copies to sort out · Logbook', secrets: 'Secrets · Logbook' }[route.name];
+    document.title = { home: 'Logbook', entry: 'Entry · Logbook', new: 'New entry · Logbook', calendar: 'Calendar · Logbook', memories: 'On this day · Logbook', search: 'Search · Logbook', clock: 'Clock · Logbook', garden: { '': 'Garden · Logbook', herbarium: 'Herbarium · Garden · Logbook', almanac: 'Almanac · Garden · Logbook' }[routeKey] ?? 'Garden · Logbook', settings: 'Settings · Logbook', library: routeKey === 'encyclopedia' ? 'Encyclopedia · Library · Logbook' : 'Library · Logbook', apps: 'Apps · Logbook', copies: 'Copies to sort out · Logbook', secrets: 'Secrets · Logbook' }[route.name];
     // Move focus to the new page for screen-reader and keyboard users, but never on first load
     // (the skip link comes first) or on a silent URL update while someone is typing.
     const silent = consumeReplaceFlag();
@@ -164,7 +164,7 @@ export function App() {
         </div>
       </main>
       {/* Not over an app (D111) or the Library you walk through (D113), whose own buttons may be there. */}
-      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && !(route.name === 'apps' && route.id) && !(route.name === 'library' && route.view !== 'shelves') && (
+      {route.name !== 'entry' && route.name !== 'new' && route.name !== 'clock' && !(route.name === 'apps' && route.id) && !(route.name === 'library' && route.view !== 'shelves' && route.view !== 'encyclopedia') && (
         <a className="btn btn-primary fab" href={href({ name: 'new' })}>
           ✍️ New entry
         </a>

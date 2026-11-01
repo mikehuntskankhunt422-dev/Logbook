@@ -37,7 +37,7 @@
         "media-src": "'self' blob: https: http:",
         "font-src": "'self' data:",
         "worker-src": "'self' blob:",
-        "connect-src": "'self' ipc: http://ipc.localhost blob: https://rumble.com",
+        "connect-src": "'self' ipc: http://ipc.localhost blob: https://rumble.com https://api.anthropic.com",
         "frame-src": "appbox: http://appbox.localhost https://www.youtube-nocookie.com https://player.vimeo.com https://rumble.com https://www.dailymotion.com https://geo.dailymotion.com https://player.twitch.tv https://player.kick.com https://streamable.com",
         "object-src": "'none'",
         "base-uri": "'none'",

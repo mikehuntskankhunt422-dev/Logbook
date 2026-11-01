@@ -3774,6 +3774,16 @@ dialog.reader-folder {
   background: var(--ink);
   color: var(--bg);
 }
+/* Three of them on a narrow phone: onto two rows rather than off the side. */
+@media (max-width: 420px) {
+  .library-modes {
+    flex-wrap: wrap;
+    border-radius: 22px;
+  }
+  .library-modes a {
+    padding: 6px 10px;
+  }
+}
 /* Walking through (D113): the 3D view, with what it says laid over it. */
 .walk {
   position: relative;
@@ -4050,5 +4060,216 @@ dialog.reader-folder {
 @media (prefers-reduced-motion: reduce) {
   .garden-door[data-knock] {
     animation: none;
+  }
+}
+
+/* ── The Library's people, horror and the PS1 look (D116) ─────────────────────────────────────── */
+/* The PS1 look: drawn small, shown big with hard pixels. */
+.walk[data-ps1] .walk-canvas {
+  image-rendering: pixelated;
+}
+/* What horror says below the view. */
+.walk-cue {
+  font-style: italic;
+  letter-spacing: 0.01em;
+}
+.walk[data-horror] .walk-cue {
+  color: #f3d7c9;
+}
+.walk-horror {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 8px;
+}
+.walk-horror legend {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.walk-choice {
+  align-items: flex-start;
+}
+.walk-choice input {
+  margin-top: 4px;
+}
+
+/* Talking to the Librarian or the Clerk. */
+dialog.talk {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 32px));
+  display: none;
+  padding: 18px;
+}
+dialog.talk[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.talk-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.talk-head h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.15rem;
+}
+.talk-portrait {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  border-radius: 10px;
+  background: var(--bg-sunk);
+}
+.talk-lines {
+  overflow-y: auto;
+  min-height: 120px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding-right: 4px;
+}
+.talk-line {
+  display: grid;
+  gap: 6px;
+  max-width: 88%;
+}
+.talk-line p {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  line-height: 1.45;
+}
+.talk-them p,
+p.talk-them {
+  background: var(--bg-sunk);
+}
+.talk-you {
+  justify-self: end;
+}
+.talk-you p {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.talk-line .btn {
+  justify-self: start;
+}
+.talk-waiting {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  width: fit-content;
+}
+.talk-note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--danger);
+}
+.talk-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.talk-say {
+  display: flex;
+  gap: 8px;
+}
+.talk-say .text-input {
+  flex: 1;
+  min-width: 0;
+}
+.talk-free {
+  margin: 0;
+}
+
+/* The Unwritten has you: its face, small, blown up into hard pixels. */
+.scare {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #050101;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  animation: scare-lunge 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.scare canvas {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  image-rendering: pixelated;
+  animation: scare-shake 0.09s steps(2) 6;
+}
+@keyframes scare-lunge {
+  from { transform: scale(0.6); }
+  to { transform: scale(1.08); }
+}
+@keyframes scare-shake {
+  0% { transform: translate(-6px, 4px); }
+  100% { transform: translate(6px, -4px); }
+}
+.scare[data-still],
+.scare[data-still] canvas {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scare,
+  .scare canvas {
+    animation: none;
+  }
+}
+
+/* The Encyclopedia. */
+.ency h2 {
+  margin-top: 28px;
+}
+.ency-entry {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-elev);
+}
+.ency-entry h3 {
+  margin: 0 0 4px;
+}
+.ency-entry p,
+.ency-entry ul {
+  margin: 0 0 8px;
+}
+.ency-where {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+.ency-portrait {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  border-radius: 12px;
+  background: var(--bg-sunk);
+}
+.ency-unwritten .ency-portrait {
+  background: #120d0b;
+}
+.ency-settings dt {
+  font-weight: 700;
+  margin-top: 10px;
+}
+.ency-settings dd {
+  margin: 2px 0 0;
+}
+@media (max-width: 520px) {
+  .ency-entry {
+    flex-direction: column;
   }
 }
