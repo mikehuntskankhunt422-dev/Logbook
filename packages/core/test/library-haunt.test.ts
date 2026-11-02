@@ -228,16 +228,39 @@ describe('The Unwritten, cleverer (D119)', () => {
     expect(events).toEqual(['glimpse']);
     expect(h.glimpse).toBe(true);
     expect(zone(h.x, h.z)).toBe(true);
-    // Watched, he doesn't come; looked away from, he's gone without a word, for a good while.
-    const watched = run(h, 'intense', edge, 2);
+    // Watched, he doesn't come, and he doesn't go either, however long (D120).
+    const watched = run(h, 'intense', edge, 30);
     expect(watched.events).toEqual([]);
-    expect(watched.h.z).toBe(h.z);
+    expect(watched.h).toMatchObject({ here: true, glimpse: true, z: h.z });
+    // Looked away from, he's gone without a word.
     const gone = run(watched.h, 'intense', at(2 * ROOM_STEP, 0), 1);
     expect(gone.events).toEqual([]);
     expect(gone.h.here).toBe(false);
-    expect(gone.h.cooldown).toBeGreaterThan(HAUNT.rest.glimpse - 2);
     // Looking the other way, never.
-    expect(run(QUIET, 'intense', at(2 * ROOM_STEP, 0), 20).events).toEqual([]);
+    expect(run(QUIET, 'intense', at(2 * ROOM_STEP, 0), 60).events).toEqual([]);
+  });
+
+  it('is rare: only time spent looking that way counts, and not again for a long while (D120)', () => {
+    const edge = at(2 * ROOM_STEP);
+    const away = at(2 * ROOM_STEP, 0);
+    // Glancing that way now and then, in between looking elsewhere: it takes a good while.
+    let h = QUIET;
+    const events: HauntEvent[] = [];
+    for (let i = 0; i < 6; i++) {
+      const a = run(h, 'intense', edge, 3);
+      const b = run(a.h, 'intense', away, 3);
+      h = b.h;
+      events.push(...a.events, ...b.events);
+    }
+    expect(events).toEqual([]);
+    const seen = run(h, 'intense', edge, 3);
+    expect(seen.events).toEqual(['glimpse']);
+    // Gone, and for a long while after, however long you look.
+    const after = run(seen.h, 'intense', away, 1).h;
+    expect(after.here).toBe(false);
+    expect(run(after, 'intense', edge, HAUNT.glimpseAfter * 4).events).toEqual([]);
+    // He can still come for real where he walks.
+    expect(run(after, 'intense', at(5 * ROOM_STEP), HAUNT.rest.glimpse + HAUNT.appearAfter + 0.5).events).toContain('appear');
   });
 });
 

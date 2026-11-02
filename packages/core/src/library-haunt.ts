@@ -33,15 +33,17 @@ export interface Haunt {
   dark: number;
   /** Seen from where your writing is, standing past the edge of it: he only stands there (D119). */
   glimpse: boolean;
-  /** Seconds spent near where he walks, without going in (for a glimpse). */
+  /** Seconds spent near where he walks, looking that way, without going in (for a glimpse). */
   edge: number;
+  /** Seconds before he can be glimpsed again (D120: once a visit, as good as). */
+  glimpsed: number;
   /** What he's learnt this visit (D119): how often you've looked back at him, walked him away, and how often he's come. */
   glances: number;
   folded: number;
   came: number;
 }
 
-export const QUIET: Haunt = { here: false, x: 0, z: 0, waited: 0, cooldown: 0, outside: 0, warned: false, watched: 0, unseen: 0, dark: 0, glimpse: false, edge: 0, glances: 0, folded: 0, came: 0 };
+export const QUIET: Haunt = { here: false, x: 0, z: 0, waited: 0, cooldown: 0, outside: 0, warned: false, watched: 0, unseen: 0, dark: 0, glimpse: false, edge: 0, glimpsed: 0, glances: 0, folded: 0, came: 0 };
 
 /** Whoever is walking: where, which way they look, and half their view's width (radians). */
 export interface Watcher {
@@ -105,13 +107,17 @@ export const HAUNT = {
   cutOffAfter: 2,
   /** Turned round on this close, on Intense, he's face to face with you first (D119). */
   faceAt: 2.2,
-  /** Near where he walks this long, he may be seen standing past its edge; as far as that edge may be (D119). */
-  glimpseAfter: 8,
+  /**
+   * Near where he walks, looking that way this long, he may be seen standing past its edge; as far
+   * as that edge may be (D119); and not again for this long (D120: rare, or it's no longer a fright).
+   */
+  glimpseAfter: 20,
   glimpseWithin: 9,
+  glimpseAgain: 600,
   /** Seconds out of his reach before he gives up. */
   leaveAfter: 4,
   /** Seconds before he comes again, after each way he goes. */
-  rest: { vanish: 15, leave: 6, pass: 20, scare: 30, glimpse: 25 },
+  rest: { vanish: 15, leave: 6, pass: 20, scare: 30, glimpse: 6 },
 } as const;
 
 /** What else he goes by (D118, D119): whether you've written today, and how many days it's been since you last did. */
@@ -142,7 +148,7 @@ export function sees(me: Watcher, x: number, z: number): boolean {
 }
 
 /** He rests, keeping what he's learnt. */
-const rest = (h: Haunt, seconds: number): Haunt => ({ ...QUIET, cooldown: seconds, glances: h.glances, folded: h.folded, came: h.came });
+const rest = (h: Haunt, seconds: number): Haunt => ({ ...QUIET, cooldown: seconds, glimpsed: h.glimpsed, glances: h.glances, folded: h.folded, came: h.came });
 
 /** Which way is further in from here: on into the years to come, or on down the storage room. */
 const deeperFrom = (z: number) => (z > -ROOM_APOTHEM ? 1 : -1);
@@ -169,7 +175,7 @@ export function lurk(z: number, dir: 1 | -1, side: 1 | -1, zone: (x: number, z: 
 export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number, zone: (x: number, z: number) => boolean, opts: HauntOptions = {}): { haunt: Haunt; events: HauntEvent[] } {
   if (level === 'off') return { haunt: QUIET, events: [] };
   const bold = Math.min(1, Math.max(0, (opts.idle ?? 0) / HAUNT.bold.days));
-  const s: Haunt = { ...h, cooldown: Math.max(0, h.cooldown - dt) };
+  const s: Haunt = { ...h, cooldown: Math.max(0, h.cooldown - dt), glimpsed: Math.max(0, h.glimpsed - dt) };
   const inside = zone(me.x, me.z);
   const deeper = deeperFrom(me.z);
 
@@ -188,15 +194,16 @@ export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number,
     return { haunt: { ...fresh, ...lurk(me.z, deeper, came % 2 ? 1 : -1, zone) }, events: ['appear'] };
   }
 
-  // Only seen past the edge: he stands there while he's watched, and is gone once he isn't (or
-  // when he's been watched long enough). Come in, and he's here for real.
+  // Only seen past the edge: he stands there for as long as he's watched, and is gone once he's
+  // well out of view (never while he can still be seen, D120), or once you've gone from the edge.
+  // Come in, and he's here for real.
   if (s.glimpse) {
     if (inside) s.glimpse = false;
     else {
-      const seen = sees(me, s.x, s.z);
-      s.watched = seen ? s.watched + dt : 0;
-      s.unseen = seen ? 0 : s.unseen + dt;
-      if (s.unseen > 0.4 || s.watched > 5) return { haunt: rest(s, HAUNT.rest.glimpse), events: [] };
+      const inView = sees({ ...me, half: me.half + 0.35 }, s.x, s.z);
+      s.unseen = inView ? 0 : s.unseen + dt;
+      const near = Math.abs(s.z - me.z) <= HAUNT.glimpseWithin + 6;
+      if (s.unseen > 0.3 || !near) return { haunt: { ...rest(s, HAUNT.rest.glimpse), glimpsed: HAUNT.glimpseAgain }, events: [] };
       return { haunt: s, events: [] };
     }
   }
@@ -281,8 +288,8 @@ function towards(x: number, z: number, goal: { x: number; z: number }): { x: num
 }
 
 /**
- * Near where he walks but not in it, looking that way, after a while: he's there, past the edge,
- * standing in the dark. Only ever where he walks.
+ * Near where he walks but not in it, having looked that way a good while: he's there, past the
+ * edge, standing in the dark. Only ever where he walks, and rarely (D120).
  */
 function glimpse(s: Haunt, me: Watcher, dt: number, deeper: 1 | -1, zone: (x: number, z: number) => boolean): { haunt: Haunt; events: HauntEvent[] } {
   let edge: number | null = null;
@@ -293,9 +300,10 @@ function glimpse(s: Haunt, me: Watcher, dt: number, deeper: 1 | -1, zone: (x: nu
     }
   }
   if (edge === null) return { haunt: { ...s, edge: 0 }, events: [] };
-  s.edge += dt;
-  if (s.cooldown > 0 || s.edge < HAUNT.glimpseAfter) return { haunt: s, events: [] };
   const spot = { x: 0, z: edge + deeper * 2.5 };
-  if (!canStand(spot.x, spot.z) || !zone(spot.x, spot.z) || !sees(me, spot.x, spot.z)) return { haunt: s, events: [] };
+  if (!canStand(spot.x, spot.z) || !zone(spot.x, spot.z)) return { haunt: s, events: [] };
+  // Only the time spent looking that way counts; and once he's been glimpsed, not again for a long while.
+  if (sees(me, spot.x, spot.z)) s.edge += dt;
+  if (s.cooldown > 0 || s.glimpsed > 0 || s.edge < HAUNT.glimpseAfter || !sees(me, spot.x, spot.z)) return { haunt: s, events: [] };
   return { haunt: { ...rest(s, 0), here: true, glimpse: true, ...spot }, events: ['glimpse'] };
 }
