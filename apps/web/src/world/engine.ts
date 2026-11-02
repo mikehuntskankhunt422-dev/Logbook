@@ -9,6 +9,10 @@ import {
   ROOM_APOTHEM,
   ROOM_STEP,
   WALL_HEIGHT,
+  WALL_SIDES,
+  SHELF_HEIGHTS,
+  canStand,
+  gallerySide,
   QUIET,
   haunted,
   hauntStep,
@@ -29,6 +33,7 @@ import { aisleShell, bookWall, corridorShell, folderRack, galleryShell, pairZ, t
 import { CAST_FIGURES, unwritten, type Figure } from './figures.ts';
 import { retroable, setRetro } from './retro.ts';
 import { createSounds } from './sounds.ts';
+import { HIS_BOOK, PAGES, type PageId } from '../lib/lore.ts';
 
 /**
  * The Library you walk through (D113), drawn with three.js: the galleries and the storage room
@@ -39,8 +44,8 @@ import { createSounds } from './sounds.ts';
  * keeps it drawing while you're there.
  */
 
-/** What's in front of you: a book, a folder, or someone to talk to. */
-export type Target = { kind: 'book' | 'folder'; book: Book } | { kind: 'npc'; id: CastId; name: string };
+/** What's in front of you: a book, a folder, or someone to talk to; with horror on, out where he walks, a page of Silas Quire's notebook or his one book (D119). */
+export type Target = { kind: 'book' | 'folder'; book: Book } | { kind: 'npc'; id: CastId; name: string } | { kind: 'page'; id: PageId } | { kind: 'quire-book' };
 /** The Library's looks and horror, as chosen on this device. */
 export interface Mode {
   horror: HorrorLevel;
@@ -79,8 +84,14 @@ export interface World {
   capture(on: boolean): void;
   /** Sound is allowed from now on (after a tap or a key elsewhere on the page). */
   wakeSound(): void;
-  /** Whether you've written today: fresh ink slows The Unwritten (D118). */
-  setInked(inked: boolean): void;
+  /** Whether you've written today, and how many days it's been since you did: fresh ink slows The Unwritten (D118), and the longer it's been, the bolder he gets (D119). */
+  setInk(ink: { inked: boolean; idle: number }): void;
+  /** His pages found, so far (D119); and whether he's laid to rest (he stays away while you keep writing). */
+  setQuire(quire: { found: readonly string[]; rest: boolean }): void;
+  /** What he whispers, when he's close (D119). */
+  setWhispers(lines: readonly string[]): void;
+  /** On Intense, out where he walks: he's right behind you (after his book is closed, D119). */
+  behind(): void;
   dispose(): void;
 }
 
@@ -109,16 +120,51 @@ interface Chunk {
   group: THREE.Group;
   walls: Wall[];
   owned: { dispose(): void }[];
+  /** Things to look at that aren't on a wall of books: his pages and his book (D119). */
+  things: { mesh: THREE.Mesh; t: Target }[];
 }
 
 /** What horror says when, for everyone (and screen readers) to hear. */
 const CUES: Partial<Record<HauntEvent, string>> = {
   appear: 'Something is standing further in, where the light doesn’t reach.',
+  behind: 'Something is standing behind you, between you and your books.',
+  glimpse: 'Someone is standing past the last lamp, looking this way.',
   near: 'Footsteps. Close behind you.',
+  dark: 'The lamps go out.',
+  light: 'The lamps come back on.',
+  face: 'He’s right there, face to face. Then he isn’t.',
   vanish: 'It’s gone.',
   leave: 'The footsteps stop. It stays where nothing is written.',
   pass: 'Something cold passes through you, and is gone.',
 };
+
+/** A loose page in a cramped hand, and his book's dark spine (D119): painted once, shared. */
+function paintPage(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 90;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#efe9d8';
+  g.fillRect(0, 0, 64, 90);
+  g.strokeStyle = 'rgba(80, 110, 160, 0.35)';
+  for (let y = 14; y < 88; y += 6) g.fillRect(4, y, 56, 1);
+  g.strokeStyle = 'rgba(30, 24, 20, 0.85)';
+  g.lineWidth = 1;
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+  for (let y = 13; y < 84; y += 6) {
+    g.beginPath();
+    let x = 6;
+    g.moveTo(x, y);
+    const end = 30 + rnd() * 28;
+    while (x < end) {
+      x += 2 + rnd() * 3;
+      g.lineTo(x, y - rnd() * 3);
+    }
+    g.stroke();
+  }
+  return c;
+}
 
 export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, start: Spot, reduced: boolean, thisYear: number, initial: Mode): World {
   let mode = initial;
@@ -188,7 +234,39 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   scene.add(shadow.group);
   const sounds = createSounds();
   let haunt: Haunt = QUIET;
-  let inked = false;
+  let ink = { inked: false, idle: 0 };
+  let quireNow: { found: readonly string[]; rest: boolean } = { found: [], rest: false };
+  let whispers: readonly string[] = [];
+  let whisperClock = 0;
+  /** Seconds he stays in sight after a face to face (D119), and how hard the view shakes. */
+  let faceTime = 0;
+  let shake = 0;
+  /** How lit the lamps are (1) or out (0), eased (D119). */
+  let lit = 1;
+  let ambientBase = 1.5;
+  /** Whether you're walking, and whether a step of yours just landed (his keep time with yours, D119). */
+  let walking = false;
+  let beat = 0;
+  let stepped = false;
+  /** He's back after resting, and that's been said. */
+  let backSaid = false;
+  // His pages and his book (D119): one shape each, one look each.
+  const pageTexture = new THREE.CanvasTexture(paintPage());
+  pageTexture.colorSpace = THREE.SRGBColorSpace;
+  const pageGeometry = new THREE.PlaneGeometry(0.2, 0.28);
+  const pageMaterial = retroable(new THREE.MeshLambertMaterial({ map: pageTexture, side: THREE.DoubleSide }));
+  const hisGeometry = new THREE.BoxGeometry(0.06, 0.32, 0.23);
+  const hisMaterial = retroable(new THREE.MeshLambertMaterial({ color: 0x6a1d16 }));
+  // Small things are hard to look at exactly: each has a bigger, unseen place to aim at.
+  const hitGeometry = new THREE.PlaneGeometry(0.6, 0.55);
+  const hitMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+  const hit = (mesh: THREE.Mesh, t: Target, chunk: Chunk, w: { x: number; z: number; nx: number; nz: number }, y: number) => {
+    const area = new THREE.Mesh(hitGeometry, hitMaterial);
+    area.position.set(w.x - w.nx * 0.12, y, w.z - w.nz * 0.12);
+    area.rotation.y = Math.atan2(-w.nx, -w.nz);
+    chunk.group.add(area);
+    chunk.things.push({ mesh, t }, { mesh: area, t });
+  };
   let stepClock = 0;
   let lampBase = 26;
   let clock = 0;
@@ -246,7 +324,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   }
 
   function buildGallery(k: number): Chunk {
-    const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [] };
+    const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [], things: [] };
     chunk.group.position.z = k * ROOM_STEP;
     chunk.group.add(
       new THREE.Mesh(gallery.walls, mats.wall),
@@ -267,11 +345,33 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     chunk.group.add(ahead, behind);
     const room = roomAt(rooms, k, thisYear);
     for (let w = 0; w < 4; w++) addWall(chunk, bookWall(room, w), 'book', (close) => paintBookWall(room.walls[w]!, close));
+    // Out where he walks (D119): a page of his notebook not yet found, leaning on a shelf; and his book.
+    if (mode.horror !== 'off') {
+      const out = k - Math.max(1, rooms.length + 1);
+      const page = PAGES.find((p) => p.gallery === out);
+      if (page && !quireNow.found.includes(page.id)) {
+        const w = gallerySide(0, WALL_SIDES[out % 4]!, 0.14);
+        const mesh = new THREE.Mesh(pageGeometry, pageMaterial);
+        mesh.rotation.order = 'YXZ';
+        mesh.rotation.set(-0.28, Math.atan2(-w.nx, -w.nz), 0.07);
+        mesh.position.set(w.x, SHELF_HEIGHTS[1] + 0.155, w.z);
+        chunk.group.add(mesh);
+        hit(mesh, { kind: 'page', id: page.id }, chunk, w, SHELF_HEIGHTS[1] + 0.155);
+      }
+      if (out === HIS_BOOK.gallery) {
+        const w = gallerySide(0, WALL_SIDES[(out + 2) % 4]!, 0.36 / 2 + 0.02);
+        const mesh = new THREE.Mesh(hisGeometry, hisMaterial);
+        mesh.rotation.y = Math.atan2(-w.nx, -w.nz);
+        mesh.position.set(w.x, SHELF_HEIGHTS[1] + 0.16, w.z);
+        chunk.group.add(mesh);
+        hit(mesh, { kind: 'quire-book' }, chunk, w, SHELF_HEIGHTS[1] + 0.16);
+      }
+    }
     return chunk;
   }
 
   function buildPair(p: number): Chunk {
-    const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [] };
+    const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [], things: [] };
     chunk.group.position.z = pairZ(p);
     chunk.group.add(new THREE.Mesh(aisle.floor, mats.concrete), new THREE.Mesh(aisle.ceiling, mats.hall), new THREE.Mesh(aisle.walls, mats.hall), new THREE.Mesh(aisle.racks, mats.metal), new THREE.Mesh(aisle.light, mats.tube));
     const pair = [racks[2 * p], racks[2 * p + 1]];
@@ -287,7 +387,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   }
 
   function buildCorridor(): Chunk {
-    const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [] };
+    const chunk: Chunk = { group: new THREE.Group(), walls: [], owned: [], things: [] };
     chunk.group.add(new THREE.Mesh(corridor.walls, mats.wall), new THREE.Mesh(corridor.floor, mats.floor), new THREE.Mesh(corridor.hall, mats.hall), new THREE.Mesh(corridor.hallFloor, mats.concrete));
     // The signs either side of the hall's door, standing a little off it.
     const toStorage = sign('Storage room', 'Every entry in a folder', 'storage', chunk.owned);
@@ -374,7 +474,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     veilMaterial.color.copy(sky);
     fog.near = dark ? 1.5 : storage ? 4 : 5;
     fog.far = dark ? 15 : storage ? 19 : 26;
-    ambient.intensity = dark ? 0.55 : storage ? 1.25 : 1.5;
+    ambientBase = dark ? 0.55 : storage ? 1.25 : 1.5;
+    ambient.intensity = ambientBase * (0.25 + 0.75 * lit);
     lampBase = dark ? (storage ? 4 : 12) : storage ? 9 : 26;
     lamps.forEach((l, i) => {
       l.intensity = lampBase;
@@ -415,11 +516,14 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     const ndc = aimWithPointer && pointer.over ? new THREE.Vector2(pointer.x, pointer.y) : new THREE.Vector2(0, 0);
     raycaster.setFromCamera(ndc, camera);
     const meshes = [...chunks.values()].flatMap((c) => c.walls.map((w) => w.mesh));
+    const things = new Map([...chunks.values()].flatMap((c) => c.things.map((t) => [t.mesh as THREE.Object3D, t.t] as const)));
     // The nearest thing in the way: a book, or someone standing in front of it.
-    const hit = raycaster.intersectObjects([...meshes, ...castMeshes.keys()], false)[0];
+    const hit = raycaster.intersectObjects([...meshes, ...castMeshes.keys(), ...things.keys()], false)[0];
     let next: typeof target = null;
     const person = hit && castMeshes.get(hit.object as THREE.Mesh);
+    const thing = hit && things.get(hit.object);
     if (person) next = { t: { kind: 'npc', id: person.id, name: person.name }, key: `npc:${person.id}` };
+    else if (thing) next = { t: thing, key: thing.kind === 'page' ? `page:${thing.id}` : thing.kind };
     else if (hit && hit.faceIndex != null) {
       const wall = [...chunks.values()].flatMap((c) => c.walls).find((w) => w.mesh === hit.object);
       const index = Math.floor(hit.faceIndex / 12);
@@ -487,14 +591,25 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     const dx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * side) * speed * dt;
     const dz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * side) * speed * dt;
     const moving = len > 0.05;
+    walking = moving;
+    stepped = false;
     if (moving) {
       // In small steps, so nothing is walked through however long the frame.
       const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.08));
       for (let i = 0; i < steps; i++) Object.assign(pos, stepAmong(pos.x, pos.z, dx / steps, dz / steps));
       walked += speed * dt;
+      // A step of yours lands at every other low point of the bob.
+      const b = Math.floor((walked * 4.2) / Math.PI);
+      stepped = b !== beat;
+      beat = b;
       refresh();
     }
     camera.position.set(pos.x, EYE + (moving && !reduced ? Math.sin(walked * 4.2) * 0.025 : 0), pos.z);
+    // Face to face with him (D119): the view jolts, briefly; not with reduced motion.
+    if (shake > 0) {
+      shake = Math.max(0, shake - dt);
+      if (!reduced) camera.position.x += (Math.random() - 0.5) * 0.08 * shake;
+    }
     camera.rotation.set(pitch, yaw, 0);
     // The cast look at you when you're near.
     for (const c of cast) {
@@ -505,18 +620,29 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     return moving || turn !== 0 || look !== null || stick.id >= 0;
   }
 
-  /** The Unwritten, a moment at a time (D116); whether it, or where it walks, keeps the world moving. */
+  /** The Unwritten, a moment at a time (D116, D119); whether he, or where he walks, keeps the world moving. */
   function horror(dt: number): boolean {
     if (mode.horror === 'off') return false;
     clock += dt;
     const half = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     const was = haunt;
-    const out = hauntStep(haunt, mode.horror, { x: pos.x, z: pos.z, yaw, half }, dt, zone, inked);
+    // Laid to rest (all his pages found), he stays away while you keep writing.
+    const resting = quireNow.rest && ink.idle <= 1;
+    const out = resting ? { haunt: { ...QUIET, glances: haunt.glances, folded: haunt.folded, came: haunt.came }, events: [] as HauntEvent[] } : hauntStep(haunt, mode.horror, { x: pos.x, z: pos.z, yaw, half }, dt, zone, ink);
     haunt = out.haunt;
+    if (resting) backSaid = false;
     for (const e of out.events) {
-      const said = CUES[e];
+      const said = e === 'appear' && quireNow.rest && !backSaid ? 'He’s back. You stopped writing.' : CUES[e];
+      if (e === 'appear' && quireNow.rest) backSaid = true;
       if (said) events.cue(said);
       if (e === 'vanish' || e === 'pass') sounds.breath();
+      if (e === 'dark') sounds.lampsOut();
+      if (e === 'light') sounds.lampsOn();
+      if (e === 'face') {
+        sounds.sting();
+        faceTime = 0.7;
+        shake = 0.5;
+      }
       if (e === 'scare') {
         sounds.scream();
         keys.clear();
@@ -528,27 +654,41 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     }
     const inside = zone(pos.x, pos.z);
     sounds.hum(inside || haunt.here);
-    shadow.group.visible = haunt.here;
+    faceTime = Math.max(0, faceTime - dt);
+    // After a face to face he stays where he was a moment longer.
+    shadow.group.visible = haunt.here || faceTime > 0;
     const dist = Math.hypot(pos.x - haunt.x, pos.z - haunt.z);
+    const right = (Math.cos(yaw) * (haunt.x - pos.x) - Math.sin(yaw) * (haunt.z - pos.z)) / Math.max(0.01, dist);
     if (haunt.here) {
       shadow.group.position.set(haunt.x, 0, haunt.z);
       shadow.group.rotation.y = Math.atan2(-(pos.x - haunt.x), -(pos.z - haunt.z));
-      // Its footsteps, from where it is, louder as it comes.
+      // His footsteps, from where he is, louder as he comes: in time with yours while you walk
+      // (so you hear them best standing still), at his own pace while you don't.
       const moved = was.here ? Math.hypot(haunt.x - was.x, haunt.z - was.z) : 0;
       stepClock += moved;
-      if (stepClock > 0.75) {
+      const loud = Math.max(0, 1 - dist / 16);
+      if (moved > 0 && (walking ? stepped : stepClock > 0.75)) {
         stepClock = 0;
-        const right = (Math.cos(yaw) * (haunt.x - pos.x) - Math.sin(yaw) * (haunt.z - pos.z)) / Math.max(0.01, dist);
-        sounds.step(Math.max(0, 1 - dist / 16), right);
+        sounds.step(walking ? loud * 0.6 : loud, right);
+      }
+      // Close, he whispers (D119): now and then, never in a glimpse.
+      whisperClock = !haunt.glimpse && dist < 9 ? whisperClock + dt : 0;
+      if (whisperClock > 11 && whispers.length) {
+        whisperClock = 0;
+        events.cue(`A whisper: “${whispers[Math.floor(Math.random() * whispers.length)]}”`);
+        sounds.whisper(right);
       }
     }
-    // The lamps falter where it walks, more as it comes near: slowly, never flashing.
+    // The lamps go out (D119), fading, never flashing; and come back the same way.
+    lit += ((haunt.dark > 0 ? 0 : 1) - lit) * Math.min(1, dt * (haunt.dark > 0 ? 6 : 2.5));
+    ambient.intensity = ambientBase * (0.25 + 0.75 * lit);
+    // The lamps falter where he walks, more as he comes near: slowly, never flashing.
     if (!reduced && (inside || haunt.here)) {
       const depth = haunt.here && dist < 10 ? 0.65 : 0.3;
       const wave = 0.5 + 0.5 * Math.sin(clock * 2.3) * Math.sin(clock * 0.9 + 1.3);
-      lamps.forEach((l) => (l.intensity = lampBase * (1 - depth * wave)));
-    } else lamps.forEach((l) => (l.intensity = lampBase));
-    return inside || haunt.here;
+      lamps.forEach((l) => (l.intensity = lampBase * (1 - depth * wave) * lit));
+    } else lamps.forEach((l) => (l.intensity = lampBase * lit));
+    return inside || haunt.here || faceTime > 0 || lit < 0.99;
   }
 
   function frame(now: number) {
@@ -794,14 +934,45 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       else if (locked()) document.exitPointerLock();
     },
     wakeSound: () => sounds.wake(),
-    setInked(next) {
-      inked = next;
+    setInk(next) {
+      ink = next;
+    },
+    setQuire(next) {
+      const changed = next.rest !== quireNow.rest || next.found.length !== quireNow.found.length;
+      quireNow = next;
+      if (!changed) return;
+      // A page picked up comes off its shelf.
+      for (const k of [...chunks.keys()]) dropChunk(k);
+      target = null;
+      events.target(null);
+      refresh(true);
+      aim();
+      if (!paused) renderer.render(scene, camera);
+    },
+    setWhispers(lines) {
+      whispers = lines;
+    },
+    behind() {
+      if (mode.horror !== 'intense' || !zone(pos.x, pos.z)) return;
+      const spot = { x: pos.x + Math.sin(yaw) * 1.7, z: pos.z + Math.cos(yaw) * 1.7 };
+      if (!canStand(spot.x, spot.z) || !zone(spot.x, spot.z)) return;
+      haunt = { ...QUIET, here: true, ...spot, unseen: 1, warned: true, glances: haunt.glances, folded: haunt.folded, came: haunt.came + 1 };
+      sounds.breath();
+      events.cue('Behind you.');
+      kick();
     },
     dispose() {
       disposed = true;
       sounds.dispose();
       for (const c of cast) c.figure.dispose();
       shadow.dispose();
+      pageTexture.dispose();
+      pageGeometry.dispose();
+      pageMaterial.dispose();
+      hisGeometry.dispose();
+      hisMaterial.dispose();
+      hitGeometry.dispose();
+      hitMaterial.dispose();
       if (frameId) cancelAnimationFrame(frameId);
       ro.disconnect();
       canvas.removeEventListener('keydown', onKeyDown);

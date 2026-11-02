@@ -57,6 +57,13 @@ describe('what the Librarian and the Clerk say (D116)', () => {
     expect(t['stop-him']).toMatch(/Look at him/);
     expect(t['stop-him']).toMatch(/fresh ink slows him/);
     expect(topics('clerk', ctx({ horror: 'intense' })).find((x) => x.id === 'knew-him')!.reply.text).toMatch(/empty folders/);
+    // What's left of him (D119): his pages, by how many are found; the Clerk's drawer leads to one.
+    const left = (pages: number) => topics('librarian', ctx({ horror: 'unsettling', pages })).find((x) => x.id === 'his-pages')!.reply.text;
+    expect(left(0)).toMatch(/seven pages/);
+    expect(left(3)).toMatch(/You’ve found 3 pages of his seven/);
+    expect(left(7)).toMatch(/He’s resting now/);
+    expect(topics('clerk', ctx({ horror: 'unsettling' })).find((x) => x.id === 'his-folder')!.reply.take).toEqual({ kind: 'quire', id: 'p7', label: 'Look inside' });
+    expect(ids(ctx(), 'clerk')).not.toContain('his-folder');
   });
 });
 

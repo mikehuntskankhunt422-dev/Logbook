@@ -10,7 +10,8 @@ import { BRIEF } from './lore.ts';
  */
 
 export interface Take {
-  kind: 'book' | 'folder';
+  /** A book or a folder of yours; or (D119) a page of Silas Quire's, by its id. */
+  kind: 'book' | 'folder' | 'quire';
   id: string;
   label: string;
 }
@@ -27,6 +28,8 @@ export interface CastContext {
   facts: LibraryFacts;
   horror: HorrorLevel;
   found: ReadonlySet<SecretId>;
+  /** How many of Silas Quire's pages have been found (D119). */
+  pages?: number;
 }
 
 const longDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
@@ -56,7 +59,7 @@ export function topics(id: CastId, ctx: CastContext): Topic[] {
   return id === 'librarian' ? librarian(ctx) : clerk(ctx);
 }
 
-function librarian({ facts, horror, found }: CastContext): Topic[] {
+function librarian({ facts, horror, found, pages = 0 }: CastContext): Topic[] {
   const none = 'Nothing yet. Write an entry and I’ll shelve it here as your first book.';
   const out: Topic[] = [
     {
@@ -131,6 +134,18 @@ function librarian({ facts, horror, found }: CastContext): Topic[] {
           text: 'Look at him: he can’t move while he’s watched. Walk straight at him, watching, and he folds away. Come back to your books, because ink is a wall to him. And write something today: fresh ink slows him. If all else fails, the switch in ⚙️ sends him away for good.',
         },
       },
+      {
+        id: 'his-pages',
+        ask: 'Is anything of his left?',
+        reply: {
+          text:
+            pages >= 7
+              ? 'All seven of his pages, found. He’s resting now, for as long as you keep writing. Thank you. I mean it.'
+              : pages > 0
+                ? `You’ve found ${count(pages, 'page')} of his seven. The rest lie further out, the way he went, and the Clerk has one he doesn’t talk about. And his book is out there, two galleries past where he starts. Don’t read its last page with your back to the dark.`
+                : 'His notebook. It came apart as he walked: seven pages. Six lie out there on the empty shelves, the way he went; the Clerk keeps the other. Bring them all back and perhaps he can rest. His book is out there too, two galleries past where he starts.',
+        },
+      },
     );
   return out;
 }
@@ -186,7 +201,16 @@ function clerk({ facts, horror, found }: CastContext): Topic[] {
       id: 'knew-him',
       ask: 'Did you know him?',
       reply: {
-        text: 'The tall gentleman? Came down for empty folders, a dozen at a time, and filed them himself. Said he’d fill them. I’ve still got the last one he took, in my drawer. Never a word in it. Don’t you end up like that.',
+        text: 'The tall gentleman? Came down for empty folders, a dozen at a time, and filed them himself. Said he’d fill them. I’ve still got the last one he took, in my drawer. Never a word written in it. Well. Almost. Don’t you end up like that.',
+      },
+    });
+  if (horror !== 'off')
+    out.push({
+      id: 'his-folder',
+      ask: 'Can I see his folder?',
+      reply: {
+        text: 'Since it’s you. Bottom drawer. Nothing in the folder itself, but there was a sheet tucked in the back, in his hand. I never told anyone. Read it, then put it back.',
+        take: { kind: 'quire', id: 'p7', label: 'Look inside' },
       },
     });
   return out;

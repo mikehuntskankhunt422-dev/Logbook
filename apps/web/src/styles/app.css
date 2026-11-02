@@ -3589,35 +3589,42 @@ dialog.reader-folder {
   height: 100%;
   column-fill: auto;
 }
-.reader-folder .reader-flow {
-  transition: transform 0.25s ease;
-}
-.reader-flow .lbx {
+.reader-flow .lbx,
+.reader-face-flow .lbx {
   font-size: 1.05rem;
   line-height: 1.6;
 }
-.reader-flow .lbx-entry {
+.reader-flow .lbx-entry,
+.reader-face-flow .lbx-entry {
   padding: 0;
   border: 0;
 }
 .reader-flow img,
-.reader-flow video {
+.reader-face-flow img,
+.reader-flow video,
+.reader-face-flow video {
   max-height: 60vh;
   object-fit: contain;
 }
 .reader-flow figure,
+.reader-face-flow figure,
 .reader-flow pre,
+.reader-face-flow pre,
 .reader-flow table,
-.reader-flow blockquote {
+.reader-face-flow table,
+.reader-flow blockquote,
+.reader-face-flow blockquote {
   break-inside: avoid;
 }
 /* The book's first page: its title page. */
-.reader-book .reader-flow .lbx-title {
+.reader-book .reader-flow .lbx-title,
+.reader-book .reader-face-flow .lbx-title {
   margin: 22% 0 12px;
   text-align: center;
   font-size: 2rem;
 }
-.reader-book .reader-flow .lbx-meta {
+.reader-book .reader-flow .lbx-meta,
+.reader-book .reader-face-flow .lbx-meta {
   text-align: center;
   break-after: column;
 }
@@ -3634,34 +3641,68 @@ dialog.reader-folder {
   right: 36px;
 }
 /* A page turning over, on its spine. */
+/* A page turning (D119): a leaf with the words on both sides, over the spine; a folder's sheet,
+   over the top. Built by the reader on the stage above the paper, so it can leave the paper. */
+.reader-body {
+  position: relative;
+}
+.reader-paper[data-dragging] {
+  user-select: none;
+  cursor: grabbing;
+}
+.reader-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  perspective: 3400px;
+}
 .reader-leaf {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 100%;
-  background: linear-gradient(90deg, #efe6d1, #fbf6ea 40%, #f2e9d6);
-  box-shadow: 0 0 22px rgb(0 0 0 / 0.25);
-  transform-origin: left center;
-  animation: leaf-next 0.45s ease-in-out forwards;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.reader-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  background: #fbf6ea;
+  color: #1f1d1a;
+  border-radius: 6px;
+}
+.reader-folder .reader-face {
+  background: #ffffff;
+}
+.reader-face-l {
+  background: linear-gradient(90deg, #fbf6ea 0, #f4ecdb calc(100% - 30px), #d9cdb4 100%);
+}
+.reader-face-r {
+  background: linear-gradient(90deg, #d9cdb4 0, #f4ecdb 30px, #fbf6ea 100%);
+}
+.reader-leaf .reader-face {
+  box-shadow: 0 0 22px rgb(0 0 0 / 0.28);
+}
+/* The light across a page as it bends. */
+.reader-leaf .reader-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.07), transparent 25%, transparent 70%, rgb(255 255 255 / 0.3) 92%, rgb(0 0 0 / 0.06));
   pointer-events: none;
 }
-.reader-leaf[data-spread] {
-  width: 50%;
+.reader-leaf-back .reader-face::after {
+  transform: scaleX(-1);
 }
-.reader-leaf-back {
-  right: auto;
-  left: 0;
-  transform-origin: right center;
-  animation-name: leaf-back;
+.reader-face-back {
+  transform: rotateY(180deg);
 }
-@keyframes leaf-next {
-  from { transform: perspective(1600px) rotateY(0deg); }
-  to { transform: perspective(1600px) rotateY(-180deg); opacity: 0.4; }
+.reader-face-back.reader-face-x {
+  transform: rotateX(180deg);
 }
-@keyframes leaf-back {
-  from { transform: perspective(1600px) rotateY(0deg); }
-  to { transform: perspective(1600px) rotateY(180deg); opacity: 0.4; }
+.reader-face-flow {
+  position: absolute;
+  column-fill: auto;
 }
 .reader-nav {
   display: flex;
@@ -3735,10 +3776,30 @@ dialog.reader-folder {
     left: 20px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .reader-folder .reader-flow {
-    transition: none;
-  }
+/* Silas Quire's notebook (D119): his hand on a loose page; his book, blank to the last page. */
+.quire-page {
+  margin: 0;
+  padding: 14px 18px;
+  border-left: 3px solid #8a7a5c;
+  background: repeating-linear-gradient(#f3eddc 0 26px, #c9d4e3 26px 27px);
+  color: #2a241c;
+  font: italic 1.05rem/27px 'Newsreader Variable', 'Newsreader', Georgia, serif;
+}
+.ency-pages {
+  display: grid;
+  gap: 10px;
+  padding-left: 1.4em;
+}
+.reader-flow .quire-blank,
+.reader-face-flow .quire-blank {
+  break-before: column;
+  margin: 0;
+}
+.reader-flow .quire-last,
+.reader-face-flow .quire-last {
+  padding-top: 40%;
+  text-align: center;
+  font-style: italic;
 }
 
 /* The Library's two views (D113). */
