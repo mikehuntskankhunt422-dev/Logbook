@@ -7,6 +7,10 @@ import { canWalk } from '../world/support.ts';
 import { BOOK_OF_SAND_GALLERIES, findSecret, LAST_FOLDER_AISLES, SECRETS, useSecrets, type SecretId } from '../lib/secrets.ts';
 import { libraryPrefs, setLibraryPrefs, useLibraryPrefs } from '../lib/library-prefs.ts';
 import type { Take } from '../lib/cast.ts';
+import { HIS_BOOK, hisBook, PAGES, type PageId } from '../lib/lore.ts';
+import { findPage, useQuire } from '../lib/quire.ts';
+import { announce } from '../app/toasts.tsx';
+import { BookReader } from './BookReader.tsx';
 import { Dialog, formatLongDate } from './common.tsx';
 import { Scare } from './Scare.tsx';
 import { TalkDialog } from './TalkDialog.tsx';
@@ -52,6 +56,10 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const [settings, setSettings] = useState(false);
   const [scaring, setScaring] = useState(false);
   const [cue, setCue] = useState('');
+  // A page of Silas Quire's notebook, or his book, open (D119).
+  const [page, setPage] = useState<PageId | null>(null);
+  const [hisOpen, setHisOpen] = useState(false);
+  const quire = useQuire();
   // The mouse captured in full screen (D117): the crosshair is the cursor; Esc lets it go.
   const [locked, setLocked] = useState(false);
   const unlockedAt = useRef(-Infinity);
@@ -62,7 +70,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const prefs = useLibraryPrefs();
   const secrets = useSecrets();
   const read = useRef<(t: Target) => void>(() => {});
-  read.current = (t) => (t.kind === 'npc' ? setTalking(t.id) : onRead(t));
+  read.current = (t) => (t.kind === 'npc' ? setTalking(t.id) : t.kind === 'page' ? setPage(t.id) : t.kind === 'quire-book' ? setHisOpen(true) : onRead(t));
   const content = useRef({ rooms, racks });
   content.current = { rooms, racks };
   // The focus ring: only for coming in with Tab, never for a click, a drag or the page's own focusing.
@@ -216,7 +224,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     if (place.world === 'library' && place.at >= rooms.length + BOOK_OF_SAND_GALLERIES - 1) findSecret('sand');
     if (place.world === 'storage' && place.at >= Math.ceil(racks.length / 2) + LAST_FOLDER_AISLES - 1) findSecret('lastfolder');
   }, [place, rooms.length, racks.length]);
-  const paused = reading || talking !== null || settings || scaring;
+  const paused = reading || talking !== null || settings || scaring || page !== null || hisOpen;
   useEffect(() => {
     world.current?.setPaused(paused);
     // Back from a book, a conversation or the settings in full screen: the mouse is the view's again.
@@ -228,19 +236,39 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   // A word about what's happening stays a while; a new one starts it over.
   useEffect(() => {
     if (!cue) return;
-    const timer = setTimeout(() => setCue(''), 6000);
+    // Only this word: one that came just as it ran out (D119: it happens) stays its full while.
+    const timer = setTimeout(() => setCue((now) => (now === cue ? '' : now)), 6000);
     return () => clearTimeout(timer);
   }, [cue]);
   const found = useMemo(() => new Set(SECRETS.flatMap((x) => (secrets.found[x.id] ? [x.id] : [])) as SecretId[]), [secrets.found]);
   const facts = useMemo(() => libraryFacts(library, today(), racks.length), [library, racks.length]);
-  // Written today: fresh ink slows The Unwritten (D118).
-  const inked = useMemo(() => {
+  // Written today: fresh ink slows The Unwritten (D118). Days since you last did: the more, the bolder he gets (D119).
+  const ink = useMemo(() => {
     const day = today();
-    return library.some((g) => g.year === day.slice(0, 4) && g.months.some((m) => m.month === day.slice(0, 7) && m.books.some((b) => b.date === day)));
-  }, [library]);
+    const inked = library.some((g) => g.year === day.slice(0, 4) && g.months.some((m) => m.month === day.slice(0, 7) && m.books.some((b) => b.date === day)));
+    const last = facts.newest?.date;
+    const idle = inked || !last ? 0 : Math.max(0, Math.round((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${last}T12:00:00Z`)) / 86_400_000));
+    return { inked, idle };
+  }, [library, facts.newest]);
   useEffect(() => {
-    world.current?.setInked(inked);
-  }, [inked, state]);
+    world.current?.setInk(ink);
+  }, [ink, state]);
+  useEffect(() => {
+    world.current?.setQuire(quire);
+  }, [quire, state]);
+  // What he whispers when he's close (D119): worked out here, from the shelves alone; nothing is sent anywhere.
+  const whispers = useMemo(() => {
+    const lines = ['Tomorrow. You’ll start tomorrow.', 'Look at me. Read me.', 'There’s room on these shelves for both of us.', 'I had eleven pencils. Sharp, every one.'];
+    if (ink.inked) lines.push('Fresh ink. I can smell it on you.');
+    else if (ink.idle === 1) lines.push('Nothing since yesterday.');
+    else if (ink.idle > 1) lines.push(`${ink.idle.toLocaleString()} days without a word.`);
+    if (facts.books) lines.push(`${facts.books.toLocaleString()} ${facts.books === 1 ? 'book' : 'books'}. Not one of them mine.`);
+    if (quire.found.length) lines.push('You’ve been reading my notebook.');
+    return lines;
+  }, [ink, facts.books, quire.found.length]);
+  useEffect(() => {
+    world.current?.setWhispers(whispers);
+  }, [whispers, state]);
 
   /** Where a book or folder is, to be taken to it from what someone said. */
   const spotOf = (take: Take): Spot | null => {
@@ -395,6 +423,24 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
               Talk
             </button>
           </>
+        ) : target?.kind === 'page' ? (
+          <>
+            <span className="walk-target">
+              📄 <strong>A loose page</strong>, in a cramped hand
+            </span>
+            <button type="button" className="btn btn-small btn-primary" onClick={() => setPage(target.id)}>
+              Read it
+            </button>
+          </>
+        ) : target?.kind === 'quire-book' ? (
+          <>
+            <span className="walk-target">
+              📕 <strong>{HIS_BOOK.title}</strong>, alone on an empty shelf
+            </span>
+            <button type="button" className="btn btn-small btn-primary" onClick={() => setHisOpen(true)}>
+              Read it
+            </button>
+          </>
         ) : target ? (
           <>
             <span className="walk-target">
@@ -417,10 +463,12 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
       {talking && (
         <TalkDialog
           id={talking}
-          ctx={{ facts, horror: prefs.horror, found }}
+          ctx={{ facts, horror: prefs.horror, found, pages: quire.found.length }}
           where={place?.label ?? 'the Library'}
           onTake={(take) => {
             setTalking(null);
+            // The Clerk's drawer (D119): his folder, and the sheet inside.
+            if (take.kind === 'quire') return setPage(take.id as PageId);
             // Once the conversation has gone (taking the focus with it), there, with the focus back.
             const spot = spotOf(take);
             requestAnimationFrame(() => go(spot));
@@ -467,12 +515,69 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
         <label className="row">
           <input type="checkbox" checked={prefs.ps1} onChange={(e) => setLibraryPrefs({ ps1: e.target.checked })} /> 🕹️ PS1 look: big pixels, wobbly corners, fewer colours
         </label>
+        <label className="row">
+          <input type="checkbox" checked={prefs.paper} onChange={(e) => setLibraryPrefs({ paper: e.target.checked })} /> 📄 Page sounds, as you turn a book’s pages or a folder’s
+        </label>
         <p className="hint">
           Who’s who and what can happen: <a href={href({ name: 'library', view: 'encyclopedia' })}>📖 the Encyclopedia</a>. To talk to the Librarian and the Clerk in your own words, add an API key in{' '}
           <a href={href({ name: 'settings' })}>Settings → AI characters</a>.
         </p>
       </Dialog>
       {scaring && <Scare reduced={reduced} onDone={wake} />}
+      {page && (
+        <QuirePage
+          id={page}
+          onClose={() => {
+            setPage(null);
+            // Once the page has gone (and the dialog has put the focus back where it was), the view.
+            requestAnimationFrame(() => canvas.current?.focus({ preventScroll: true }));
+          }}
+        />
+      )}
+      {hisOpen && (
+        <BookReader
+          id="silas-quire"
+          kind="book"
+          story={{ title: HIS_BOOK.title, html: hisBook(prefs.horror === 'intense') }}
+          onClose={() => {
+            setHisOpen(false);
+            canvas.current?.focus({ preventScroll: true });
+            // On Intense, closing it: he's right behind you.
+            requestAnimationFrame(() => world.current?.behind());
+          }}
+        />
+      )}
     </div>
   );
 }
+
+/** A page of Silas Quire's notebook (D119), read; found, it's kept, and all seven lay him to rest. */
+function QuirePage({ id, onClose }: { id: PageId; onClose: () => void }) {
+  const at = PAGES.findIndex((p) => p.id === id);
+  const sheet = PAGES[at]!;
+  useEffect(() => {
+    const { fresh, count: n, all } = findPage(id);
+    if (!fresh) return;
+    if (all) announce('📄 All seven of Silas Quire’s pages. He can rest now: he’ll stay away for as long as you keep writing.', { label: 'Encyclopedia', run: () => (location.hash = '#/library/encyclopedia') }, 9000);
+    else announce(`📄 A page of Silas Quire’s notebook (${n} of ${PAGES.length}). It’s in the Encyclopedia now.`, undefined, 6000);
+  }, [id]);
+  return (
+    <Dialog
+      open
+      title={sheet.gallery === null ? 'In the Clerk’s drawer: a folder marked S. QUIRE, and one sheet inside' : 'A page of Silas Quire’s notebook'}
+      onClose={onClose}
+      actions={
+        <button type="button" className="btn btn-primary" onClick={onClose}>
+          Put it back
+        </button>
+      }
+    >
+      <blockquote className="quire-page">{sheet.text}</blockquote>
+      <p className="hint">
+        Page {at + 1} of {PAGES.length}. What it says is kept in <a href="#/library/encyclopedia">📖 the Encyclopedia</a>.
+      </p>
+    </Dialog>
+  );
+}
+
+

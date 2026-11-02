@@ -13,6 +13,13 @@ export interface Sounds {
   step(level: number, pan: number): void;
   breath(): void;
   scream(): void;
+  /** Face to face with him, suddenly (D119): a short, sharp chord. */
+  sting(): void;
+  /** The lamps going out (D119): a low thud and the hum dropping away; and coming back. */
+  lampsOut(): void;
+  lampsOn(): void;
+  /** A whisper, from `pan` (D119): breath shaped like words, with no words in it. */
+  whisper(pan: number): void;
   dispose(): void;
 }
 
@@ -118,6 +125,46 @@ export function createSounds(): Sounds {
         o.connect(g);
         o.start(at);
         o.stop(at + 1.45);
+      }
+    },
+    sting() {
+      const c = live();
+      if (!c) return;
+      const at = c.currentTime;
+      burst(c, at, 'highpass', 1400, 0.35, 0.005, 0.5);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.2, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.7);
+      g.connect(c.destination);
+      for (const f of [311, 330, 466, 494]) {
+        const o = c.createOscillator();
+        o.type = 'square';
+        o.frequency.setValueAtTime(f, at);
+        o.connect(g);
+        o.start(at);
+        o.stop(at + 0.75);
+      }
+    },
+    lampsOut() {
+      const c = live();
+      if (!c) return;
+      burst(c, c.currentTime, 'lowpass', 140, 0.5, 0.01, 0.6);
+      if (drone) drone.gain.gain.setTargetAtTime(0.012, c.currentTime, 0.15);
+    },
+    lampsOn() {
+      const c = live();
+      if (!c) return;
+      if (drone) drone.gain.gain.setTargetAtTime(0.06, c.currentTime, 0.6);
+    },
+    whisper(pan) {
+      const c = live();
+      if (!c) return;
+      // Syllables of breath: a handful of short, shaped hisses, unevenly spaced.
+      let at = c.currentTime;
+      for (let i = 0; i < 7; i++) {
+        burst(c, at, 'bandpass', 2200 + Math.random() * 1800, 0.05 + Math.random() * 0.04, 0.03, 0.09 + Math.random() * 0.12, pan);
+        at += 0.12 + Math.random() * 0.16;
       }
     },
     dispose() {

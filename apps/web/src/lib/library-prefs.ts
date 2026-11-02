@@ -3,7 +3,8 @@ import type { HorrorLevel } from '@logbook/core';
 
 /**
  * How the walking Library looks and feels on this device (D116): horror off (as it starts),
- * Unsettling or Intense; the PS1 look; and whether horror makes a sound. Browser storage, like the
+ * Unsettling or Intense; the PS1 look; whether horror makes a sound; and whether pages make one as
+ * they turn (D119), in the reader from the Library or the shelves. Browser storage, like the
  * garden's choices: the journal doesn't change.
  */
 
@@ -11,9 +12,11 @@ export interface LibraryPrefs {
   horror: HorrorLevel;
   ps1: boolean;
   sounds: boolean;
+  /** Page sounds (D119). */
+  paper: boolean;
 }
 
-const DEFAULTS: LibraryPrefs = { horror: 'off', ps1: false, sounds: true };
+const DEFAULTS: LibraryPrefs = { horror: 'off', ps1: false, sounds: true, paper: true };
 const KEY = 'logbook.library';
 const listeners = new Set<() => void>();
 let current = load();
@@ -25,6 +28,7 @@ function load(): LibraryPrefs {
       horror: raw.horror === 'unsettling' || raw.horror === 'intense' ? raw.horror : 'off',
       ps1: raw.ps1 === true,
       sounds: raw.sounds !== false,
+      paper: raw.paper !== false,
     };
   } catch {
     return DEFAULTS;

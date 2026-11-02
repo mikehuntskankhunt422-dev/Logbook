@@ -294,9 +294,10 @@ test('Intense: walked up to, it’s gone; back turned, it catches you, and you w
   await open(page, { horror: 'intense', sounds: false });
   await intoTheDark(page);
   await expect(below(page)).toContainText('Something is standing further in', { timeout: 10_000 });
-  // Straight at it, looking at it: gone.
+  // Straight at it, looking at it: gone. (It waits by a doorway further in, D119: a walk of a
+  // few galleries.)
   await page.keyboard.down('KeyW');
-  await expect(below(page)).toContainText('It’s gone.', { timeout: 15_000 });
+  await expect(below(page)).toContainText('It’s gone.', { timeout: 25_000 });
   await page.keyboard.up('KeyW');
   // It comes again further in; this time, back turned.
   await expect(below(page)).toContainText('Something is standing further in', { timeout: 30_000 });
@@ -326,7 +327,7 @@ test('the settings: horror, its sounds and the PS1 look, kept on this device', a
   // Drawn small, about 240 pixels high, and shown big.
   await expect.poll(() => page.locator('.walk-canvas').evaluate((c: HTMLCanvasElement) => c.height)).toBeLessThanOrEqual(241);
   expect(await page.locator('.walk-canvas').evaluate((c) => getComputedStyle(c).imageRendering)).toBe('pixelated');
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.library')!))).toEqual({ horror: 'intense', ps1: true, sounds: true });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.library')!))).toEqual({ horror: 'intense', ps1: true, sounds: true, paper: true });
   await page.reload();
   await expect(walk).toHaveAttribute('data-ps1', 'true');
   // The way to the Encyclopedia.
@@ -343,11 +344,12 @@ test('the Encyclopedia: who’s who and what happens, for anyone who’d rather 
   await expect(page.getByRole('article', { name: 'The Unwritten' })).toContainText('He only moves while you aren’t looking at him.');
   // Who he was, how to stop him, and how to get by him (D118).
   await expect(page.getByRole('article', { name: 'The Unwritten' })).toContainText('Once a man called Silas Quire.');
-  for (const part of ['His story', 'How to stop him', 'Strategies']) await expect(page.getByRole('heading', { level: 2, name: part })).toBeVisible();
-  for (const part of ['Who he was', 'How he was lost', 'What he wants']) await expect(page.getByRole('heading', { level: 3, name: part })).toBeVisible();
+  for (const part of ['His story', 'His notebook', 'How to stop him', 'Strategies']) await expect(page.getByRole('heading', { level: 2, name: part })).toBeVisible();
+  for (const part of ['Who he was', 'How he was lost', 'His notebook', 'What he wants']) await expect(page.getByRole('heading', { level: 3, name: part })).toBeVisible();
   await expect(page.getByRole('term').filter({ hasText: 'Write today' })).toBeVisible();
   await expect(page.getByRole('definition').filter({ hasText: 'on a day you’ve written an entry, he’s slower' })).toBeVisible();
-  await expect(page.getByText('Hurry (Shift). You run at 4.4 m/s; he never walks faster than 1.6.')).toBeVisible();
+  await expect(page.getByText('Hurry (Shift). You run at 4.4 m/s; he never walks faster than 2, even after a week without writing.')).toBeVisible();
+  await expect(page.getByText(/Found so far: 0 of 7\./)).toBeVisible();
   await expect(page.getByText('On this device horror is Off')).toBeVisible();
   await expect(page.getByRole('link', { name: '✍️ New entry' })).toBeVisible();
 });
@@ -371,4 +373,35 @@ test('talking and the settings are accessible', async ({ page }) => {
   await expect(talk).toHaveCount(0);
   await page.getByRole('button', { name: 'Library settings' }).click();
   await scan('settings');
+});
+
+test('Silas Quire’s notebook (D119): the Clerk’s drawer has a page; found, it’s in the Encyclopedia; all seven lay him to rest', async ({ page }) => {
+  await write(page, '2026-06-01', 'Anything', 10);
+  await open(page, { horror: 'unsettling', sounds: false });
+  const talk = await talkTo(page, 'clerk');
+  await talk.getByRole('button', { name: 'Can I see his folder?' }).click();
+  await talk.getByRole('button', { name: 'Look inside' }).click();
+  const sheet = page.getByRole('dialog', { name: /In the Clerk’s drawer/ });
+  await expect(sheet).toContainText('If you find this: write something.');
+  await expect(page.getByText('A page of Silas Quire’s notebook (1 of 7).')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Put it back' }).click();
+  await expect(world(page)).toBeFocused();
+  // The Librarian knows how many.
+  const librarian = await talkTo(page, 'librarian');
+  await librarian.getByRole('button', { name: 'Is anything of his left?' }).click();
+  await expect(librarian.getByRole('log')).toContainText('You’ve found 1 page of his seven.');
+  await librarian.getByRole('button', { name: 'Goodbye' }).click();
+  await page.goto('/#/library/encyclopedia');
+  await expect(page.getByText('Found so far: 1 of 7.')).toBeVisible();
+  await expect(page.locator('.ency-pages blockquote')).toHaveCount(1);
+  await expect(page.locator('.ency-pages')).toContainText('Not found yet.');
+  // All seven: he rests, and can be woken.
+  await page.evaluate(() => localStorage.setItem('logbook.quire', JSON.stringify({ found: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'], rest: true })));
+  await page.reload();
+  await expect(page.getByText(/All seven pages found\. He’s resting/)).toBeVisible();
+  await page.getByRole('button', { name: 'Wake him' }).click();
+  await expect(page.getByText('All seven pages found, but you woke him. He walks again.')).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.quire')!).rest)).toBe(false);
+  await page.getByRole('button', { name: 'Lay him to rest again' }).click();
+  await expect(page.getByText(/He’s resting/)).toBeVisible();
 });

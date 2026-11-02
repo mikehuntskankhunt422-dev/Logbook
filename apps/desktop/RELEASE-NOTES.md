@@ -1,3 +1,13 @@
+**Pages that really turn.** In a book, from the Library or the shelves, the page now turns over with its words on it, and the next page shows underneath. Drag a page with your finger or the mouse to turn it yourself (let go early and it falls back), or hold an arrow key to riffle. A folder's sheets lift over the top. There's a soft paper sound too (**⚙️ → Page sounds** in the Library to turn it off). With reduced motion, pages just fade.
+
+**A cleverer, scarier Unwritten.** With horror on, he now waits in doorways, comes round the side to get behind you, and learns how you look back and how you get away from him. Stare at him too long and the lamps go out, and in the dark he can move. He whispers when he's close, his footsteps keep time with yours, and on Intense, turning round on him close behind you brings you face to face. The longer you go without writing, the bolder he gets.
+
+**More of his story.** Silas Quire's notebook came apart as he walked: find its seven pages on the empty shelves where he walks (and ask the Clerk about his folder). His one book is out there too. Find every page and he's laid to rest: he stays away for as long as you keep writing. The **📖 Encyclopedia** keeps what you've found, and has new strategies against him.
+
+**Fixed:** a message under the Library's view could vanish if it arrived just as the one before it expired.
+
+What came in 0.9.14:
+
 **More AIs for the Library's people.** The Librarian and the Clerk can now talk through **OpenAI (ChatGPT)**, **Google (Gemini)**, **xAI (Grok)** or **OpenRouter** as well as Claude. In **Settings → AI characters**, pick a provider, paste your API key from it, and choose a model (**Load the list** shows the ones your key can use). Each provider's key stays on your device. As before, only what you type and your library's numbers (titles too if you allow it) are sent, never your entries' words. Without a key, they still answer from their list, for free.
 
 **The Unwritten has a story.** With horror on, ask the Librarian **Who was he?** and **How do I stop him?**, or ask the Clerk **Did you know him?**. The **📖 Encyclopedia** now tells who he was (**Silas Quire**, the Library's first reader, who meant to write and never did), how to stop him, and how to get past him. **New:** fresh ink slows him down. On a day you've written an entry, he walks slower.

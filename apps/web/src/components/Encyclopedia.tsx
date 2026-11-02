@@ -1,13 +1,14 @@
 import { href } from '../app/router.ts';
 import { aiReady, provider, useAiPrefs } from '../lib/ai.ts';
 import { useLibraryPrefs } from '../lib/library-prefs.ts';
-import { NAME, STOPS, STORY, STRATEGIES } from '../lib/lore.ts';
+import { HIS_BOOK, NAME, PAGES, STOPS, STORY, STRATEGIES } from '../lib/lore.ts';
+import { setRest, useQuire } from '../lib/quire.ts';
 
 /**
  * The Library's Encyclopedia (D116): who's who in the walking Library and what each of them does,
  * what horror brings and how to stay safe from it, so nothing there has to be a surprise unless
  * you want it to be. It tells everything, The Unwritten included: who he was, how to stop him and
- * how to get by him (D118).
+ * how to get by him (D118); and the pages of his notebook you've found (D119).
  */
 
 const HORROR = { off: 'Off', unsettling: 'Unsettling', intense: 'Intense' } as const;
@@ -15,6 +16,7 @@ const HORROR = { off: 'Off', unsettling: 'Unsettling', intense: 'Intense' } as c
 export function Encyclopedia() {
   const prefs = useLibraryPrefs();
   const ai = useAiPrefs();
+  const quire = useQuire();
   return (
     <div className="ency">
       <p className="hint">
@@ -34,7 +36,7 @@ export function Encyclopedia() {
             Keeps the Library: every entry you write comes to her as a book, and she shelves it by its day. Ask her how much you’ve written, about your longest book, what you were writing a year ago, where it all began or when you wrote the most;
             when an answer is a book, <strong>Take me there</strong> walks you to it. She knows a hint for the next of Logbook’s secrets.
           </p>
-          <p>With horror on, she’ll tell you what walks the empty galleries, who he was and how to stop him, and she warns you to keep near your books.</p>
+          <p>With horror on, she’ll tell you what walks the empty galleries, who he was, how to stop him and what’s left of him out there, and she warns you to keep near your books.</p>
         </div>
       </article>
       <article className="ency-entry" aria-labelledby="ency-clerk">
@@ -48,7 +50,7 @@ export function Encyclopedia() {
             Files every entry in a manila folder and grumbles about how far back the racks go. He finds your oldest and newest folders (<strong>Show me the folder</strong> walks you there), counts them, and knows a rumour about what’s thirty
             aisles past the last one.
           </p>
-          <p>With horror on, he’ll tell you that nobody works the far aisles, and what he remembers of the tall gentleman who used to come down for empty folders.</p>
+          <p>With horror on, he’ll tell you that nobody works the far aisles, what he remembers of the tall gentleman who used to come down for empty folders, and, if you ask, what’s in his drawer.</p>
         </div>
       </article>
       <article className="ency-entry ency-unwritten" aria-labelledby="ency-unwritten">
@@ -63,10 +65,13 @@ export function Encyclopedia() {
             What he does:
           </p>
           <ul>
-            <li>A few seconds after you walk into the empty places, he’s there, further in, where the light doesn’t reach.</li>
-            <li>He only moves while you aren’t looking at him. Look at him and he stands still, however long you watch.</li>
-            <li>Turn your back and he comes on, without a sound but his footsteps, louder as he nears, from where he is.</li>
-            <li>The lamps falter as he comes close, slowly. Now and then a sign out there reads “for who’s to come”.</li>
+            <li>A few seconds after you walk into the empty places, he’s there, further in, where the light doesn’t reach: often in a doorway, half behind the jamb, as if he’d been looking round it.</li>
+            <li>He only moves while you aren’t looking at him. Look at him and he stands still. But stare at him long enough and the lamps go out; in the dark, he comes.</li>
+            <li>Turn your back and he comes on, round the side, keeping out of the edge of your view, without a sound but his footsteps. They keep time with yours.</li>
+            <li>He learns. Look back at him often and he hangs back longer, then comes faster. Send him away too often and he comes from behind, between you and your books.</li>
+            <li>Close, he whispers. Nothing you say to him; things about you, from your shelves.</li>
+            <li>The longer it’s been since you wrote, the bolder he is: sooner, faster, and the lamps go out quicker.</li>
+            <li>The lamps falter as he comes close, slowly. Now and then a sign out there reads “for who’s to come”. From among your books you may see him, standing past the last lamp.</li>
             <li>Walk up to him while you’re looking at him and he’s gone.</li>
             <li>He never comes where your writing is: go back to a gallery with your books (or an aisle with your folders) and he stops at the edge, then leaves.</li>
             <li>
@@ -83,6 +88,29 @@ export function Encyclopedia() {
           <p>{part.text}</p>
         </div>
       ))}
+
+      <h2>His notebook</h2>
+      <p>
+        {quire.found.length === PAGES.length
+          ? quire.rest
+            ? 'All seven pages found. He’s resting: he stays away for as long as you keep writing (an entry today or yesterday). Go two days without, and he’s back.'
+            : 'All seven pages found, but you woke him. He walks again.'
+          : `Seven loose pages, six on the empty shelves out where he walks and one in the Clerk’s drawer, only with horror on. Found so far: ${quire.found.length} of ${PAGES.length}. Find them all and he can be laid to rest. Out there too, ${HIS_BOOK.gallery} galleries past where he starts, stands ${HIS_BOOK.title}.`}
+      </p>
+      {quire.found.length > 0 && (
+        <ol className="ency-pages">
+          {PAGES.map((p) => (
+            <li key={p.id}>{quire.found.includes(p.id) ? <blockquote className="quire-page">{p.text}</blockquote> : <span className="hint">Not found yet.</span>}</li>
+          ))}
+        </ol>
+      )}
+      {quire.found.length === PAGES.length && (
+        <p className="row">
+          <button type="button" className="btn btn-small" onClick={() => setRest(!quire.rest)}>
+            {quire.rest ? 'Wake him' : 'Lay him to rest again'}
+          </button>
+        </p>
+      )}
 
       <h2>How to stop him</h2>
       <dl className="ency-settings">

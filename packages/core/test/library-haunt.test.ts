@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HALL_START, ROOM_STEP, canStand, entrance } from '../src/library-world.ts';
-import { HAUNT, QUIET, haunted, hauntStep, sees, type Haunt, type HauntEvent, type HorrorLevel, type Watcher } from '../src/library-haunt.ts';
+import { HAUNT, QUIET, haunted, hauntStep, sees, type Haunt, type HauntEvent, type HauntOptions, type HorrorLevel, type Watcher } from '../src/library-haunt.ts';
 import { CAST, CAST_RADIUS, canStandAmong, libraryFacts, spotForCast, stepAmong } from '../src/library-cast.ts';
 import type { LibraryGallery } from '../src/library.ts';
 
@@ -13,10 +13,10 @@ const WIDE = Math.PI / 3;
 const at = (z: number, yaw = Math.PI, x = 0): Watcher => ({ x, z, yaw, half: WIDE });
 
 /** Runs it for `seconds`, in 50 ms moments, gathering what happened. */
-function run(h: Haunt, level: HorrorLevel, me: Watcher, seconds: number) {
+function run(h: Haunt, level: HorrorLevel, me: Watcher, seconds: number, opts?: HauntOptions) {
   const events: HauntEvent[] = [];
   for (let t = 0; t < seconds; t += 0.05) {
-    const out = hauntStep(h, level, me, 0.05, zone);
+    const out = hauntStep(h, level, me, 0.05, zone, opts);
     h = out.haunt;
     events.push(...out.events);
   }
@@ -64,10 +64,14 @@ describe('The Unwritten (D116)', () => {
     expect(events).toEqual([]);
     ({ h, events } = run(h, 'intense', at(deep), 0.4));
     expect(events).toEqual(['appear']);
-    expect(h).toMatchObject({ here: true, x: 0, z: deep + HAUNT.distance });
+    // About as far in as ever, but by a doorway, half behind its jamb (D119).
+    expect(h.here).toBe(true);
+    expect(Math.abs(h.x)).toBeCloseTo(1);
+    expect(h.z - deep).toBeGreaterThan(HAUNT.distance - 2);
+    expect(h.z - deep).toBeLessThan(HAUNT.distance + 3);
     expect(zone(h.x, h.z) && canStand(h.x, h.z)).toBe(true);
-    // Watched for a long time: it hasn't moved.
-    const still = run(h, 'intense', at(deep), 30);
+    // Watched for a long time (short of when the lamps go out, D119): it hasn't moved.
+    const still = run(h, 'intense', at(deep), HAUNT.darkAfter - 0.5);
     expect(still.events).toEqual([]);
     expect(still.h.z).toBe(h.z);
   });
@@ -75,7 +79,8 @@ describe('The Unwritten (D116)', () => {
   it('comes on while your back is turned, says so when it’s close, and on Intense it has you', () => {
     const h = run(QUIET, 'intense', at(deep), HAUNT.appearAfter + 0.1).h;
     const away = at(deep, 0);
-    const { h: after, events } = run(h, 'intense', away, (HAUNT.distance - HAUNT.reach) / HAUNT.speed.intense + 0.5);
+    // (Through the doorways, a little further than a straight line.)
+    const { h: after, events } = run(h, 'intense', away, (Math.hypot(h.x, h.z - deep) - HAUNT.reach) / HAUNT.speed.intense + 1.5);
     expect(events).toEqual(['near', 'scare']);
     expect(after).toMatchObject({ here: false, cooldown: expect.any(Number) });
     expect(after.cooldown).toBeGreaterThan(HAUNT.rest.scare - 1);
@@ -86,15 +91,9 @@ describe('The Unwritten (D116)', () => {
   it('on a day you’ve written, fresh ink slows him (D118)', () => {
     const h = run(QUIET, 'intense', at(deep), HAUNT.appearAfter + 0.1).h;
     const away = at(deep, 0);
-    const time = (HAUNT.distance - HAUNT.reach) / HAUNT.speed.intense + 0.5;
+    const time = (Math.hypot(h.x, h.z - deep) - HAUNT.reach) / HAUNT.speed.intense + 1.5;
     expect(run(h, 'intense', away, time).events).toContain('scare');
-    let inked = h;
-    const events: HauntEvent[] = [];
-    for (let t = 0; t < time; t += 0.05) {
-      const out = hauntStep(inked, 'intense', away, 0.05, zone, true);
-      inked = out.haunt;
-      events.push(...out.events);
-    }
+    const { h: inked, events } = run(h, 'intense', away, time, { inked: true });
     expect(events).not.toContain('scare');
     expect(Math.hypot(inked.x - away.x, inked.z - away.z)).toBeGreaterThan(HAUNT.reach);
   });
@@ -110,7 +109,7 @@ describe('The Unwritten (D116)', () => {
 
   it('walked up to while watched, it’s gone', () => {
     let { h } = run(QUIET, 'intense', at(deep), HAUNT.appearAfter + 0.1);
-    const out = hauntStep(h, 'intense', at(h.z - HAUNT.vanishAt + 0.1), 0.05, zone);
+    const out = hauntStep(h, 'intense', at(h.z - HAUNT.vanishAt + 0.1, Math.PI, h.x), 0.05, zone);
     expect(out.events).toEqual(['vanish']);
     expect(out.haunt.here).toBe(false);
     h = out.haunt;
@@ -137,7 +136,108 @@ describe('The Unwritten (D116)', () => {
     const h = run(QUIET, 'intense', at(far, 0), HAUNT.appearAfter + 0.1).h;
     expect(h.here).toBe(true);
     expect(h.z).toBeCloseTo(far - HAUNT.distance);
+    // By the racks, not out in the open.
+    expect(Math.abs(h.x)).toBeGreaterThan(3);
     expect(run(h, 'intense', at(far, Math.PI), 15).events).toContain('scare');
+  });
+});
+
+describe('The Unwritten, cleverer (D119)', () => {
+  const deep = 5 * ROOM_STEP;
+  const out = (level: HorrorLevel = 'intense', opts?: HauntOptions) => run(QUIET, level, at(deep), HAUNT.appearAfter + 0.1, opts).h;
+
+  it('comes round to behind you, keeping out of the edge of your view', () => {
+    const h = out();
+    // Looking aside, across the gallery: he never comes into view, however he comes on.
+    const aside = at(deep, Math.PI / 2);
+    let w = h;
+    const events: HauntEvent[] = [];
+    for (let t = 0; t < 20 && w.here; t += 0.05) {
+      const o = hauntStep(w, 'intense', aside, 0.05, zone);
+      if (o.haunt.here) expect(sees(aside, o.haunt.x, o.haunt.z), `at ${t.toFixed(2)} s`).toBe(false);
+      w = o.haunt;
+      events.push(...o.events);
+    }
+    expect(events).toContain('scare');
+  });
+
+  it('looked back at, he waits longer each time before coming on, then comes faster', () => {
+    let h = out();
+    const away = at(deep, 0);
+    const look = at(deep, Math.PI);
+    // Two glances back.
+    for (let i = 0; i < 2; i++) {
+      h = run(h, 'intense', away, 1).h;
+      h = run(h, 'intense', look, 0.2).h;
+    }
+    expect(h.glances).toBe(2);
+    const before = { x: h.x, z: h.z };
+    // Turned away again: he holds still for a while…
+    const held = run(h, 'intense', away, HAUNT.waitPerGlance * 2 - 0.15).h;
+    expect(held).toMatchObject(before);
+    // …then comes on faster than he walks.
+    const moving = run(held, 'intense', away, 1).h;
+    expect(Math.hypot(moving.x - before.x, moving.z - before.z)).toBeGreaterThan(HAUNT.speed.intense * 1.1 * 0.85);
+  });
+
+  it('stared at long enough, the lamps go out, and in the dark he comes', () => {
+    const h = out();
+    const look = at(deep);
+    const { h: lit, events } = run(h, 'intense', look, HAUNT.darkAfter + 0.1);
+    expect(events).toEqual(['dark']);
+    expect(lit.dark).toBeGreaterThan(0);
+    const { h: after, events: then } = run(lit, 'intense', look, HAUNT.darkFor + 0.1);
+    expect(then).toContain('light');
+    expect(Math.hypot(after.x - lit.x, after.z - lit.z)).toBeGreaterThan(1.5);
+    // Lit again and watched, he's still.
+    const still = run(after, 'intense', look, 2).h;
+    expect({ x: still.x, z: still.z }).toEqual({ x: after.x, z: after.z });
+  });
+
+  it('the longer you haven’t written, the sooner he comes, and the faster', () => {
+    expect(run(QUIET, 'intense', at(deep), HAUNT.appearAfter - HAUNT.bold.sooner + 0.1, { idle: 7 }).events).toEqual(['appear']);
+    expect(run(QUIET, 'intense', at(deep), HAUNT.appearAfter - HAUNT.bold.sooner + 0.1, { idle: 0 }).events).toEqual([]);
+    const h = out('intense', { idle: 30 });
+    const a = run(h, 'intense', at(deep, 0), 2).h;
+    const b = run(h, 'intense', at(deep, 0), 2, { idle: 30 }).h;
+    expect(Math.abs(b.z - h.z)).toBeGreaterThan(Math.abs(a.z - h.z) * 1.2);
+  });
+
+  it('walked away twice, he comes the next time from behind: between you and your writing', () => {
+    let h = out();
+    for (let i = 0; i < HAUNT.cutOffAfter; i++) {
+      const o = hauntStep(h, 'intense', at(h.z - HAUNT.vanishAt + 0.1, Math.PI, h.x), 0.05, zone);
+      expect(o.events).toContain('vanish');
+      h = run({ ...o.haunt, cooldown: 0 }, 'intense', at(deep), HAUNT.appearAfter + 0.1).h;
+    }
+    expect(h.folded).toBe(0);
+    expect(h.z).toBeLessThan(deep);
+    expect(zone(h.x, h.z)).toBe(true);
+  });
+
+  it('turned round on when he’s close, on Intense: face to face, then gone', () => {
+    const h = { ...out(), x: 0, z: deep + 2, unseen: 1 };
+    expect(hauntStep(h, 'intense', at(deep), 0.05, zone).events).toEqual(['face', 'vanish']);
+    expect(hauntStep(h, 'unsettling', at(deep), 0.05, zone).events).toEqual(['vanish']);
+  });
+
+  it('seen from where your writing is: past the edge, standing; looked away from, gone', () => {
+    // In the last gallery with books, looking on into the empty ones.
+    const edge = at(2 * ROOM_STEP);
+    const { h, events } = run(QUIET, 'intense', edge, HAUNT.glimpseAfter + 0.1);
+    expect(events).toEqual(['glimpse']);
+    expect(h.glimpse).toBe(true);
+    expect(zone(h.x, h.z)).toBe(true);
+    // Watched, he doesn't come; looked away from, he's gone without a word, for a good while.
+    const watched = run(h, 'intense', edge, 2);
+    expect(watched.events).toEqual([]);
+    expect(watched.h.z).toBe(h.z);
+    const gone = run(watched.h, 'intense', at(2 * ROOM_STEP, 0), 1);
+    expect(gone.events).toEqual([]);
+    expect(gone.h.here).toBe(false);
+    expect(gone.h.cooldown).toBeGreaterThan(HAUNT.rest.glimpse - 2);
+    // Looking the other way, never.
+    expect(run(QUIET, 'intense', at(2 * ROOM_STEP, 0), 20).events).toEqual([]);
   });
 });
 
