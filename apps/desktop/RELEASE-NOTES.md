@@ -1,3 +1,7 @@
+**Fixed:** with horror on, The Unwritten no longer keeps appearing in the doorway past your newest books, and no longer vanishes while you're looking at him. That glimpse of him is meant to be rare: now it happens at most once a visit, only after you've spent a while looking that way, and he's only gone once you've looked away.
+
+What came in 0.9.15:
+
 **Pages that really turn.** In a book, from the Library or the shelves, the page now turns over with its words on it, and the next page shows underneath. Drag a page with your finger or the mouse to turn it yourself (let go early and it falls back), or hold an arrow key to riffle. A folder's sheets lift over the top. There's a soft paper sound too (**⚙️ → Page sounds** in the Library to turn it off). With reduced motion, pages just fade.
 
 **A cleverer, scarier Unwritten.** With horror on, he now waits in doorways, comes round the side to get behind you, and learns how you look back and how you get away from him. Stare at him too long and the lamps go out, and in the dark he can move. He whispers when he's close, his footsteps keep time with yours, and on Intense, turning round on him close behind you brings you face to face. The longer you go without writing, the bolder he gets.
