@@ -110,6 +110,8 @@ export function paintBookWall(shelves: ShelfThing[][], close: boolean): HTMLCanv
       // A line between books.
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(x + w - Math.max(1, scale * 0.002), top, Math.max(1, scale * 0.002), h);
+      // A letter to your future self, still sealed (D122): a wax seal across the spine.
+      if (thing.book.sealed) waxSeal(ctx, x + w / 2, top + h * 0.5, Math.max(2, Math.min(w * 0.45, scale * 0.028)));
       if (!close) continue;
       const size = Math.max(10, Math.min(w * 0.5, 22));
       upTheSpine(ctx, thing.book.title.trim() || 'Untitled', x + w / 2, top + h * 0.09, bottom - h * 0.2, size, FONT, CREAM);
@@ -122,6 +124,19 @@ export function paintBookWall(shelves: ShelfThing[][], close: boolean): HTMLCanv
     }
   });
   return canvas;
+}
+
+/** A blob of red sealing wax, pressed (D122). */
+function waxSeal(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.fillStyle = '#8e1b1b';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 210, 190, 0.45)';
+  ctx.lineWidth = Math.max(1, r * 0.18);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 /** A rack's folder edges, a row a shelf: manila, a typed label with the title, a mood-coloured tab; green guide cards between months. */
@@ -151,6 +166,8 @@ export function paintFolderRack(shelves: RackThing[][], close: boolean): HTMLCan
       // The label.
       ctx.fillStyle = '#fffdf6';
       ctx.fillRect(x + w * 0.12, top + h * 0.16, w * 0.76, h * 0.7);
+      // A letter to your future self, still sealed (D122): a wax seal on the edge.
+      if (thing.book.sealed) waxSeal(ctx, x + w / 2, top + h * 0.5, Math.max(2, Math.min(w * 0.45, scale * 0.03)));
       if (!close) continue;
       upTheSpine(ctx, thing.book.title.trim() || 'Untitled', x + w / 2, top + h * 0.18, top + h * 0.84, Math.max(8, Math.min(w * 0.55, 13)), TYPE, '#1f1d1a');
       ctx.font = `700 ${Math.max(7, Math.min(w * 0.45, 10))}px ${TYPE}`;

@@ -9,6 +9,7 @@ export * from './embeds.ts';
 export * from './music-links.ts';
 export * from './garden.ts';
 export * from './library.ts';
+export * from './letters.ts';
 export * from './library-world.ts';
 export * from './library-cast.ts';
 export * from './library-haunt.ts';

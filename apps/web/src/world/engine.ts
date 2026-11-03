@@ -11,6 +11,8 @@ import {
   WALL_HEIGHT,
   WALL_SIDES,
   SHELF_HEIGHTS,
+  RACK_SHELVES,
+  rackFront,
   canStand,
   gallerySide,
   QUIET,
@@ -35,6 +37,7 @@ import { retroable, setRetro } from './retro.ts';
 import { createSounds } from './sounds.ts';
 import { elapsed } from './time.ts';
 import { HIS_BOOK, PAGES, type PageId } from '../lib/lore.ts';
+import { CLERK_FOLDERS, type ClerkFolderId } from '../lib/clerk-quest.ts';
 
 /**
  * The Library you walk through (D113), drawn with three.js: the galleries and the storage room
@@ -46,7 +49,13 @@ import { HIS_BOOK, PAGES, type PageId } from '../lib/lore.ts';
  */
 
 /** What's in front of you: a book, a folder, or someone to talk to; with horror on, out where he walks, a page of Silas Quire's notebook or his one book (D119). */
-export type Target = { kind: 'book' | 'folder'; book: Book } | { kind: 'npc'; id: CastId; name: string } | { kind: 'page'; id: PageId } | { kind: 'quire-book' };
+export type Target =
+  | { kind: 'book' | 'folder'; book: Book }
+  | { kind: 'npc'; id: CastId; name: string }
+  | { kind: 'page'; id: PageId }
+  | { kind: 'quire-book' }
+  /** One of the Clerk's own folders, misfiled out past the last of yours (D123). */
+  | { kind: 'clerk-folder'; id: ClerkFolderId };
 /** The Library's looks and horror, as chosen on this device. */
 export interface Mode {
   horror: HorrorLevel;
@@ -93,6 +102,10 @@ export interface World {
   setWhispers(lines: readonly string[]): void;
   /** On Intense, out where he walks: he's right behind you (after his book is closed, D119). */
   behind(): void;
+  /** The Clerk's quest (D123): his folders found so far, and whether he has them back (and you his lantern). */
+  setClerk(quest: { found: readonly string[]; done: boolean }): void;
+  /** Winter (D124: the Christmas and New Year themes): snow falling in the galleries, a tree in the first. */
+  setSeason(season: 'winter' | null): void;
   dispose(): void;
 }
 
@@ -138,6 +151,53 @@ const CUES: Partial<Record<HauntEvent, string>> = {
   leave: 'The footsteps stop. It stays where nothing is written.',
   pass: 'Something cold passes through you, and is gone.',
 };
+
+/** A small Christmas tree (D124): three tiers, a star, a few baubles; its parts owned by the gallery. */
+function winterTree(owned: { dispose(): void }[]): THREE.Group {
+  const tree = new THREE.Group();
+  const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
+    owned.push(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    tree.add(mesh);
+    return mesh;
+  };
+  add(new THREE.CylinderGeometry(0.07, 0.09, 0.4, 6), retroable(new THREE.MeshLambertMaterial({ color: 0x5a3a1e, flatShading: true })), 0, 0.2, 0);
+  const green = 0x2f6b3a;
+  [
+    [0.62, 0.7, 0.62],
+    [0.48, 0.6, 1.02],
+    [0.32, 0.5, 1.36],
+  ].forEach(([r, h, y]) => add(new THREE.ConeGeometry(r!, h!, 7), retroable(new THREE.MeshLambertMaterial({ color: green, flatShading: true })), 0, y!, 0));
+  add(new THREE.OctahedronGeometry(0.09), retroable(new THREE.MeshBasicMaterial({ color: 0xffd25e })), 0, 1.66, 0);
+  const baubles = [0xc0392b, 0xf1c40f, 0x2e86de, 0xc0392b, 0xf1c40f, 0x2e86de, 0xe67e22];
+  baubles.forEach((colour, i) => {
+    const a = i * 2.4;
+    const y = 0.55 + (i % 3) * 0.33;
+    const r = 0.5 - (i % 3) * 0.14;
+    add(new THREE.SphereGeometry(0.045, 6, 4), retroable(new THREE.MeshBasicMaterial({ color: colour })), Math.cos(a) * r, y, Math.sin(a) * r);
+  });
+  tree.position.set(2.3, 0, 1.0);
+  return tree;
+}
+
+/** The Clerk's own folder (D123): manila, a red tab, his name typed on the label. */
+function paintClerkFolder(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 80;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#d9bf83';
+  g.fillRect(0, 8, 64, 72);
+  g.fillStyle = '#b3261e';
+  g.fillRect(36, 0, 22, 12);
+  g.fillStyle = '#fffdf6';
+  g.fillRect(8, 22, 48, 14);
+  g.fillStyle = '#1f1d1a';
+  g.font = 'bold 9px monospace';
+  g.fillText('A. LEDGER', 10, 32);
+  return c;
+}
 
 /** A loose page in a cramped hand, and his book's dark spine (D119): painted once, shared. */
 function paintPage(): HTMLCanvasElement {
@@ -237,6 +297,35 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   let haunt: Haunt = QUIET;
   let ink = { inked: false, idle: 0 };
   let quireNow: { found: readonly string[]; rest: boolean } = { found: [], rest: false };
+  let clerkNow: { found: readonly string[]; done: boolean } = { found: [], done: false };
+  let season: 'winter' | null = null;
+  // Snow (D124): flakes in a box about the gallery you're in, falling and drifting, back to the top
+  // when they reach the floor. Not with reduced motion.
+  const FLAKES = 700;
+  const flakes = new Float32Array(FLAKES * 3);
+  for (let i = 0; i < FLAKES; i++) {
+    flakes[i * 3] = (Math.random() - 0.5) * 8;
+    flakes[i * 3 + 1] = Math.random() * WALL_HEIGHT;
+    flakes[i * 3 + 2] = (Math.random() - 0.5) * 8;
+  }
+  const snowGeometry = new THREE.BufferGeometry();
+  snowGeometry.setAttribute('position', new THREE.BufferAttribute(flakes, 3));
+  // A soft, round flake rather than a square one.
+  const flakeCanvas = document.createElement('canvas');
+  flakeCanvas.width = flakeCanvas.height = 16;
+  const fg = flakeCanvas.getContext('2d')!;
+  const glow = fg.createRadialGradient(8, 8, 0, 8, 8, 8);
+  glow.addColorStop(0, 'rgba(255,255,255,1)');
+  glow.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+  glow.addColorStop(1, 'rgba(255,255,255,0)');
+  fg.fillStyle = glow;
+  fg.fillRect(0, 0, 16, 16);
+  const flakeTexture = new THREE.CanvasTexture(flakeCanvas);
+  const snowMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.06, map: flakeTexture, transparent: true, opacity: 0.9, depthWrite: false });
+  const snow = new THREE.Points(snowGeometry, snowMaterial);
+  snow.visible = false;
+  snow.frustumCulled = false;
+  scene.add(snow);
   let whispers: readonly string[] = [];
   let whisperClock = 0;
   /** Seconds he stays in sight after a face to face (D119), and how hard the view shakes. */
@@ -256,6 +345,10 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
   pageTexture.colorSpace = THREE.SRGBColorSpace;
   const pageGeometry = new THREE.PlaneGeometry(0.2, 0.28);
   const pageMaterial = retroable(new THREE.MeshLambertMaterial({ map: pageTexture, side: THREE.DoubleSide }));
+  const folderTexture = new THREE.CanvasTexture(paintClerkFolder());
+  folderTexture.colorSpace = THREE.SRGBColorSpace;
+  const folderGeometry = new THREE.PlaneGeometry(0.24, 0.3);
+  const folderMaterial = retroable(new THREE.MeshLambertMaterial({ map: folderTexture, side: THREE.DoubleSide }));
   const hisGeometry = new THREE.BoxGeometry(0.06, 0.32, 0.23);
   const hisMaterial = retroable(new THREE.MeshLambertMaterial({ color: 0x6a1d16 }));
   // Small things are hard to look at exactly: each has a bigger, unseen place to aim at.
@@ -346,6 +439,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     chunk.group.add(ahead, behind);
     const room = roomAt(rooms, k, thisYear);
     for (let w = 0; w < 4; w++) addWall(chunk, bookWall(room, w), 'book', (close) => paintBookWall(room.walls[w]!, close));
+    // Winter (D124): a small tree in the first gallery, decorated, to the right as you come in.
+    if (k === 0 && season === 'winter') chunk.group.add(winterTree(chunk.owned));
     // Out where he walks (D119): a page of his notebook not yet found, leaning on a shelf; and his book.
     if (mode.horror !== 'off') {
       const out = k - Math.max(1, rooms.length + 1);
@@ -384,6 +479,19 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     back.rotation.y = Math.PI;
     chunk.group.add(label, back);
     pair.forEach((rack, i) => rack && addWall(chunk, folderRack(rack.shelves, i), 'folder', (close) => paintFolderRack(rack.shelves, close)));
+    // The Clerk's own folders (D123), not yet found: leaning on an empty rack so many aisles past the last of yours.
+    const out = p - Math.ceil(racks.length / 2);
+    const folder = clerkNow.done ? undefined : CLERK_FOLDERS.find((f) => f.aisles === out && !clerkNow.found.includes(f.id));
+    if (folder) {
+      const front = rackFront(2 * p + (folder.aisles % 2));
+      const w = { x: front.x + front.nx * 0.16, z: front.z - pairZ(p), nx: front.nx, nz: front.nz };
+      const mesh = new THREE.Mesh(folderGeometry, folderMaterial);
+      mesh.rotation.order = 'YXZ';
+      mesh.rotation.set(-0.25, Math.atan2(-w.nx, -w.nz), -0.05);
+      mesh.position.set(w.x, RACK_SHELVES[1] + 0.17, w.z);
+      chunk.group.add(mesh);
+      hit(mesh, { kind: 'clerk-folder', id: folder.id }, chunk, w, RACK_SHELVES[1] + 0.17);
+    }
     return chunk;
   }
 
@@ -524,7 +632,7 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     const person = hit && castMeshes.get(hit.object as THREE.Mesh);
     const thing = hit && things.get(hit.object);
     if (person) next = { t: { kind: 'npc', id: person.id, name: person.name }, key: `npc:${person.id}` };
-    else if (thing) next = { t: thing, key: thing.kind === 'page' ? `page:${thing.id}` : thing.kind };
+    else if (thing) next = { t: thing, key: thing.kind === 'page' || thing.kind === 'clerk-folder' ? `${thing.kind}:${thing.id}` : thing.kind };
     else if (hit && hit.faceIndex != null) {
       const wall = [...chunks.values()].flatMap((c) => c.walls).find((w) => w.mesh === hit.object);
       const index = Math.floor(hit.faceIndex / 12);
@@ -629,7 +737,9 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     const was = haunt;
     // Laid to rest (all his pages found), he stays away while you keep writing.
     const resting = quireNow.rest && ink.idle <= 1;
-    const out = resting ? { haunt: { ...QUIET, glances: haunt.glances, folded: haunt.folded, came: haunt.came }, events: [] as HauntEvent[] } : hauntStep(haunt, mode.horror, { x: pos.x, z: pos.z, yaw, half }, dt, zone, ink);
+    // The Clerk's lantern (D123): in the storage room, the lamps never go out on you.
+    const lantern = clerkNow.done && pos.z < HALL_START;
+    const out = resting ? { haunt: { ...QUIET, glances: haunt.glances, folded: haunt.folded, came: haunt.came }, events: [] as HauntEvent[] } : hauntStep(haunt, mode.horror, { x: pos.x, z: pos.z, yaw, half }, dt, zone, { ...ink, lantern });
     haunt = out.haunt;
     if (resting) backSaid = false;
     for (const e of out.events) {
@@ -694,6 +804,23 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     return inside || haunt.here || faceTime > 0 || lit < 0.99;
   }
 
+  /** Snow, a moment at a time (D124); whether it keeps the world moving. */
+  function snowing(dt: number): boolean {
+    const on = season === 'winter' && !reduced && placeAt(pos.z).world === 'library';
+    snow.visible = on;
+    if (!on) return false;
+    snow.position.set(0, 0, Math.max(0, Math.round(pos.z / ROOM_STEP)) * ROOM_STEP);
+    const attr = snowGeometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < FLAKES; i++) {
+      let y = flakes[i * 3 + 1]! - (0.32 + (i % 7) * 0.035) * dt;
+      if (y < 0) y += WALL_HEIGHT;
+      flakes[i * 3 + 1] = y;
+      flakes[i * 3] = flakes[i * 3]! + Math.sin(clock * 0.7 + i) * 0.06 * dt;
+    }
+    attr.needsUpdate = true;
+    return true;
+  }
+
   function frame(now: number) {
     frameId = 0;
     if (paused || disposed) {
@@ -705,7 +832,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     const dt = elapsed(now, last);
     last = Math.max(last, now);
     const moving = update(dt);
-    const busy = horror(dt) || moving;
+    if (season === 'winter') clock += mode.horror === 'off' ? dt : 0;
+    const busy = horror(dt) || snowing(dt) || moving;
     // What's in front of you, a few times a second while moving (each look goes through every book
     // nearby), and once more when you stop.
     if ((!aimWithPointer || moving) && (!moving || now - aimedAt > 120)) {
@@ -887,6 +1015,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       update(0);
       aim();
       if (!paused) renderer.render(scene, camera);
+      // Whatever goes on by itself where you've arrived (horror, snow) goes on from here.
+      kick();
     },
     where: () => ({ x: pos.x, z: pos.z, yaw, pitch }),
     openTarget() {
@@ -955,6 +1085,27 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     setWhispers(lines) {
       whispers = lines;
     },
+    setSeason(next) {
+      if (next === season) return;
+      season = next;
+      // The tree comes and goes with the first gallery.
+      dropChunk('g0');
+      refresh(true);
+      if (!paused) renderer.render(scene, camera);
+      kick();
+    },
+    setClerk(next) {
+      const changed = next.done !== clerkNow.done || next.found.length !== clerkNow.found.length;
+      clerkNow = next;
+      if (!changed) return;
+      // A folder picked up comes off its rack.
+      for (const k of [...chunks.keys()]) dropChunk(k);
+      target = null;
+      events.target(null);
+      refresh(true);
+      aim();
+      if (!paused) renderer.render(scene, camera);
+    },
     behind() {
       if (mode.horror !== 'intense' || !zone(pos.x, pos.z)) return;
       const spot = { x: pos.x + Math.sin(yaw) * 1.7, z: pos.z + Math.cos(yaw) * 1.7 };
@@ -976,6 +1127,12 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       hisMaterial.dispose();
       hitGeometry.dispose();
       hitMaterial.dispose();
+      snowGeometry.dispose();
+      snowMaterial.dispose();
+      flakeTexture.dispose();
+      folderTexture.dispose();
+      folderGeometry.dispose();
+      folderMaterial.dispose();
       if (frameId) cancelAnimationFrame(frameId);
       ro.disconnect();
       canvas.removeEventListener('keydown', onKeyDown);

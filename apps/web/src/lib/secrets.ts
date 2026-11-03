@@ -215,6 +215,11 @@ export function findSecret(id: SecretId): boolean {
   return true;
 }
 
+/** Streak shields given for something else done well (D123: the Clerk's thanks). */
+export function giveShields(n: number): void {
+  if (n > 0) save((s) => ({ shields: s.shields + n }));
+}
+
 /**
  * Spends shields on days missed (`missedDays`), if there are enough for all of them and they aren't
  * covered already (by another window, say). How many were spent: 0 when none could be.

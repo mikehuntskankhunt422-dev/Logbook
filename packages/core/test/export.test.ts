@@ -127,6 +127,7 @@ describe('entries as documents', () => {
     expiresAt: null,
     musicId: null,
     musicUrl: null,
+    sealedUntil: null,
   };
 
   it('Markdown with front matter, the photo and the link', () => {

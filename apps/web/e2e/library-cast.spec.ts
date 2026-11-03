@@ -405,3 +405,27 @@ test('Silas Quire’s notebook (D119): the Clerk’s drawer has a page; found, i
   await page.getByRole('button', { name: 'Lay him to rest again' }).click();
   await expect(page.getByText(/He’s resting/)).toBeVisible();
 });
+
+test('the Clerk’s quest (D123): his own folders, asked about, found, handed back for shields and his lantern', async ({ page }) => {
+  await write(page, '2026-06-01', 'Anything', 10);
+  await open(page);
+  let talk = await talkTo(page, 'clerk');
+  await talk.getByRole('button', { name: 'Need a hand with anything?' }).click();
+  await expect(talk.getByRole('log')).toContainText('Three of my own folders went missing years back');
+  await talk.getByRole('button', { name: 'Goodbye' }).click();
+  // All three found (out on the far racks).
+  await page.evaluate(() => localStorage.setItem('logbook.clerk', JSON.stringify({ found: ['f1', 'f2', 'f3'], done: false })));
+  await open(page);
+  talk = await talkTo(page, 'clerk');
+  await talk.getByRole('button', { name: 'I found your folders.' }).click();
+  await talk.getByRole('button', { name: 'Hand them over' }).click();
+  await expect(page.getByText(/The Clerk has his folders back\. Reward: 2 streak shields/)).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('logbook.secrets')!).shields)).toBe(2);
+  await expect(world(page)).toBeFocused();
+  talk = await talkTo(page, 'clerk');
+  await expect(talk.getByRole('button', { name: 'How are your folders?' })).toBeVisible();
+  await talk.getByRole('button', { name: 'Goodbye' }).click();
+  await page.goto('/#/library/encyclopedia');
+  await expect(page.getByText('All three back with him. His name, it turns out, is Albert Ledger. You carry his lantern.')).toBeVisible();
+  await expect(page.locator('.clerk-page')).toHaveCount(3);
+});

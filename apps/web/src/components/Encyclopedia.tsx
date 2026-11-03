@@ -3,6 +3,7 @@ import { aiReady, provider, useAiPrefs } from '../lib/ai.ts';
 import { useLibraryPrefs } from '../lib/library-prefs.ts';
 import { HIS_BOOK, NAME, PAGES, STOPS, STORY, STRATEGIES } from '../lib/lore.ts';
 import { setRest, useQuire } from '../lib/quire.ts';
+import { CLERK_FOLDERS, CLERK_NAME, useClerkQuest } from '../lib/clerk-quest.ts';
 
 /**
  * The Library's Encyclopedia (D116): who's who in the walking Library and what each of them does,
@@ -17,6 +18,7 @@ export function Encyclopedia() {
   const prefs = useLibraryPrefs();
   const ai = useAiPrefs();
   const quire = useQuire();
+  const quest = useClerkQuest();
   return (
     <div className="ency">
       <p className="hint">
@@ -51,6 +53,10 @@ export function Encyclopedia() {
             aisles past the last one.
           </p>
           <p>With horror on, he’ll tell you that nobody works the far aisles, what he remembers of the tall gentleman who used to come down for empty folders, and, if you ask, what’s in his drawer.</p>
+          <p>
+            Ask him if he needs a hand: three of his own folders went missing long ago, misfiled on the empty racks out past the last of yours (with horror on, all but the first are where The Unwritten walks). Bring them back and he gives you
+            two streak shields and his lantern, by which the storage room’s lamps never go out on you.
+          </p>
         </div>
       </article>
       <article className="ency-entry ency-unwritten" aria-labelledby="ency-unwritten">
@@ -88,6 +94,29 @@ export function Encyclopedia() {
           <p>{part.text}</p>
         </div>
       ))}
+
+      <h2>The Clerk’s folders</h2>
+      <p>
+        {quest.done
+          ? `All three back with him. His name, it turns out, is ${CLERK_NAME}. You carry his lantern.`
+          : `Found so far: ${quest.found.length} of ${CLERK_FOLDERS.length}, red-tabbed, on the empty racks past the last of your folders.${quest.found.length === CLERK_FOLDERS.length ? ' Take them back to him.' : ''}`}
+      </p>
+      {quest.found.length > 0 && (
+        <ol className="ency-pages">
+          {CLERK_FOLDERS.map((f) => (
+            <li key={f.id}>
+              {quest.found.includes(f.id) ? (
+                <>
+                  <strong>{f.title}</strong>
+                  <blockquote className="quire-page clerk-page">{f.text}</blockquote>
+                </>
+              ) : (
+                <span className="hint">Not found yet.</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
 
       <h2>His notebook</h2>
       <p>
@@ -140,6 +169,8 @@ export function Encyclopedia() {
         <dd>The same, faster, and if he reaches you, a jump scare: a sudden picture and a loud sound.</dd>
         <dt>Horror sounds</dt>
         <dd>A low hum where he walks, his footsteps, a breath when he goes, the scream. Off for silence; the words below the view still say what’s happening.</dd>
+        <dt>Winter</dt>
+        <dd>While the Christmas or New Year theme is on (Settings → Holidays), snow falls in the galleries (not with reduced motion) and a small tree stands in the first.</dd>
         <dt>PS1 look</dt>
         <dd>Drawn small and blown up into big pixels, with wobbling corners and fewer colours, like a 1990s console game. Fine on its own, too.</dd>
       </dl>

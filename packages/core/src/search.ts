@@ -1,6 +1,7 @@
 import MiniSearch from 'minisearch';
 import type { Entry } from './model.ts';
 import { entryPlainText } from './richtext.ts';
+import { letterSealed } from './letters.ts';
 
 interface Doc {
   id: string;
@@ -49,7 +50,8 @@ export class SearchIndex {
 }
 
 function toDoc(e: Entry): Doc {
-  return { id: e.id, title: e.title, text: entryPlainText(e), tags: e.tags.join(' '), date: e.date };
+  // A sealed letter (D122): only its envelope (title and tags) can be found until it opens.
+  return { id: e.id, title: e.title, text: letterSealed(e) ? '' : entryPlainText(e), tags: e.tags.join(' '), date: e.date };
 }
 
 /** Tag → count, most used first. */

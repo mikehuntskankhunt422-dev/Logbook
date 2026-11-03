@@ -6,7 +6,8 @@ export type GardenTab = 'herbarium' | 'almanac';
 export type Route =
   | { name: 'home' }
   | { name: 'entry'; id: string }
-  | { name: 'new'; date?: string }
+  /** A new entry; `letter`: a letter to your future self, sealed for a year to start with (D122). */
+  | { name: 'new'; date?: string; letter?: boolean }
   | { name: 'calendar'; month?: string }
   | { name: 'memories' }
   | { name: 'search'; tag?: string }
@@ -30,7 +31,7 @@ export function parseHash(hash: string): Route {
     case 'entry':
       return seg[1] ? { name: 'entry', id: decodeURIComponent(seg[1]) } : { name: 'home' };
     case 'new':
-      return { name: 'new', date: q.get('date') ?? undefined };
+      return { name: 'new', date: q.get('date') ?? undefined, ...(q.get('letter') === '1' ? { letter: true } : {}) };
     case 'calendar':
       return { name: 'calendar', month: q.get('month') ?? undefined };
     case 'memories':
@@ -63,6 +64,7 @@ export function href(route: Route): string {
     case 'entry':
       return `#/entry/${encodeURIComponent(route.id)}`;
     case 'new':
+      if (route.letter) return route.date ? `#/new?letter=1&date=${route.date}` : '#/new?letter=1';
       return route.date ? `#/new?date=${route.date}` : '#/new';
     case 'calendar':
       return route.month ? `#/calendar?month=${route.month}` : '#/calendar';

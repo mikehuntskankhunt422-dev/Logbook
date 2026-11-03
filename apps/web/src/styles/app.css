@@ -3785,6 +3785,11 @@ dialog.reader-folder {
   color: #2a241c;
   font: italic 1.05rem/27px 'Newsreader Variable', 'Newsreader', Georgia, serif;
 }
+.clerk-page {
+  border-left-color: #b3261e;
+  background: #f1e2bd;
+  font: 0.95rem/1.55 ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+}
 .ency-pages {
   display: grid;
   gap: 10px;
@@ -3800,6 +3805,70 @@ dialog.reader-folder {
   padding-top: 40%;
   text-align: center;
   font-style: italic;
+}
+
+/* Letters to your future self (D122). */
+.seal-panel {
+  margin-top: 12px;
+}
+.sealed-letter {
+  max-width: 560px;
+  margin: 24px auto;
+  text-align: center;
+}
+.sealed-letter .row {
+  justify-content: center;
+}
+.sealed-envelope {
+  position: relative;
+  width: 220px;
+  height: 140px;
+  margin: 0 auto 18px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #f4ead2, #e3d3ae);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.25);
+  overflow: hidden;
+}
+.sealed-envelope::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 80px;
+  background: linear-gradient(160deg, #ecdfbf, #d8c69b);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.sealed-wax {
+  position: absolute;
+  left: 50%;
+  top: 62px;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #c0392b, #7d1414);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35), inset 0 0 0 4px rgb(255 255 255 / 0.12);
+  font-size: 1.1rem;
+}
+.entry-sealed-chip {
+  background: rgb(120 20 20 / 0.85);
+  color: #fff4ee;
+}
+.library-shelf .book[data-sealed] {
+  position: relative;
+}
+.library-shelf .book[data-sealed]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(14px, calc(var(--w) * 1px - 4px));
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #c0392b, #7d1414);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 /* The Library's two views (D113). */

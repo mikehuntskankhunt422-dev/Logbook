@@ -1,4 +1,6 @@
 import type { Entry, Mood } from './model.ts';
+import { today } from './dates.ts';
+import { letterSealed } from './letters.ts';
 
 /**
  * The Library (D112): every entry a book, shelved by month in a gallery for each year, in the
@@ -19,6 +21,8 @@ export interface Book {
   height: number;
   /** Which leather a book without a mood is bound in (0–3), the same each time. */
   tone: number;
+  /** A letter to your future self, still sealed: the day it opens (D122). */
+  sealed?: string;
 }
 
 export interface LibraryMonth {
@@ -67,7 +71,7 @@ export function bookHeight(words: number, id: string): number {
 const byDay = (a: Entry, b: Entry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /** The library of these entries (trashed ones aren't on the shelves), oldest gallery first. */
-export function shelveLibrary(entries: readonly Entry[], wordsOf: (entry: Entry) => number): LibraryGallery[] {
+export function shelveLibrary(entries: readonly Entry[], wordsOf: (entry: Entry) => number, day: string = today()): LibraryGallery[] {
   const galleries: LibraryGallery[] = [];
   for (const entry of entries.filter((e) => !e.deletedAt).sort(byDay)) {
     const year = entry.date.slice(0, 4);
@@ -86,6 +90,7 @@ export function shelveLibrary(entries: readonly Entry[], wordsOf: (entry: Entry)
       thickness: bookThickness(words),
       height: bookHeight(words, entry.id),
       tone: hash(entry.id) % 4,
+      ...(letterSealed(entry, day) ? { sealed: entry.sealedUntil! } : {}),
     });
     shelf.words += words;
     gallery.books++;

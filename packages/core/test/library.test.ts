@@ -7,7 +7,8 @@ let n = 0;
 function entry(date: string, text: string, opts: Partial<Entry> = {}): Entry {
   n++;
   const at = opts.createdAt ?? `${date}T10:00:00.000Z`;
-  return { v: 1, id: `e${n}`, date, title: `Day ${n}`, mood: null, cover: { kind: 'gradient', gradient: 'sunrise' }, tags: [], blocks: [{ id: `b${n}`, type: 'text', doc: emptyDoc(text) }], createdAt: at, updatedAt: at, rev: 1, deletedAt: null, expiresAt: null, musicId: null, musicUrl: null, ...opts } as Entry;
+  return { v: 1, id: `e${n}`, date, title: `Day ${n}`, mood: null, cover: { kind: 'gradient', gradient: 'sunrise' }, tags: [], blocks: [{ id: `b${n}`, type: 'text', doc: emptyDoc(text) }], createdAt: at, updatedAt: at, rev: 1, deletedAt: null, expiresAt: null, musicId: null, musicUrl: null,
+    sealedUntil: null, ...opts } as Entry;
 }
 const words = (k: number) => Array.from({ length: k }, (_, i) => `w${i}`).join(' ');
 

@@ -37,7 +37,7 @@ function entry(date: string, words: number): Entry {
   n++;
   const at = `${date}T10:00:00.000Z`;
   const text = Array.from({ length: words }, (_, i) => `w${i}`).join(' ');
-  return { v: 1, id: `e${n}`, date, title: `T${n}`, mood: null, cover: { kind: 'gradient', gradient: 'sunrise' }, tags: [], blocks: [{ id: `b${n}`, type: 'text', doc: emptyDoc(text) }], createdAt: at, updatedAt: at, rev: 1, deletedAt: null, expiresAt: null, musicId: null, musicUrl: null } as Entry;
+  return { v: 1, id: `e${n}`, date, title: `T${n}`, mood: null, cover: { kind: 'gradient', gradient: 'sunrise' }, tags: [], blocks: [{ id: `b${n}`, type: 'text', doc: emptyDoc(text) }], createdAt: at, updatedAt: at, rev: 1, deletedAt: null, expiresAt: null, musicId: null, musicUrl: null, sealedUntil: null } as Entry;
 }
 const wordsOf = (e: Entry) => (e.blocks[0]!.type === 'text' ? ((e.blocks[0] as { doc: { content?: { content?: { text: string }[] }[] } }).doc.content?.[0]?.content?.[0]?.text.split(' ').filter(Boolean).length ?? 0) : 0);
 const library = (entries: Entry[]): LibraryGallery[] => shelveLibrary(entries, wordsOf);

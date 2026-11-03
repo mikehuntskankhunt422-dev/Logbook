@@ -105,6 +105,8 @@ export const entrySchema = z.object({
   musicId: id.nullable().default(null),
   /** Or a link that plays instead: a video or live stream, a sound file, a radio stream (D93). */
   musicUrl: z.string().max(2000).nullable().default(null),
+  /** A letter to your future self (D122): sealed until this day (YYYY-MM-DD), when it opens. */
+  sealedUntil: z.string().regex(ISO_DATE).nullable().default(null),
 });
 export type Entry = z.infer<typeof entrySchema>;
 

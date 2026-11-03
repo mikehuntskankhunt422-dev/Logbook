@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { EXPORT_CSS, type Entry } from '@logbook/core';
+import { EXPORT_CSS, letterSealed, type Entry } from '@logbook/core';
 import { useJournal } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { useLibraryPrefs } from '../lib/library-prefs.ts';
@@ -39,6 +39,13 @@ interface Turn {
 
 /** Where a turn ends: where it began, while it's held or falling back. */
 const dest = (t: Turn) => (t.held || t.undo ? t.from : t.to);
+
+/** A sealed letter's only page (D122). */
+function envelope(entry: Entry): string {
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  const day = (d: string) => esc(formatLongDate(d));
+  return `<div class="lbx-entry"><h1 class="lbx-title">${esc(entry.title.trim() || 'A letter to your future self')}</h1><p class="lbx-meta">A letter to your future self, written ${day(entry.date)}</p></div><p class="quire-blank quire-last">📜 Sealed until ${day(entry.sealedUntil!)}. It opens by itself that day.</p>`;
+}
 
 const PAPER_SLOW = 560;
 const PAPER_QUICK = 240;
@@ -81,6 +88,12 @@ export function BookReader({ id, kind, onClose, story }: { id: string; kind: 'bo
       (r) => {
         if (!alive) return r?.release();
         release = r?.release;
+        if (r && letterSealed(r.entry)) {
+          // A letter to your future self, still sealed (D122): the envelope, not the words.
+          r.release();
+          release = undefined;
+          return setOpened({ entry: r.entry, title: r.entry.title, html: envelope(r.entry) });
+        }
         setOpened(r ? { entry: r.entry, title: r.entry.title, html: r.html } : 'missing');
       },
       () => alive && setOpened('missing'),

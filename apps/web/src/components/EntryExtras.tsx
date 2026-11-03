@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { formatBytes, mediaKind, musicSource, normaliseMusicUrl, sizeAdvice, withAutoplay, type Entry, type MusicSource } from '@logbook/core';
+import { addDays, formatBytes, mediaKind, musicSource, normaliseMusicUrl, sizeAdvice, today, withAutoplay, type Entry, type MusicSource } from '@logbook/core';
+import { href } from '../app/router.ts';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { useToast } from '../app/toasts.tsx';
 import { importFile } from '../lib/media-import.ts';
@@ -9,6 +10,7 @@ import { promptFor } from '../lib/prompts.ts';
 import { useSecrets } from '../lib/secrets.ts';
 import { useHolidayFor } from '../lib/holidays.ts';
 import { useMediaMeta } from './blocks.tsx';
+import { formatLongDate } from './common.tsx';
 
 /** Expiry and background music on an entry (D91). */
 
@@ -72,6 +74,104 @@ export function ExpiryPanel({ entry, onChange }: { entry: Entry; onChange: (expi
         </div>
       )}
     </div>
+  );
+}
+
+const SEALS: [label: string, days: number][] = [
+  ['In a month', 30],
+  ['In six months', 182],
+  ['In a year', 365],
+  ['In five years', 1826],
+];
+
+/** The day a letter opens, in words. */
+export const opensOn = (day: string) => formatLongDate(day);
+
+/** A letter to your future self (D122): sealed until a day, when it opens by itself. */
+export function SealPanel({ entry, onChange }: { entry: Entry; onChange: (sealedUntil: string | null) => void }) {
+  const [custom, setCustom] = useState(false);
+  const tomorrow = addDays(today(), 1);
+  return (
+    <div className="panel seal-panel" role="group" aria-label="Letter to your future self">
+      <p>
+        {entry.sealedUntil ? (
+          <>
+            📜 Sealed until <strong>{opensOn(entry.sealedUntil)}</strong>. You can keep writing now; once you leave it, it stays closed until that day. The journal shows only its envelope (its title and when it opens), search won’t look inside, and in the
+            Library it’s a sealed book. You can break the seal early if you need to.
+          </>
+        ) : (
+          'Make this a letter to your future self: seal it until a day you choose, and it stays closed until then. On the day, it opens and Logbook tells you.'
+        )}
+      </p>
+      <div className="row">
+        {SEALS.map(([label, days]) => (
+          <button key={label} type="button" className="btn btn-small" onClick={() => (setCustom(false), onChange(addDays(today(), days)))}>
+            {label}
+          </button>
+        ))}
+        <button type="button" className="btn btn-small" aria-pressed={custom} onClick={() => setCustom((c) => !c)}>
+          On a day…
+        </button>
+        {entry.sealedUntil && (
+          <button type="button" className="btn btn-small" onClick={() => (setCustom(false), onChange(null))}>
+            Don’t seal it
+          </button>
+        )}
+      </div>
+      {custom && (
+        <div className="field" style={{ marginTop: 10 }}>
+          <label htmlFor="sealed-until">Opens on</label>
+          <input
+            id="sealed-until"
+            type="date"
+            className="date-input"
+            min={tomorrow}
+            value={entry.sealedUntil ?? ''}
+            onChange={(e) => {
+              if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value) && e.target.value >= tomorrow) onChange(e.target.value);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A letter still sealed, opened (D122): its envelope, and the seal to break if it can't wait.
+ */
+export function SealedLetter({ entry, onBreak }: { entry: Entry; onBreak: () => void }) {
+  const [sure, setSure] = useState(false);
+  return (
+    <section className="sealed-letter" aria-labelledby="sealed-h">
+      <div className="sealed-envelope" aria-hidden="true">
+        <span className="sealed-wax">✉️</span>
+      </div>
+      <h1 id="sealed-h">{entry.title.trim() || 'A letter to your future self'}</h1>
+      <p>
+        Written on <strong>{formatLongDate(entry.date)}</strong>, and sealed until <strong>{opensOn(entry.sealedUntil!)}</strong>. It opens by itself that day.
+      </p>
+      {sure ? (
+        <div className="row" role="group" aria-label="Break the seal?">
+          <span>Read it now, before its day? It won’t be sealed any more.</span>
+          <button type="button" className="btn btn-small btn-primary" onClick={onBreak}>
+            Break the seal
+          </button>
+          <button type="button" className="btn btn-small" onClick={() => setSure(false)}>
+            Keep it sealed
+          </button>
+        </div>
+      ) : (
+        <p className="row">
+          <a className="btn btn-small" href={href({ name: 'home' })}>
+            Back to the journal
+          </a>
+          <button type="button" className="btn btn-small" onClick={() => setSure(true)}>
+            Break the seal early…
+          </button>
+        </p>
+      )}
+    </section>
   );
 }
 

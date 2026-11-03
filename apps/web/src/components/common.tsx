@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { GRADIENTS, computeStreak, entryPlainText, parseIsoDate, today, type Entry } from '@logbook/core';
+import { GRADIENTS, computeStreak, entryPlainText, letterSealed, parseIsoDate, today, type Entry } from '@logbook/core';
 import { useJournal, useMediaUrl } from '../app/journal-context.tsx';
 import { href } from '../app/router.ts';
 import { spring, useReducedMotion } from '../lib/motion.ts';
@@ -26,7 +26,9 @@ export function useCoverStyle(entry: Pick<Entry, 'cover'>): { style: CSSProperti
 
 export function EntryCard({ entry, highlight }: { entry: Entry; highlight?: string[] }) {
   const { style, ink } = useCoverStyle(entry);
-  const excerpt = useMemo(() => entryPlainText(entry).replace(/\s+/g, ' ').slice(0, 220), [entry]);
+  // A letter to your future self, still sealed (D122): its envelope, not its words.
+  const sealed = letterSealed(entry);
+  const excerpt = useMemo(() => (sealed ? '' : entryPlainText(entry).replace(/\s+/g, ' ').slice(0, 220)), [entry, sealed]);
   const reduced = useReducedMotion();
   return (
     <motion.a
@@ -36,7 +38,7 @@ export function EntryCard({ entry, highlight }: { entry: Entry; highlight?: stri
       transition={spring(reduced)}
       className="entry-card"
       href={href({ name: 'entry', id: entry.id })}
-      aria-label={`${entry.title || 'Untitled entry'}, ${formatLongDate(entry.date)}`}
+      aria-label={`${entry.title || 'Untitled entry'}, ${formatLongDate(entry.date)}${sealed ? `, a letter sealed until ${formatLongDate(entry.sealedUntil!)}` : ''}`}
     >
       <div className="entry-cover" style={style} data-ink={ink}>
         {entry.mood && (
@@ -46,10 +48,12 @@ export function EntryCard({ entry, highlight }: { entry: Entry; highlight?: stri
         )}
         <span className="date-chip">{formatLongDate(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
         {entry.expiresAt && <span className="entry-expiry-chip">⏳ Expires {expiresIn(entry.expiresAt)}</span>}
+        {sealed && <span className="entry-expiry-chip entry-sealed-chip">📜 Opens {formatLongDate(entry.sealedUntil!, { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
       </div>
       <div className="entry-card-body">
         <h3 className="entry-card-title">{highlight ? <Highlight text={entry.title || 'Untitled'} terms={highlight} /> : entry.title || 'Untitled'}</h3>
         {excerpt && <p className="entry-card-excerpt">{highlight ? <Highlight text={excerpt} terms={highlight} /> : excerpt}</p>}
+        {sealed && <p className="entry-card-excerpt">A letter to your future self, sealed until its day.</p>}
         {entry.tags.length > 0 && (
           <div className="tags">
             {entry.tags.slice(0, 5).map((t) => (

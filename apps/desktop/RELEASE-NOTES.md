@@ -1,3 +1,11 @@
+**Letters to your future self.** Write an entry and seal it until a day you choose: in a month, six months, a year, five years, or any day you pick. Until then it stays closed. The journal shows only its envelope (its title and when it opens), search won't look inside, and in the Library it's a book with a red wax seal. On the day, it opens by itself and Logbook tells you. Start one with **✉️ Letter to future me** on the journal page, or **📜 Seal** on any entry. If you can't wait, you can break the seal early.
+
+**The Clerk's quest.** Ask the Clerk in the storage room if he needs a hand. Three of his own folders went missing long ago on the empty racks out past the last of yours (with horror on, all but the first are where The Unwritten walks). Find them, read what's in them, and take them back to him for two streak shields and his lantern, by which the storage room's lamps never go out on you. You'll learn his name, too.
+
+**Winter in the Library.** While the Christmas or New Year theme is on, snow falls in the galleries and a little tree stands in the first one.
+
+What came in 0.9.17:
+
 **Fixed:** with horror on, The Unwritten no longer flickers into view beside the Librarian in your first gallery as you turn or drag to look around. He never belonged there: the first moment of each turn could count time backwards, which briefly showed him at the middle of the room.
 
 What came in 0.9.16:
