@@ -1,3 +1,7 @@
+**Fixed:** with horror on, The Unwritten no longer flickers into view beside the Librarian in your first gallery as you turn or drag to look around. He never belonged there: the first moment of each turn could count time backwards, which briefly showed him at the middle of the room.
+
+What came in 0.9.16:
+
 **Fixed:** with horror on, The Unwritten no longer keeps appearing in the doorway past your newest books, and no longer vanishes while you're looking at him. That glimpse of him is meant to be rare: now it happens at most once a visit, only after you've spent a while looking that way, and he's only gone once you've looked away.
 
 What came in 0.9.15:
