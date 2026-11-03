@@ -13,6 +13,7 @@ import { ClockView } from '../components/ClockView.tsx';
 import { Ringer } from './clock.tsx';
 import { useGarden, useGardenEffects } from './garden.tsx';
 import { Brand, useSecretWatch } from './secrets.tsx';
+import { useLetterNotices } from './letters.tsx';
 import { SecretsView } from '../components/SecretsView.tsx';
 import { GardenView } from '../components/GardenView.tsx';
 import { useGardenPrefs } from '../lib/garden-prefs.ts';
@@ -58,6 +59,8 @@ export function App() {
   const garden = useGarden(!gardenHidden);
   useGardenEffects(garden);
   useSecretWatch();
+  // Letters to your future self, opening on their day (D122).
+  useLetterNotices();
 
   useEffect(() => {
     // Tidy up once per launch: purge 30-day-old trash and media nothing references, and the book
@@ -151,7 +154,7 @@ export function App() {
               <CopiesView />
             </Suspense>
           )}
-          {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} />}
+          {(route.name === 'entry' || route.name === 'new') && <EntryEditor entryId={route.name === 'entry' ? route.id : undefined} newDate={route.name === 'new' ? route.date : undefined} newLetter={route.name === 'new' && route.letter === true} />}
           {route.name === 'calendar' && <CalendarView month={route.month} />}
           {route.name === 'memories' && <Memories />}
           {route.name === 'search' && <SearchView tag={route.tag} />}

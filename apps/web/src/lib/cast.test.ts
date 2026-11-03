@@ -64,6 +64,12 @@ describe('what the Librarian and the Clerk say (D116)', () => {
     expect(left(7)).toMatch(/He’s resting now/);
     expect(topics('clerk', ctx({ horror: 'unsettling' })).find((x) => x.id === 'his-folder')!.reply.take).toEqual({ kind: 'quire', id: 'p7', label: 'Look inside' });
     expect(ids(ctx(), 'clerk')).not.toContain('his-folder');
+    // His own folders (D123), with horror on or off.
+    const own = (clerk?: { found: number; done: boolean }) => topics('clerk', ctx({ clerk })).find((x) => x.id === 'his-own')!;
+    expect(own().ask).toBe('Need a hand with anything?');
+    expect(own({ found: 2, done: false }).reply.text).toMatch(/2 folders of the three/);
+    expect(own({ found: 3, done: false }).reply.take).toEqual({ kind: 'clerk', id: 'hand-back', label: 'Hand them over' });
+    expect(own({ found: 3, done: true }).ask).toBe('How are your folders?');
   });
 });
 

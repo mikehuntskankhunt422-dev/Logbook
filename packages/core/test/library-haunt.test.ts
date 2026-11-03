@@ -194,6 +194,11 @@ describe('The Unwritten, cleverer (D119)', () => {
     expect({ x: still.x, z: still.z }).toEqual({ x: after.x, z: after.z });
   });
 
+  it('by the Clerk’s lantern, the lamps never go out (D123)', () => {
+    const h = out();
+    expect(run(h, 'intense', at(deep), HAUNT.darkAfter * 3, { lantern: true }).events).toEqual([]);
+  });
+
   it('the longer you haven’t written, the sooner he comes, and the faster', () => {
     expect(run(QUIET, 'intense', at(deep), HAUNT.appearAfter - HAUNT.bold.sooner + 0.1, { idle: 7 }).events).toEqual(['appear']);
     expect(run(QUIET, 'intense', at(deep), HAUNT.appearAfter - HAUNT.bold.sooner + 0.1, { idle: 0 }).events).toEqual([]);

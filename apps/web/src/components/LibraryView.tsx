@@ -178,7 +178,7 @@ function Shelf({ month, year }: { month: LibraryMonth; year: string }) {
 function BookSpine({ book }: { book: Book }) {
   const read = useContext(ReadBook);
   const title = book.title.trim() || 'Untitled';
-  const label = `${title}, ${longDate.format(parseIsoDate(book.date))}, ${amount(book.words, 'word')}`;
+  const label = `${title}, ${longDate.format(parseIsoDate(book.date))}, ${amount(book.words, 'word')}${book.sealed ? `, a letter sealed until ${longDate.format(parseIsoDate(book.sealed))}` : ''}`;
   const mood = book.mood ? MOODS.indexOf(book.mood) : -1;
   return (
     <button
@@ -189,6 +189,7 @@ function BookSpine({ book }: { book: Book }) {
       data-book={book.id}
       data-mood={mood >= 0 ? mood : undefined}
       data-tone={mood >= 0 ? undefined : book.tone}
+      data-sealed={book.sealed ? '' : undefined}
       style={{ '--w': book.thickness, '--h': book.height } as CSSProperties}
       onClick={() => read(book.id)}
     >

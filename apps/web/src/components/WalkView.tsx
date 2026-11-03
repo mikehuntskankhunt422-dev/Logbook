@@ -9,7 +9,9 @@ import { libraryPrefs, setLibraryPrefs, useLibraryPrefs } from '../lib/library-p
 import type { Take } from '../lib/cast.ts';
 import { HIS_BOOK, hisBook, PAGES, type PageId } from '../lib/lore.ts';
 import { findPage, useQuire } from '../lib/quire.ts';
+import { CLERK_FOLDERS, findClerkFolder, handBack, useClerkQuest, type ClerkFolderId } from '../lib/clerk-quest.ts';
 import { announce } from '../app/toasts.tsx';
+import { useHoliday } from '../lib/holidays.ts';
 import { BookReader } from './BookReader.tsx';
 import { Dialog, formatLongDate } from './common.tsx';
 import { Scare } from './Scare.tsx';
@@ -60,6 +62,9 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const [page, setPage] = useState<PageId | null>(null);
   const [hisOpen, setHisOpen] = useState(false);
   const quire = useQuire();
+  // One of the Clerk's folders open (D123), and his quest so far.
+  const [clerkFolder, setClerkFolder] = useState<ClerkFolderId | null>(null);
+  const quest = useClerkQuest();
   // The mouse captured in full screen (D117): the crosshair is the cursor; Esc lets it go.
   const [locked, setLocked] = useState(false);
   const unlockedAt = useRef(-Infinity);
@@ -70,7 +75,8 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   const prefs = useLibraryPrefs();
   const secrets = useSecrets();
   const read = useRef<(t: Target) => void>(() => {});
-  read.current = (t) => (t.kind === 'npc' ? setTalking(t.id) : t.kind === 'page' ? setPage(t.id) : t.kind === 'quire-book' ? setHisOpen(true) : onRead(t));
+  read.current = (t) =>
+    t.kind === 'npc' ? setTalking(t.id) : t.kind === 'page' ? setPage(t.id) : t.kind === 'quire-book' ? setHisOpen(true) : t.kind === 'clerk-folder' ? setClerkFolder(t.id) : onRead(t);
   const content = useRef({ rooms, racks });
   content.current = { rooms, racks };
   // The focus ring: only for coming in with Tab, never for a click, a drag or the page's own focusing.
@@ -224,7 +230,7 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
     if (place.world === 'library' && place.at >= rooms.length + BOOK_OF_SAND_GALLERIES - 1) findSecret('sand');
     if (place.world === 'storage' && place.at >= Math.ceil(racks.length / 2) + LAST_FOLDER_AISLES - 1) findSecret('lastfolder');
   }, [place, rooms.length, racks.length]);
-  const paused = reading || talking !== null || settings || scaring || page !== null || hisOpen;
+  const paused = reading || talking !== null || settings || scaring || page !== null || hisOpen || clerkFolder !== null;
   useEffect(() => {
     world.current?.setPaused(paused);
     // Back from a book, a conversation or the settings in full screen: the mouse is the view's again.
@@ -256,6 +262,15 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
   useEffect(() => {
     world.current?.setQuire(quire);
   }, [quire, state]);
+  useEffect(() => {
+    world.current?.setClerk(quest);
+  }, [quest, state]);
+  // Winter in the Library (D124): with the Christmas or New Year theme (Settings → Holidays, and its previews).
+  const holiday = useHoliday();
+  const winter = holiday?.id === 'christmas' || holiday?.id === 'newyear';
+  useEffect(() => {
+    world.current?.setSeason(winter ? 'winter' : null);
+  }, [winter, state]);
   // What he whispers when he's close (D119): worked out here, from the shelves alone; nothing is sent anywhere.
   const whispers = useMemo(() => {
     const lines = ['Tomorrow. You’ll start tomorrow.', 'Look at me. Read me.', 'There’s room on these shelves for both of us.', 'I had eleven pencils. Sharp, every one.'];
@@ -432,6 +447,15 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
               Read it
             </button>
           </>
+        ) : target?.kind === 'clerk-folder' ? (
+          <>
+            <span className="walk-target">
+              🗂️ <strong>A folder with a red tab</strong>, marked A. LEDGER
+            </span>
+            <button type="button" className="btn btn-small btn-primary" onClick={() => setClerkFolder(target.id)}>
+              Read it
+            </button>
+          </>
         ) : target?.kind === 'quire-book' ? (
           <>
             <span className="walk-target">
@@ -463,12 +487,17 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
       {talking && (
         <TalkDialog
           id={talking}
-          ctx={{ facts, horror: prefs.horror, found, pages: quire.found.length }}
+          ctx={{ facts, horror: prefs.horror, found, pages: quire.found.length, clerk: { found: quest.found.length, done: quest.done } }}
           where={place?.label ?? 'the Library'}
           onTake={(take) => {
             setTalking(null);
             // The Clerk's drawer (D119): his folder, and the sheet inside.
             if (take.kind === 'quire') return setPage(take.id as PageId);
+            // His own folders, handed back (D123).
+            if (take.kind === 'clerk') {
+              handBack();
+              return requestAnimationFrame(() => canvas.current?.focus({ preventScroll: true }));
+            }
             // Once the conversation has gone (taking the focus with it), there, with the focus back.
             const spot = spotOf(take);
             requestAnimationFrame(() => go(spot));
@@ -534,6 +563,15 @@ export function WalkView({ library, storage, reading, onRead, fallback }: { libr
           }}
         />
       )}
+      {clerkFolder && (
+        <ClerkFolder
+          id={clerkFolder}
+          onClose={() => {
+            setClerkFolder(null);
+            requestAnimationFrame(() => canvas.current?.focus({ preventScroll: true }));
+          }}
+        />
+      )}
       {hisOpen && (
         <BookReader
           id="silas-quire"
@@ -580,4 +618,36 @@ function QuirePage({ id, onClose }: { id: PageId; onClose: () => void }) {
   );
 }
 
-
+/** One of the Clerk's own folders (D123), found: what's in it, and it's his to have back. */
+function ClerkFolder({ id, onClose }: { id: ClerkFolderId; onClose: () => void }) {
+  const at = CLERK_FOLDERS.findIndex((f) => f.id === id);
+  const folder = CLERK_FOLDERS[at]!;
+  useEffect(() => {
+    const { fresh, count } = findClerkFolder(id);
+    if (!fresh) return;
+    announce(
+      count === CLERK_FOLDERS.length
+        ? '🗂️ All three of the Clerk’s folders. Take them back to him in the storage room.'
+        : `🗂️ One of the Clerk’s own folders (${count} of ${CLERK_FOLDERS.length}). He’ll want it back.`,
+      undefined,
+      7000,
+    );
+  }, [id]);
+  return (
+    <Dialog
+      open
+      title={`A folder marked A. LEDGER: ${folder.title}`}
+      onClose={onClose}
+      actions={
+        <button type="button" className="btn btn-primary" onClick={onClose}>
+          Keep it for him
+        </button>
+      }
+    >
+      <blockquote className="quire-page clerk-page">{folder.text}</blockquote>
+      <p className="hint">
+        Folder {at + 1} of {CLERK_FOLDERS.length}. What it says is kept in <a href="#/library/encyclopedia">📖 the Encyclopedia</a>.
+      </p>
+    </Dialog>
+  );
+}

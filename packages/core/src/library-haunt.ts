@@ -124,6 +124,8 @@ export const HAUNT = {
 export interface HauntOptions {
   inked?: boolean;
   idle?: number;
+  /** Carrying the Clerk's lantern (D123), in the storage room: the lamps never go out on you. */
+  lantern?: boolean;
 }
 
 /**
@@ -230,7 +232,7 @@ export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number,
       const face: HauntEvent[] = level === 'intense' && turnedOn && dist <= HAUNT.faceAt ? ['face'] : [];
       return { haunt: { ...rest(s, HAUNT.rest.vanish), folded: s.folded + 1 }, events: [...events, ...face, 'vanish'] };
     }
-    if (s.watched >= HAUNT.darkAfter - HAUNT.bold.darker * bold) {
+    if (!opts.lantern && s.watched >= HAUNT.darkAfter - HAUNT.bold.darker * bold) {
       s.watched = 0;
       s.dark = HAUNT.darkFor;
       events.push('dark');

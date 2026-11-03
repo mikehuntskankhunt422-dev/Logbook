@@ -40,9 +40,14 @@ export function Timeline() {
     <>
       <div className="page-head">
         <h1>{streak.wroteToday ? 'Nice work today ✨' : 'How was today?'}</h1>
-        <button type="button" className="btn btn-small" onClick={() => setExporting(true)}>
-          ⬇️ Export
-        </button>
+        <div className="row">
+          <a className="btn btn-small" href={href({ name: 'new', letter: true })}>
+            ✉️ Letter to future me
+          </a>
+          <button type="button" className="btn btn-small" onClick={() => setExporting(true)}>
+            ⬇️ Export
+          </button>
+        </div>
       </div>
       <ExportDialog open={exporting} onClose={() => setExporting(false)} entries={entries} title="Export your journal" />
       <p className="muted">

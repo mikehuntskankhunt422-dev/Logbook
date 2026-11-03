@@ -10,8 +10,8 @@ import { BRIEF } from './lore.ts';
  */
 
 export interface Take {
-  /** A book or a folder of yours; or (D119) a page of Silas Quire's, by its id. */
-  kind: 'book' | 'folder' | 'quire';
+  /** A book or a folder of yours; or (D119) a page of Silas Quire's, by its id; or (D123) the Clerk's folders, handed back. */
+  kind: 'book' | 'folder' | 'quire' | 'clerk';
   id: string;
   label: string;
 }
@@ -30,6 +30,8 @@ export interface CastContext {
   found: ReadonlySet<SecretId>;
   /** How many of Silas Quire's pages have been found (D119). */
   pages?: number;
+  /** The Clerk's quest (D123): how many of his folders are found, and whether they're back with him. */
+  clerk?: { found: number; done: boolean };
 }
 
 const longDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
@@ -150,7 +152,7 @@ function librarian({ facts, horror, found, pages = 0 }: CastContext): Topic[] {
   return out;
 }
 
-function clerk({ facts, horror, found }: CastContext): Topic[] {
+function clerk({ facts, horror, found, clerk: quest = { found: 0, done: false } }: CastContext): Topic[] {
   const none = 'Nothing filed yet. Write something and I’ll find it a folder.';
   const out: Topic[] = [
     {
@@ -185,6 +187,39 @@ function clerk({ facts, horror, found }: CastContext): Topic[] {
       },
     },
   ];
+  // His own folders (D123): asked for, looked for, handed back.
+  out.push(
+    quest.done
+      ? {
+          id: 'his-own',
+          ask: 'How are your folders?',
+          reply: { text: 'Back where they belong, first rack, top shelf, where I can see them. Mind how you go with that lantern. It was my father’s.' },
+        }
+      : quest.found >= 3
+        ? {
+            id: 'his-own',
+            ask: 'I found your folders.',
+            reply: {
+              text: 'All three. Well I never. I’d given them up years ago. Here: for the days that go wrong, and take my lantern. Down there, the lamps won’t go out on you while you carry it.',
+              take: { kind: 'clerk', id: 'hand-back', label: 'Hand them over' },
+            },
+          }
+        : quest.found > 0
+          ? {
+              id: 'his-own',
+              ask: 'About your folders…',
+              reply: { text: `You’ve found ${count(quest.found, 'folder')} of the three. The rest went further down, past the empty racks. Red tabs. Can’t miss them.` },
+            }
+          : {
+              id: 'his-own',
+              ask: 'Need a hand with anything?',
+              reply: {
+                text: horror !== 'off'
+                  ? 'Since you ask. Three of my own folders went missing years back, misfiled out past the last of yours. Red tabs, my name on them. It’s where he walks, mind, the tall gentleman. Bring them back and I’ll make it worth your while.'
+                  : 'Since you ask. Three of my own folders went missing years back, misfiled out past the last of yours, on the empty racks. Red tabs, my name on them. Bring them back and I’ll make it worth your while.',
+              },
+            },
+  );
   if (horror !== 'off')
     out.push({
       id: 'who-else',

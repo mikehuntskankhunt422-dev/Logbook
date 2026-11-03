@@ -8,7 +8,9 @@ import {
   GRADIENT_IDS,
   MOODS,
   STREAK_MILESTONES,
+  addDays,
   computeStreak,
+  letterSealed,
   emptyDoc,
   formatBytes,
   mediaKind,
@@ -31,7 +33,7 @@ import { celebrate, useReducedMotion } from '../lib/motion.ts';
 import { isDesktop } from '../lib/platform.ts';
 import { AudioBlock, BLOCK_LABELS, EmbedBlock, FileBlock, GalleryBlock, LinkBlock, PhotoBlock, RichTextBlock, VideoBlock } from './blocks.tsx';
 import { Dialog, formatLongDate, useCoverStyle } from './common.tsx';
-import { ExpiryPanel, MusicBar, PromptCard } from './EntryExtras.tsx';
+import { ExpiryPanel, MusicBar, PromptCard, SealPanel, SealedLetter, opensOn } from './EntryExtras.tsx';
 import { promptsOn } from '../lib/prompts.ts';
 import { formatExpiry } from '../lib/expiry.ts';
 import { ExportDialog } from './ExportPanel.tsx';
@@ -46,7 +48,7 @@ const pointerFirst: CollisionDetection = (args) => {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: string }) {
+export function EntryEditor({ entryId, newDate, newLetter = false }: { entryId?: string; newDate?: string; newLetter?: boolean }) {
   const { journal, entries } = useJournal();
   const toast = useToast();
   const [entry, setEntry] = useState<Entry | null>(null);
@@ -59,6 +61,8 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
     savedAt.current = e.updatedAt;
   };
   const dirty = useRef(false);
+  /** A letter to your future self, still sealed when it was opened (D122): its envelope, not its words. */
+  const [sealedOnOpen, setSealedOnOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef<Entry | null>(null);
   latest.current = entry;
@@ -105,17 +109,21 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
           return;
         }
         adopt(e);
+        setSealedOnOpen(letterSealed(e));
         setEntry(e);
       });
     } else {
       savedRev.current = null;
       savedAt.current = null;
-      setEntry(journal.newEntry({ date: newDate ?? today() }));
+      setSealedOnOpen(false);
+      const draft = journal.newEntry({ date: newDate ?? today(), ...(newLetter ? { title: 'Dear future me' } : {}) });
+      // A letter (D122): sealed for a year to start with, until another day is chosen.
+      setEntry(newLetter ? { ...draft, sealedUntil: addDays(today(), 365) } : draft);
     }
     return () => {
       alive = false;
     };
-  }, [journal, entryId, newDate, toast]);
+  }, [journal, entryId, newDate, newLetter, toast]);
 
   // Changed on another computer (D102) while open and not being typed in: show that version. Only
   // the desktop app hears of other computers' changes (`external`), never of this one's own.
@@ -286,7 +294,18 @@ export function EntryEditor({ entryId, newDate }: { entryId?: string; newDate?: 
   };
 
   if (!entry) return <p className="muted">Loading…</p>;
-  return <EditorBody key={version} entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} discard={discard} />;
+  // Sealed when it was opened, and still sealed: its envelope, until the seal's broken (D122).
+  if (sealedOnOpen && letterSealed(entry))
+    return (
+      <SealedLetter
+        entry={entry}
+        onBreak={() => {
+          setSealedOnOpen(false);
+          update((e) => ({ ...e, sealedUntil: null }));
+        }}
+      />
+    );
+  return <EditorBody key={version} entry={entry} update={update} saveState={saveState} isNew={savedRev.current === null} discard={discard} startWith={newLetter && savedRev.current === null ? 'seal' : null} />;
 }
 
 /** Where keyboard focus is in the open entry: 'title', a block's id, '' elsewhere in it, or null outside it. */
@@ -305,12 +324,15 @@ function EditorBody({
   saveState,
   isNew,
   discard,
+  startWith = null,
 }: {
   entry: Entry;
   update: (fn: (e: Entry) => Entry) => void;
   saveState: SaveState;
   isNew: boolean;
   discard: () => Promise<'dropped' | 'binned' | 'kept' | null>;
+  /** A panel open from the start: the seal, for a new letter (D122). */
+  startWith?: 'seal' | null;
 }) {
   const { journal, settings } = useJournal();
   const toast = useToast();
@@ -324,9 +346,9 @@ function EditorBody({
   const showPrompt = promptsOn() && entry.blocks.length === 1 && first?.type === 'text' && !richTextToPlain(first.doc).trim();
   const [linkDialog, setLinkDialog] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
-  const [extra, setExtra] = useState<'music' | 'expiry' | null>(null);
+  const [extra, setExtra] = useState<'music' | 'expiry' | 'seal' | null>(startWith);
   const [exportOpen, setExportOpen] = useState(false);
-  const toggle = (which: 'music' | 'expiry') => setExtra((x) => (x === which ? null : which));
+  const toggle = (which: 'music' | 'expiry' | 'seal') => setExtra((x) => (x === which ? null : which));
   const [bigVideo, setBigVideo] = useState<{ file: File; resolve: (choice: 'compress' | 'keep' | 'skip') => void } | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const mediaInput = useRef<HTMLInputElement>(null);
@@ -506,6 +528,9 @@ function EditorBody({
           <button type="button" className="btn btn-small" aria-expanded={extra === 'expiry'} onClick={() => toggle('expiry')}>
             ⏳ Expiry
           </button>
+          <button type="button" className="btn btn-small" aria-expanded={extra === 'seal'} onClick={() => toggle('seal')}>
+            📜 Seal
+          </button>
           <button type="button" className="btn btn-small" onClick={() => setExportOpen(true)}>
             ⬇️ Export
           </button>
@@ -526,10 +551,12 @@ function EditorBody({
         />
         <div style={{ fontWeight: 650 }}>{formatLongDate(entry.date)}</div>
         {entry.expiresAt && <div className="hero-expiry">⏳ Expires {formatExpiry(entry.expiresAt)}</div>}
+        {entry.sealedUntil && <div className="hero-expiry">📜 A letter to your future self, sealed until {opensOn(entry.sealedUntil)}</div>}
       </header>
 
       {(entry.musicId || entry.musicUrl || extra === 'music') && <MusicBar entry={entry} onChange={(patch) => update((e) => ({ ...e, ...patch }))} />}
       {extra === 'expiry' && <ExpiryPanel entry={entry} onChange={(expiresAt) => update((e) => ({ ...e, expiresAt }))} />}
+      {extra === 'seal' && <SealPanel entry={entry} onChange={(sealedUntil) => update((e) => ({ ...e, sealedUntil }))} />}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} entries={[entry]} title="Export this entry" />
 
       {coverOpen && (
