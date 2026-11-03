@@ -14,6 +14,9 @@
 // the config given): a release signed with another key would be refused by every copy out there.
 // Each signature must also be bound to the release's version (`--app-version`), so a feed can't
 // pair a file with another version number to make installed copies downgrade.
+//
+// LATEST_PLATFORMS (D125): `without-macos` leaves the Mac app out (published without it, for now);
+// `macos-only` writes the Mac app's entries alone, for the workflow to add to the release's file.
 
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
@@ -70,14 +73,21 @@ if (verifyOnly) {
   }
   process.exit(bad ? 1 : 0);
 }
-const kinds: [platforms: string[], pattern: RegExp][] = [
+const MAC = /\.app\.tar\.gz$/;
+const allKinds: [platforms: string[], pattern: RegExp][] = [
   [['windows-x86_64'], /_x64-setup\.exe$/],
-  [['darwin-aarch64', 'darwin-x86_64'], /\.app\.tar\.gz$/],
+  [['darwin-aarch64', 'darwin-x86_64'], MAC],
   // The plain linux key is the fallback for a copy that doesn't know how it was installed.
   [['linux-x86_64-appimage', 'linux-x86_64'], /\.AppImage$/],
   [['linux-x86_64-deb'], /\.deb$/],
   [['linux-x86_64-rpm'], /\.rpm$/],
 ];
+const only = process.env.LATEST_PLATFORMS ?? 'all';
+if (!['all', 'without-macos', 'macos-only'].includes(only)) {
+  console.error(`latest.json: unknown LATEST_PLATFORMS ${only}`);
+  process.exit(2);
+}
+const kinds = allKinds.filter(([, pattern]) => (only === 'without-macos' ? pattern !== MAC : only === 'macos-only' ? pattern === MAC : true));
 
 const platforms: Record<string, { signature: string; url: string }> = {};
 const problems: string[] = [];

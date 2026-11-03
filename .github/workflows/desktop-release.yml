@@ -15,6 +15,11 @@ name: Desktop installers
 # machine where no dependency or build script has run, which re-signs them with
 # TAURI_SIGNING_PRIVATE_KEY (a secret of the repository or of its `release` environment). The
 # release carries latest.json, which the app reads from the newest release.
+#
+# When one platform's builders aren't to be had (D125: GitHub short of macOS runners), run it by
+# hand with `platforms: without-macos` to publish the rest now, then again later with
+# `platforms: macos-only`, which builds the Mac app from the release's own tag and adds it to that
+# release (its files, and its entries in latest.json and SHA256SUMS.txt).
 
 on:
   push:
@@ -31,35 +36,50 @@ on:
       version:
         description: Version to publish, as in apps/desktop/package.json (e.g. 0.1.0). Run it on main.
         required: true
+      platforms:
+        description: 'all; without-macos (publish the rest now); macos-only (add the Mac app to the release already published)'
+        type: choice
+        options: [all, without-macos, macos-only]
+        default: all
 
 concurrency:
   group: desktop-release-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  # Which installers to build: all of them, or (run by hand, D125) all but the Mac app, or only it.
+  plan:
+    name: Which installers
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          PLATFORMS: ${{ inputs.platforms || 'all' }}
+        run: |
+          # The app bundle too, on macOS: the updater installs it, zipped (Logbook.app.tar.gz).
+          # Linux on an older Ubuntu, so the AppImage runs on more distributions.
+          all='[
+            {"name":"Windows","os":"windows-latest","bundles":"nsis","args":"","rust-targets":""},
+            {"name":"macOS","os":"macos-latest","bundles":"app,dmg","args":"--target universal-apple-darwin","rust-targets":"aarch64-apple-darwin,x86_64-apple-darwin"},
+            {"name":"Linux","os":"ubuntu-22.04","bundles":"appimage,deb,rpm","args":"","rust-targets":""}
+          ]'
+          case "$PLATFORMS" in
+            all) pick=$(jq -c '.' <<<"$all") ;;
+            without-macos) pick=$(jq -c '[.[] | select(.name != "macOS")]' <<<"$all") ;;
+            macos-only) pick=$(jq -c '[.[] | select(.name == "macOS")]' <<<"$all") ;;
+            *) echo "::error::Unknown platforms: $PLATFORMS"; exit 1 ;;
+          esac
+          echo "matrix={\"include\":$pick}" >> "$GITHUB_OUTPUT"
+
   build:
     name: Installers (${{ matrix.name }})
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: Windows
-            os: windows-latest
-            bundles: nsis
-            args: ''
-            rust-targets: ''
-          - name: macOS
-            os: macos-latest
-            # The app bundle too: the updater installs it, zipped (Logbook.app.tar.gz).
-            bundles: app,dmg
-            args: --target universal-apple-darwin
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-          - name: Linux
-            # An older Ubuntu, so the AppImage runs on more distributions.
-            os: ubuntu-22.04
-            bundles: appimage,deb,rpm
-            args: ''
-            rust-targets: ''
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -67,6 +87,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Adding the Mac app to a release (D125): built from the release's own tag.
+          ref: ${{ inputs.platforms == 'macos-only' && format('v{0}', inputs.version) || '' }}
       - name: The version asked for matches the app's version
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         shell: bash
@@ -142,6 +164,8 @@ jobs:
 
   android:
     name: Android app
+    # (Already in the release when only the Mac app is being added, D125.)
+    if: ${{ inputs.platforms != 'macos-only' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -258,7 +282,8 @@ jobs:
   # cache.
   sign:
     name: Sign the update files and the Android app
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # The Android app isn't built when only the Mac app is being added (D125).
+    if: ${{ always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && needs.build.result == 'success' && (needs.android.result == 'success' || (inputs.platforms == 'macos-only' && needs.android.result == 'skipped')) }}
     needs: [build, android]
     runs-on: ubuntu-latest
     environment: release
@@ -287,10 +312,12 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts --verify installers apps/desktop/src-tauri/tauri.conf.json "${TAG#v}"
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.platforms != 'macos-only' }}
         with:
           name: android-unsigned
           path: android
       - name: Sign the Android app with the release key
+        if: ${{ inputs.platforms != 'macos-only' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -306,7 +333,7 @@ jobs:
 
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: ${{ always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && needs.sign.result == 'success' }}
     needs: sign
     runs-on: ubuntu-latest
     permissions:
@@ -323,11 +350,36 @@ jobs:
       - name: The updater's latest.json
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+          LATEST_PLATFORMS: ${{ inputs.platforms || 'all' }}
         run: node --experimental-transform-types --no-warnings apps/desktop/scripts/latest-json.ts installers "$TAG" "$GITHUB_REPOSITORY"
       - name: Checksums
+        if: ${{ inputs.platforms != 'macos-only' }}
         working-directory: installers
         run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # D125: the Mac app added to the release already published, with its entries in the
+      # updater's latest.json and in the checksums.
+      - name: Add the Mac app to the release
+        if: ${{ inputs.platforms == 'macos-only' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ format('v{0}', inputs.version) }}
+        run: |
+          mkdir existing merged
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p latest.json -p SHA256SUMS.txt -D existing
+          version=$(jq -r .version existing/latest.json)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::The release's latest.json is for $version, not $TAG."
+            exit 1
+          fi
+          jq -s '.[0] * {platforms: (.[0].platforms + .[1].platforms)}' existing/latest.json installers/latest.json > merged/latest.json
+          cat merged/latest.json
+          rm installers/latest.json
+          (cd installers && sha256sum *) > added.txt
+          cat existing/SHA256SUMS.txt added.txt > merged/SHA256SUMS.txt
+          cat merged/SHA256SUMS.txt
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber installers/* merged/latest.json merged/SHA256SUMS.txt
       - name: Create the GitHub release
+        if: ${{ inputs.platforms != 'macos-only' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
