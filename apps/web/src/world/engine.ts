@@ -33,6 +33,7 @@ import { aisleShell, bookWall, corridorShell, folderRack, galleryShell, pairZ, t
 import { CAST_FIGURES, unwritten, type Figure } from './figures.ts';
 import { retroable, setRetro } from './retro.ts';
 import { createSounds } from './sounds.ts';
+import { elapsed } from './time.ts';
 import { HIS_BOOK, PAGES, type PageId } from '../lib/lore.ts';
 
 /**
@@ -640,6 +641,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
       if (e === 'light') sounds.lampsOn();
       if (e === 'face') {
         sounds.sting();
+        // Where he was (he's gone now): he stays there a moment longer.
+        shadow.group.position.set(was.x, 0, was.z);
         faceTime = 0.7;
         shake = 0.5;
       }
@@ -699,8 +702,8 @@ export function createWorld(canvas: HTMLCanvasElement, events: WorldEvents, star
     }
     // Real time even when frames are slow (a slow phone, a big window drawn in software): each move
     // is taken in small steps anyway.
-    const dt = Math.min(0.5, (now - last) / 1000);
-    last = now;
+    const dt = elapsed(now, last);
+    last = Math.max(last, now);
     const moving = update(dt);
     const busy = horror(dt) || moving;
     // What's in front of you, a few times a second while moving (each look goes through every book

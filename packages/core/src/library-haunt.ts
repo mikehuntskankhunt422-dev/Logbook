@@ -174,6 +174,8 @@ export function lurk(z: number, dir: 1 | -1, side: 1 | -1, zone: (x: number, z: 
 /** A moment (`dt` seconds) of him: where he is next, and what happened. */
 export function hauntStep(h: Haunt, level: HorrorLevel, me: Watcher, dt: number, zone: (x: number, z: number) => boolean, opts: HauntOptions = {}): { haunt: Haunt; events: HauntEvent[] } {
   if (level === 'off') return { haunt: QUIET, events: [] };
+  // Time only goes forwards (D121): a moment that claims to run backwards is no moment at all.
+  dt = Math.max(0, dt);
   const bold = Math.min(1, Math.max(0, (opts.idle ?? 0) / HAUNT.bold.days));
   const s: Haunt = { ...h, cooldown: Math.max(0, h.cooldown - dt), glimpsed: Math.max(0, h.glimpsed - dt) };
   const inside = zone(me.x, me.z);

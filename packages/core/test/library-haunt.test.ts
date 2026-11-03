@@ -215,6 +215,13 @@ describe('The Unwritten, cleverer (D119)', () => {
     expect(zone(h.x, h.z)).toBe(true);
   });
 
+  it('a moment that runs backwards changes nothing (D121)', () => {
+    const resting = { ...QUIET, cooldown: 5, glimpsed: 100 };
+    expect(hauntStep(resting, 'intense', at(deep), -0.3, zone).haunt).toEqual(resting);
+    const h = out();
+    expect(hauntStep(h, 'intense', at(deep, 0), -0.3, zone).haunt).toMatchObject({ x: h.x, z: h.z, here: true });
+  });
+
   it('turned round on when he’s close, on Intense: face to face, then gone', () => {
     const h = { ...out(), x: 0, z: deep + 2, unseen: 1 };
     expect(hauntStep(h, 'intense', at(deep), 0.05, zone).events).toEqual(['face', 'vanish']);
