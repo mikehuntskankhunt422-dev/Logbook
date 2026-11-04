@@ -374,8 +374,11 @@ jobs:
           jq -s '.[0] * {platforms: (.[0].platforms + .[1].platforms)}' existing/latest.json installers/latest.json > merged/latest.json
           cat merged/latest.json
           rm installers/latest.json
+          # The Mac files' sums added, and latest.json's replaced by the merged file's.
           (cd installers && sha256sum *) > added.txt
-          cat existing/SHA256SUMS.txt added.txt > merged/SHA256SUMS.txt
+          (cd merged && sha256sum latest.json) >> added.txt
+          grep -v '  latest\.json$' existing/SHA256SUMS.txt > kept.txt
+          cat kept.txt added.txt > merged/SHA256SUMS.txt
           cat merged/SHA256SUMS.txt
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber installers/* merged/latest.json merged/SHA256SUMS.txt
       - name: Create the GitHub release
